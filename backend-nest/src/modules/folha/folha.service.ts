@@ -368,20 +368,20 @@ export class FolhaService {
     for (const item of itensCalculados) {
       await this.db.query(
         `INSERT INTO folha_itens (
-          folha_id, codigo_rubrica, descricao_rubrica, tipo_rubrica, referencia_valor,
-          valor_total, incide_inss, incide_fgts, incide_irrf, memoria_calculo
+          folha_id, codigo_evento, descricao, tipo, referencia,
+          unidade_referencia, valor_total, origem, memoria_calculo, criado_em
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           folhaId,
           item.codigo_rubrica,
           item.descricao_rubrica,
           item.tipo_rubrica,
-          item.referencia_valor,
+          typeof item.referencia_valor === 'number' ? item.referencia_valor : 0,
+          String(item.referencia_valor || ''),
           item.valor_total,
-          item.incide_inss,
-          item.incide_fgts,
-          item.incide_irrf,
+          'calculado',
           item.memoria_calculo,
+          agora,
         ],
       );
     }

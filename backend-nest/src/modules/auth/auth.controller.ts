@@ -16,6 +16,7 @@ import { SessionGuard } from './session.guard';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import { AuditService } from '../audit/audit.service';
 import { CsrfGuard } from '../csrf/csrf.guard';
+import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
 @UseGuards(CsrfGuard)
@@ -37,21 +38,21 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
-    @Body() body: { identificador?: string; senha?: string },
+    @Body() body: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const ip = this.extrairIp(req);
     const chave = `ip:${ip}`;
 
-    // 1. Verificação de Rate Limit (RF-LOGIN-005, AC-07)
+    // 1. Verificação de Rate Limit (5 tentativas em 15min / 900s)
     const { bloqueado, restante } = this.rateLimiter.estaBloqueado(chave);
     if (bloqueado) {
       await this.audit.registrarEvento(
         'BLOQUEIO_RATE_LIMIT',
-        'anônimo',
+        body.identificador ? String(body.identificador).slice(0, 100) : 'anônimo',
         ip,
-        `Bloqueio de taxa ativo (${restante}s restantes)`,
+        `Bloqueio ativo: excesso de tentativas (${restante}s restantes)`,
       );
       res.setHeader('Retry-After', String(restante));
       throw new HttpException(
@@ -66,14 +67,15 @@ export class AuthController {
 
     try {
       const { usuario, token } = await this.authService.autenticar(
-        body.identificador || '',
-        body.senha || '',
+        body.identificador,
+        body.senha,
         ip,
       );
 
+      // Sucesso reseta contador de tentativas
       this.rateLimiter.registrarSucesso(chave);
 
-      // Configuração do cookie seguro HttpOnly (RF-LOGIN-003, AC-09)
+      // Configuração segura do Cookie de Sessão
       const isHttps =
         req.secure || req.headers['x-forwarded-proto'] === 'https';
       res.cookie('session_token', token, {
@@ -89,7 +91,7 @@ export class AuthController {
       return {
         sucesso: true,
         mensagem: 'Autenticação realizada com sucesso.',
-        token,
+        token, // Disponibilizado para clientes Bearer / testes
         usuario,
       };
     } catch (err) {
@@ -137,4 +139,3 @@ export class AuthController {
     };
   }
 }
-

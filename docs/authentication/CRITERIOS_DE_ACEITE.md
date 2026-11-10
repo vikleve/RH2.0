@@ -2,48 +2,38 @@
 
 **Projeto:** RH2.0 — Sistema Integrado de Departamento Pessoal & Folha de Pagamento  
 **Data de Homologação:** 10 de Novembro de 2026  
-**Status Consolidado:** 16 de 16 Critérios Aprovados (**100% PASS**)  
+**Status Consolidado:** 100% Aprovado em Ambas as Fases (Python Inicial + SPEC-02 NestJS/PostgreSQL)  
 
 ---
 
-## 1. Checklist de Critérios de Aceite
+## 1. Critérios de Aceite de Segurança e Hardening (SPEC-02 — NestJS + PostgreSQL)
 
-- [x] **AC-01** — Tela de login funcional e alinhada à identidade visual RH2.0.
-- [x] **AC-02** — Acessibilidade: navegação por teclado, foco visível, rótulos e mensagens com `role="alert"` e `aria-live`.
-- [x] **AC-03** — Layout responsivo compatível com viewports desktop e celular (<= 480px) sem overflow horizontal.
-- [x] **AC-04** — Validação de entradas no frontend e no backend (campos vazios rejeitados com HTTP 400).
-- [x] **AC-05** — Login válido com credenciais homologadas cria sessão segura e retorna HTTP 200.
-- [x] **AC-06** — Falhas de autenticação utilizam a mensagem genérica estrita `"E-mail ou senha inválidos."` (sem enumeração de contas).
-- [x] **AC-07** — Rate limit contra ataques de força bruta ativo: 5 falhas consecutivas bloqueiam a 6ª tentativa com HTTP 429 e `Retry-After`.
-- [x] **AC-08** — Senhas protegidas criptograficamente via PBKDF2-HMAC-SHA256 (100.000 iterações com salt individual); nunca em texto puro.
-- [x] **AC-09** — Cookie de sessão gerado com `HttpOnly`, `SameSite=Lax` e `Secure` (em HTTPS), com token de 32 bytes de alta entropia.
-- [x] **AC-10** — Persistência da sessão após refresh validada via `GET /api/auth/me`.
-- [x] **AC-11** — Endpoints privados (`/api/colaboradores`, `/api/folha`) bloqueiam imediatamente usuários anônimos com HTTP 401.
-- [x] **AC-12** — Logout com invalidação imediata da sessão no servidor e revogação durável do token.
-- [x] **AC-13** — Proteção CSRF / Origem ativada em mutações de estado: origens externas não confiáveis recebem HTTP 403 Forbidden.
-- [x] **AC-14** — Build e syntax check executados com sucesso em todos os módulos Python (`python -m py_compile`).
-- [x] **AC-15** — 77 testes automatizados headless executados e aprovados com 100% de sucesso.
-- [x] **AC-16** — Documentação e relatório de auditoria e evidências reproduzíveis sem segredos versionados.
+- [x] **SPEC02-RF-01 (CORS Seguro)**: `ALLOWED_ORIGINS` centralizado. Preflight OPTIONS e credenciais permitidos apenas para origens homologadas. Origens não autorizadas são bloqueadas sem cabeçalhos permissivos.
+- [x] **SPEC02-RF-02 (PostgreSQL Fail-Fast)**: Em ambiente operacional, a ausência de `DATABASE_URL` impede imediatamente a inicialização. Conexão testada ativamente com `SELECT 1`. Falha em qualquer arquivo de migração interrompe a inicialização.
+- [x] **SPEC02-RF-03 (Hashing de Token de Sessão)**: O token bruto trafega unicamente no cookie `HttpOnly; SameSite=Lax`. O banco de dados armazena exclusivamente o hash SHA-256 do token na tabela `sessoes`. Sessões anteriores do usuário são revogadas no login.
+- [x] **SPEC02-RF-04 (Proteção CSRF Rigorosa)**: Validação estrita de cabeçalhos `Origin`, `Referer` e `Sec-Fetch-Site` para todas as requisições mutativas (`POST`, `PUT`, `PATCH`, `DELETE`). Requisições com origens não autorizadas retornam HTTP 403 Forbidden (`ORIGEM_PROIBIDA`).
+- [x] **SPEC02-RF-05 (Rate Limiting Ativo)**: Bloqueio na 6ª tentativa consecutiva após 5 falhas no intervalo de 15 minutos (900s), retornando HTTP 429 Too Many Requests com cabeçalho `Retry-After`.
+- [x] **SPEC02-RF-06 (Auditoria de Eventos)**: Registro em banco na tabela `auditoria_autenticacao` para eventos `LOGIN_SUCESSO`, `LOGIN_FALHA`, `LOGOUT` e `BLOQUEIO_RATE_LIMIT`, com higienização estrita de dados sensíveis.
+- [x] **SPEC02-RF-07 (Validação Global de Entrada)**: `ValidationPipe` do NestJS com DTOs tipados (`LoginDto`, `CreateColaboradorDto`, `UpdateColaboradorDto`) rejeitando propriedades desconhecidas (`forbidNonWhitelisted: true`) com HTTP 400.
+- [x] **SPEC02-RF-08 (Governança de Variáveis de Ambiente)**: `.env.example` completo e documentado na raiz e no backend NestJS.
+- [x] **SPEC02-RF-09 (RBAC / Roles)**: `RolesGuard` e decorator `@Roles()` implementados para autorização por perfil (`administrador`, `analista_rh`, `operador_dp`).
 
 ---
 
-## 2. Matriz Rastreabilidade: Critério → Teste → Status
+## 2. Matriz Rastreabilidade: Critério → Teste E2E (NestJS) → Status
 
-| ID | Requisito Verificável | Método / Teste Executado | Resultado Observado | Status |
-|---|---|---|---|:---:|
-| **AC-01** | Tela apresenta marca RH2.0, e-mail, senha, Entrar, toggle e spinner | `test_ac_01_elementos_tela_login_rh20` | Elementos presentes no DOM com IDs e estrutura requerida | **PASS** |
-| **AC-02** | Formulário acessível (`role="alert"`, `aria-live`, labels associados) | `test_ac_02_acessibilidade` | Labels for, alert com role e aria-label no toggle verificados | **PASS** |
-| **AC-03** | Layout responsivo sem overflow horizontal | `test_ac_03_responsividade_css` | Media queries e seletores adaptativos presentes no CSS | **PASS** |
-| **AC-04** | Validação no backend de entradas vazias | `test_ac_04_validacao_entradas_backend` | HTTP 400 Bad Request para payload sem identificador/senha | **PASS** |
-| **AC-05** | Login válido cria sessão e retorna dados do operador | `test_ac_05_login_valido_sucesso` | HTTP 200 OK, token emitido, Set-Cookie HttpOnly retornado | **PASS** |
-| **AC-06** | Mensagem genérica estrita sem enumeração | `test_ac_06_mensagens_genericas_sem_enumeracao` | HTTP 401 com `"E-mail ou senha inválidos."` idêntico para conta inexistente e senha incorreta | **PASS** |
-| **AC-07** | Rate limit de 5 tentativas por janela | `test_ac_07_rate_limit_bloqueio_apos_5_tentativas` | 5 erros seguidos geram HTTP 429 com Retry-After na 6ª tentativa | **PASS** |
-| **AC-08** | Senha nunca em texto puro / hash PBKDF2 | `test_ac_08_protecao_senhas_banco_e_logs` | Hash hex de 64 chars e salt de 32 chars verificados na base | **PASS** |
-| **AC-09** | Cookie e sessão com flags seguras | `test_ac_09_ac_10_sessao_persiste_refresh` | Set-Cookie contém `session_token`, `HttpOnly` e `SameSite=Lax` | **PASS** |
-| **AC-10** | Sessão continua válida após refresh | `test_ac_09_ac_10_sessao_persiste_refresh` | `GET /api/auth/me` com cookie retorna HTTP 200 e dados do operador | **PASS** |
-| **AC-11** | Endpoints privados bloqueiam anônimos | `test_ac_11_rotas_privadas_bloqueadas_para_anonimos` | `GET /api/colaboradores` e `/api/folha` sem token retornam HTTP 401 | **PASS** |
-| **AC-12** | Logout invalida sessão no servidor | `test_ac_12_logout_invalida_sessao_no_servidor` | Token revogado no SQLite (`revogado=1`); reuso retorna HTTP 401 | **PASS** |
-| **AC-13** | Proteção CSRF / Origem em mutações | `test_ac_13_protecao_csrf_origem_rejeita_origem_fraudulenta` | POST com `Origin: http://site-hacker-malicioso.com` recebe HTTP 403 | **PASS** |
-| **AC-14** | Verificação de integridade e compilação | `python -m py_compile` em backend, api, tests | Exit code 0 em todos os arquivos | **PASS** |
-| **AC-15** | Suíte consolidada de testes headless | `tests/executar_todos_testes.py` | 77 de 77 testes aprovados em 13.72s (100% sucesso) | **PASS** |
-| **AC-16** | Auditoria e ausência de segredos em logs | `test_ac_16_auditoria_eventos_autenticacao` | Tabela `auditoria_autenticacao` populada sem senhas ou tokens | **PASS** |
+| ID Requisito | Método / Teste Executado no NestJS | Resultado Observado | Status |
+|---|---|---|:---:|
+| **RF-01** | `auth.e2e-spec.ts` (Preflight OPTIONS & Whitelist) | Preflight 204 com headers para localhost:3000; sem allow-origin para domínios maliciosos | **PASS** |
+| **RF-02** | `auth.e2e-spec.ts` (DatabaseService Fail-Fast) | Exceção crítica lançada no bootstrap quando `DATABASE_URL` ausente fora de teste | **PASS** |
+| **RF-03** | `auth.e2e-spec.ts` (Session Token Hashing SHA-256) | Token na tabela `sessoes` equivale a `sha256(rawToken)`; token em texto puro ausente do banco | **PASS** |
+| **RF-04** | `auth.e2e-spec.ts` (CsrfGuard Cross-Origin Block) | HTTP 403 Forbidden com código `ORIGEM_PROIBIDA` para origens externas | **PASS** |
+| **RF-05** | `auth.e2e-spec.ts` (Rate Limiter 5 Tentativas / 15 min) | 6ª tentativa retorna HTTP 429 com cabeçalho `Retry-After` numérico | **PASS** |
+| **RF-06** | `auth.e2e-spec.ts` (Auditoria e Ausência de Senhas) | Eventos gravados em `auditoria_autenticacao` sem senhas, tokens ou segredos | **PASS** |
+| **RF-07** | `auth.e2e-spec.ts` (ValidationPipe & DTOs) | HTTP 400 Bad Request ao enviar campos extras ou payload vazio | **PASS** |
+| **AC-05** | `auth.e2e-spec.ts` (Login Válido) | HTTP 200 OK com cookie `session_token` (HttpOnly, SameSite=Lax) | **PASS** |
+| **AC-06** | `auth.e2e-spec.ts` (Mensagem Genérica Uniforme) | HTTP 401 com `"E-mail ou senha inválidos."` para conta inexistente, inativa ou senha errada | **PASS** |
+| **AC-10** | `auth.e2e-spec.ts` (Persistência `/api/auth/me`) | HTTP 200 OK mantendo sessão autenticada com cookie | **PASS** |
+| **AC-11** | `auth.e2e-spec.ts` (Proteção de Rotas Privadas) | HTTP 401 Unauthorized para acessos anônimos em `/api/colaboradores` | **PASS** |
+| **AC-12** | `auth.e2e-spec.ts` (Logout com Revogação) | HTTP 200 OK, cookie limpo; reuso do token rejeitado com HTTP 401 | **PASS** |
+| **EPIC-C** | `colaboradores-folha.e2e-spec.ts` (10 testes) | CRUD, CPF, histórico, inativação, métricas, cálculo folha CLT, fechamento e reabertura | **PASS** |

@@ -156,7 +156,58 @@ Erros:    0
 
 ---
 
-## 3. Conclusão da Entrega
+## 3. Evidências do Backend NestJS + PostgreSQL (SPEC-02 — Hardening & Consolidação)
+
+### Execução dos Testes E2E do Backend NestJS
+- **Comando:** `npm run test:e2e` (Jest + Supertest)
+- **Evidência Observada:** 26 testes de ponta a ponta executados em 2 suítes completas com 100% de sucesso:
+
+```text
+PASS test/colaboradores-folha.e2e-spec.ts (7.096 s)
+  Colaboradores e Folha de Pagamento RH2.0 (NestJS E2E)
+    √ 1. Deve cadastrar um colaborador com sucesso (POST /api/colaboradores) (43 ms)
+    √ 2. Deve rejeitar colaborador com CPF duplicado (409 Conflict) (7 ms)
+    √ 3. Deve listar colaboradores com busca e filtros (GET /api/colaboradores) (13 ms)
+    √ 4. Deve atualizar dados e registrar histórico de auditoria (PUT /api/colaboradores/:id) (33 ms)
+    √ 5. Deve inativar e reativar logicamente colaborador (PATCH) (22 ms)
+    √ 6. Deve consultar métricas agregadas (GET /api/colaboradores/metricas) (13 ms)
+    √ 7. Deve calcular folha com horas extras e encargos CLT (POST /api/folha) (44 ms)
+    √ 8. Deve fechar a folha e bloquear recálculos indevidos (POST /api/folha/:id/fechar) (18 ms)
+    √ 9. Deve reabrir a folha mediante justificativa obrigatória (POST /api/folha/:id/reabrir) (22 ms)
+    √ 10. Deve cancelar a folha com sucesso (DELETE /api/folha/:id) (20 ms)
+
+PASS test/auth.e2e-spec.ts (7.298 s)
+  Auth & Segurança RH2.0 — SPEC-02 (NestJS E2E)
+    √ RF-07 / AC-04: Rejeita login com campos vazios ou inválidos com HTTP 400 (42 ms)
+    √ RF-07: Rejeita login com propriedades não autorizadas (forbidNonWhitelisted) (5 ms)
+    √ RF-01: Permite requisições preflight OPTIONS e cabeçalhos CORS para origens autorizadas (3 ms)
+    √ RF-01: Bloqueia cabeçalhos CORS para origens não autorizadas (3 ms)
+    √ RF-03 / AC-05: Login válido cria sessão, emite cookie HttpOnly e retorna dados (66 ms)
+    √ RF-03: Token de sessão é persistido no banco como Hash SHA-256 e não em texto puro (57 ms)
+    √ AC-06: Rejeita usuário inexistente e senha incorreta com a mesma mensagem genérica (60 ms)
+    √ RF-03: Usuário inativo é rejeitado com a mesma mensagem genérica sem vazar status (17 ms)
+    √ RF-05 / AC-07: Bloqueia na 6ª tentativa consecutiva com HTTP 429 e Retry-After (39 ms)
+    √ AC-08: Senhas armazenadas como PBKDF2 com salt de 16 bytes e sem texto puro (3 ms)
+    √ AC-10: /api/auth/me mantém autenticação usando o cookie de sessão (66 ms)
+    √ AC-11: Endpoints privados bloqueiam requisições anônimas com HTTP 401 (3 ms)
+    √ AC-12: Logout revoga sessão e limpa cookie; reuso retorna 401 (78 ms)
+    √ RF-04 / AC-13: Rejeita POST com Origin não autorizado com HTTP 403 Forbidden (3 ms)
+    √ RF-06 / AC-16: Tabela auditoria_autenticacao registra eventos sem senhas ou segredos (5 ms)
+    √ RF-02: DatabaseService rejeita inicialização sem DATABASE_URL fora do ambiente de testes (19 ms)
+
+Test Suites: 2 passed, 2 total
+Tests:       26 passed, 26 total
+Snapshots:   0 total
+Time:        8.31 s
+```
+
+### Compilação do Backend NestJS (TypeScript Build)
+- **Comando:** `npm run build`
+- **Evidência Observada:** Compilação concluída com sucesso com código de saída 0 sem nenhum erro ou aviso de tipo.
+
+---
+
+## 4. Conclusão da Entrega
 
 O módulo de **Login e Autenticação Segura do RH2.0** foi construído e homologado em estrita observância à metodologia **Spec-Driven Development (SDD)**:
 1. **SPEC:** Requisitos funcionais (RF-LOGIN-001 a 006) e de governança corporativa mapeados.

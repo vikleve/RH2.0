@@ -23,6 +23,9 @@ export class AuthService implements OnModuleInit {
     await this.provisionarUsuarioInicial();
   }
 
+  /**
+   * Gera hash PBKDF2 com HMAC-SHA256 e salt seguro
+   */
   hashSenha(senha: string, salt?: string): { hashHex: string; saltHex: string } {
     const saltHex = salt || crypto.randomBytes(16).toString('hex');
     const hashBytes = crypto.pbkdf2Sync(
@@ -38,6 +41,9 @@ export class AuthService implements OnModuleInit {
     };
   }
 
+  /**
+   * Compara senha informada com o hash persistido em tempo constante
+   */
   verificarSenha(senha: string, senhaHashHex: string, saltHex: string): boolean {
     const { hashHex } = this.hashSenha(senha, saltHex);
     const bufCalculado = Buffer.from(hashHex, 'hex');
@@ -48,6 +54,13 @@ export class AuthService implements OnModuleInit {
     return crypto.timingSafeEqual(bufCalculado, bufArmazenado);
   }
 
+  /**
+   * Calcula o hash SHA-256 do token de sessão para armazenamento seguro no banco (RF-03)
+   */
+  hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token.trim()).digest('hex');
+  }
+
   async provisionarUsuarioInicial(): Promise<void> {
     const res = await this.db.query(
       `SELECT id, email, usuario FROM usuarios WHERE email = $1 OR usuario = $2`,
@@ -56,8 +69,7 @@ export class AuthService implements OnModuleInit {
 
     const isTest =
       process.env.NODE_ENV === 'test' ||
-      process.env.TESTING === '1' ||
-      typeof jest !== 'undefined';
+      process.env.TESTING === '1';
 
     if (res.rows.length === 0) {
       let senhaInicial = process.env.ADMIN_INITIAL_PASSWORD;
@@ -66,7 +78,7 @@ export class AuthService implements OnModuleInit {
           senhaInicial = process.env.TEST_ADMIN_PASSWORD || 'Sintetico#AdminTest2026!';
         } else {
           throw new Error(
-            'Falha de segurança operacional: A variável de ambiente ADMIN_INITIAL_PASSWORD não foi configurada.',
+            'FALHA DE SEGURANÇA: A variável de ambiente ADMIN_INITIAL_PASSWORD é obrigatória para o provisionamento do administrador inicial.',
           );
         }
       }
@@ -116,7 +128,7 @@ export class AuthService implements OnModuleInit {
         'LOGIN_FALHA',
         identLimpo,
         ipOrigem,
-        'Usuário não encontrado',
+        'Credencial inválida: usuário inexistente',
       );
       throw new UnauthorizedException({
         sucesso: false,
@@ -126,12 +138,13 @@ export class AuthService implements OnModuleInit {
 
     const usuario = res.rows[0];
 
+    // Rejeição de usuários inativos sem indicar existência prévia
     if (usuario.status !== 'ativo') {
       await this.audit.registrarEvento(
         'LOGIN_FALHA',
         identLimpo,
         ipOrigem,
-        'Tentativa em conta inativa',
+        'Credencial inválida: conta inativa',
       );
       throw new UnauthorizedException({
         sucesso: false,
@@ -149,7 +162,7 @@ export class AuthService implements OnModuleInit {
         'LOGIN_FALHA',
         identLimpo,
         ipOrigem,
-        'Senha incorreta',
+        'Credencial inválida: senha incorreta',
       );
       throw new UnauthorizedException({
         sucesso: false,
@@ -157,13 +170,16 @@ export class AuthService implements OnModuleInit {
       });
     }
 
-    // Regeneração de sessão (invalida sessões ativas prévias)
+    // Regeneração de sessão: revoga todas as sessões anteriores ativas do usuário
     await this.db.query(
       `UPDATE sessoes SET revogado = 1 WHERE usuario_id = $1 AND revogado = 0`,
       [usuario.id],
     );
 
+    // Geração do token criptograficamente seguro e cálculo do hash SHA-256 para persistência
     const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+
     const agoraDt = new Date();
     const expiraDt = new Date(
       agoraDt.getTime() + SESSION_DURATION_HOURS * 3600 * 1000,
@@ -174,7 +190,7 @@ export class AuthService implements OnModuleInit {
     await this.db.query(
       `INSERT INTO sessoes (token, usuario_id, criado_em, expira_em, revogado)
        VALUES ($1, $2, $3, $4, 0)`,
-      [token, usuario.id, agoraStr, expiraStr],
+      [tokenHash, usuario.id, agoraStr, expiraStr],
     );
 
     await this.db.query(
@@ -186,7 +202,7 @@ export class AuthService implements OnModuleInit {
       'LOGIN_SUCESSO',
       usuario.email,
       ipOrigem,
-      'Autenticação válida',
+      'Autenticação válida com sessão protegida',
     );
 
     return {
@@ -204,16 +220,17 @@ export class AuthService implements OnModuleInit {
   async validarSessao(token: string): Promise<any | null> {
     if (!token) return null;
     const agoraStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const tokenHash = this.hashToken(token);
 
     const res = await this.db.query(
       `SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil
        FROM sessoes s
        JOIN usuarios u ON u.id = s.usuario_id
-       WHERE s.token = $1
+       WHERE (s.token = $1 OR s.token = $3)
          AND s.revogado = 0
          AND s.expira_em > $2
          AND u.status = 'ativo'`,
-      [token, agoraStr],
+      [tokenHash, agoraStr, token],
     );
 
     if (res.rows.length === 0) return null;
@@ -223,11 +240,12 @@ export class AuthService implements OnModuleInit {
   async encerrarSessao(token: string, ipOrigem?: string): Promise<boolean> {
     if (!token) return false;
     const usuario = await this.validarSessao(token);
-    const ident = usuario?.email || 'token-desconhecido';
+    const ident = usuario?.email || 'anônimo';
+    const tokenHash = this.hashToken(token);
 
     const res = await this.db.query(
-      `UPDATE sessoes SET revogado = 1 WHERE token = $1`,
-      [token],
+      `UPDATE sessoes SET revogado = 1 WHERE token = $1 OR token = $2`,
+      [tokenHash, token],
     );
 
     if (res.rowCount > 0) {
@@ -235,11 +253,10 @@ export class AuthService implements OnModuleInit {
         'LOGOUT',
         ident,
         ipOrigem,
-        'Sessão encerrada com sucesso',
+        'Sessão encerrada com revogação persistida no banco',
       );
       return true;
     }
     return false;
   }
 }
-

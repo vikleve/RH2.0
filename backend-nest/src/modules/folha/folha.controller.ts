@@ -80,6 +80,7 @@ export class FolhaController {
   }
 
   @Post(':id/fechar')
+  @HttpCode(HttpStatus.OK)
   async fechar(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const nomeResp = req.user
       ? `${req.user.nome_completo} (${req.user.perfil})`
@@ -93,6 +94,7 @@ export class FolhaController {
   }
 
   @Post(':id/reabrir')
+  @HttpCode(HttpStatus.OK)
   async reabrir(
     @Param('id', ParseIntPipe) id: number,
     @Body('motivo') motivo: string,
