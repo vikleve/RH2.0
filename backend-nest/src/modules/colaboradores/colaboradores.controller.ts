@@ -20,6 +20,7 @@ import { RolesGuard } from '../auth/roles/roles.guard';
 import { Roles } from '../auth/roles/roles.decorator';
 import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
+import { QueryColaboradorDto } from './dto/query-colaborador.dto';
 
 @Controller('colaboradores')
 @UseGuards(SessionGuard, CsrfGuard, RolesGuard)
@@ -35,20 +36,22 @@ export class ColaboradoresController {
 
   @Get()
   @Roles('administrador', 'analista_rh', 'operador_dp')
-  async listar(
-    @Query('q') q?: string,
-    @Query('situacao') situacao?: string,
-    @Query('setor') setor?: string,
-  ) {
-    const lista = await this.service.listar({ termo: q, situacao, setor });
-    return { sucesso: true, total: lista.length, dados: lista };
+  async listar(@Query() query: QueryColaboradorDto) {
+    return this.service.listar(query);
   }
 
   @Get(':id')
   @Roles('administrador', 'analista_rh', 'operador_dp')
   async obterPorId(@Param('id', ParseIntPipe) id: number) {
     const colab = await this.service.obterPorId(id);
-    return { sucesso: true, dados: colab };
+    return { sucesso: true, dados: colab, ...colab };
+  }
+
+  @Get(':id/historico')
+  @Roles('administrador', 'analista_rh', 'operador_dp')
+  async obterHistorico(@Param('id', ParseIntPipe) id: number) {
+    const lista = await this.service.obterHistorico(id);
+    return { sucesso: true, total: lista.length, dados: lista };
   }
 
   @Post()
@@ -63,12 +66,15 @@ export class ColaboradoresController {
       sucesso: true,
       mensagem: 'Colaborador cadastrado com sucesso!',
       dados: criado,
+      ...criado,
     };
   }
 
-  @Put(':id')
+  // PATCH /api/colaboradores/:id (Contrato oficial do SPEC-03 Seção 6.4)
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
   @Roles('administrador', 'analista_rh')
-  async atualizar(
+  async atualizarPatch(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateColaboradorDto,
     @Req() req: any,
@@ -81,10 +87,25 @@ export class ColaboradoresController {
       sucesso: true,
       mensagem: 'Colaborador atualizado com sucesso!',
       dados: atualizado,
+      ...atualizado,
     };
   }
 
+  // PUT /api/colaboradores/:id (Compatibilidade com clientes anteriores)
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles('administrador', 'analista_rh')
+  async atualizarPut(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateColaboradorDto,
+    @Req() req: any,
+  ) {
+    return this.atualizarPatch(id, body, req);
+  }
+
+  // PATCH /api/colaboradores/:id/inativar (Contrato oficial do SPEC-03 Seção 6.5)
   @Patch(':id/inativar')
+  @HttpCode(HttpStatus.OK)
   @Roles('administrador', 'analista_rh')
   async inativar(
     @Param('id', ParseIntPipe) id: number,
@@ -99,10 +120,12 @@ export class ColaboradoresController {
       sucesso: true,
       mensagem: 'Colaborador inativado com sucesso. Histórico preservado.',
       dados,
+      ...dados,
     };
   }
 
   @Patch(':id/reativar')
+  @HttpCode(HttpStatus.OK)
   @Roles('administrador', 'analista_rh')
   async reativar(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const nomeResp = req.user
@@ -113,13 +136,7 @@ export class ColaboradoresController {
       sucesso: true,
       mensagem: 'Colaborador reativado com sucesso.',
       dados,
+      ...dados,
     };
   }
-
-  @Get(':id/historico')
-  async obterHistorico(@Param('id', ParseIntPipe) id: number) {
-    const hist = await this.service.obterHistorico(id);
-    return { sucesso: true, total: hist.length, dados: hist };
-  }
 }
-

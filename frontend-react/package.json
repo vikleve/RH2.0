@@ -1,0 +1,17 @@
+{
+  "name": "rh20-frontend-react",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.3"
+  }
+}

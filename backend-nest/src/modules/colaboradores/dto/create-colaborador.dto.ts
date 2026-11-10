@@ -22,50 +22,77 @@ export class DependenteDto {
 }
 
 export class CreateColaboradorDto {
+  // Empresa & Filial
+  @IsOptional()
+  @IsString()
+  empresaId?: string;
+
+  @IsOptional()
+  @IsString()
+  empresa_id?: string;
+
+  @IsOptional()
+  @IsString()
+  filialId?: string;
+
+  @IsOptional()
+  @IsString()
+  filial_id?: string;
+
+  // Identificação
   @IsNotEmpty({ message: 'Matrícula é obrigatória.' })
   @IsString()
   matricula: string;
 
-  @IsNotEmpty({ message: 'Nome completo é obrigatório.' })
+  @IsOptional()
   @IsString()
-  nome_completo: string;
+  nomeCompleto?: string;
+
+  @IsOptional()
+  @IsString()
+  nome_completo?: string;
 
   @IsNotEmpty({ message: 'CPF é obrigatório.' })
   @IsString()
   cpf: string;
 
-  @IsNotEmpty({ message: 'Data de nascimento é obrigatória.' })
+  @IsOptional()
   @IsString()
-  data_nascimento: string;
-
-  @IsNotEmpty({ message: 'E-mail é obrigatório.' })
-  @IsString()
-  email: string;
-
-  @IsNotEmpty({ message: 'Data de admissão é obrigatória.' })
-  @IsString()
-  data_admissao: string;
-
-  @IsNotEmpty({ message: 'Cargo é obrigatório.' })
-  @IsString()
-  cargo: string;
-
-  @IsNotEmpty({ message: 'Setor é obrigatório.' })
-  @IsString()
-  setor: string;
-
-  @IsNotEmpty({ message: 'Salário base é obrigatório.' })
-  @IsNumber({}, { message: 'Salário base deve ser numérico.' })
-  @Min(0, { message: 'Salário base não pode ser negativo.' })
-  salario_base: number;
+  dataNascimento?: string;
 
   @IsOptional()
   @IsString()
-  rg?: string;
+  data_nascimento?: string;
+
+  @IsOptional()
+  @IsString()
+  sexo?: string;
+
+  @IsOptional()
+  @IsString()
+  estadoCivil?: string;
+
+  @IsOptional()
+  @IsString()
+  estado_civil?: string;
+
+  // Contato
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @IsOptional()
   @IsString()
   telefone?: string;
+
+  @IsOptional()
+  @IsString()
+  celular?: string;
+
+  // Endereço
+  @IsOptional()
+  @IsString()
+  cep?: string;
 
   @IsOptional()
   @IsString()
@@ -74,6 +101,10 @@ export class CreateColaboradorDto {
   @IsOptional()
   @IsString()
   numero?: string;
+
+  @IsOptional()
+  @IsString()
+  complemento?: string;
 
   @IsOptional()
   @IsString()
@@ -87,12 +118,62 @@ export class CreateColaboradorDto {
   @IsString()
   uf?: string;
 
+  // Dados Organizacionais
   @IsOptional()
   @IsString()
-  cep?: string;
+  departamentoId?: string;
+
+  @IsOptional()
+  @IsString()
+  departamento_id?: string;
+
+  @IsOptional()
+  @IsString()
+  cargoId?: string;
+
+  @IsOptional()
+  @IsString()
+  cargo_id?: string;
+
+  @IsOptional()
+  @IsString()
+  cargo?: string;
+
+  @IsOptional()
+  @IsString()
+  setor?: string;
+
+  @IsOptional()
+  @IsString()
+  dataAdmissao?: string;
+
+  @IsOptional()
+  @IsString()
+  data_admissao?: string;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'Salário base deve ser numérico.' })
+  @Min(0, { message: 'Salário base não pode ser negativo.' })
+  salario_base?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'Salário base deve ser numérico.' })
+  @Min(0, { message: 'Salário base não pode ser negativo.' })
+  salarioBase?: number;
+
+  @IsOptional()
+  @IsString()
+  situacao?: string;
+
+  @IsOptional()
+  @IsString()
+  observacoes?: string;
+
+  @IsOptional()
+  @IsString()
+  rg?: string;
 
   @IsOptional()
   @IsArray()
   dependentes?: DependenteDto[];
 }
-

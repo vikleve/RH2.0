@@ -84,6 +84,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       '001_schema_inicial.sql',
       '002_modulo_folha_pagamento.sql',
       '003_auditoria_autenticacao.sql',
+      '004_modulo_colaboradores_spec03.sql',
     ];
 
     for (const arq of arquivos) {

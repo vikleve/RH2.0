@@ -4,274 +4,374 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
+import { ColaboradoresRepository } from './colaboradores.repository';
 import { validarCpf, validarEmail, validarDataIso } from './validators';
+import { QueryColaboradorDto } from './dto/query-colaborador.dto';
+import { CreateColaboradorDto } from './dto/create-colaborador.dto';
+import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
+
+export const EMPRESA_PADRAO_UUID = 'a0000000-0000-0000-0000-000000000001';
 
 @Injectable()
 export class ColaboradoresService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly repository: ColaboradoresRepository) {}
 
-  validarDadosColaborador(dados: any, ignorarId?: number): void {
+  /**
+   * Normaliza CPF removendo qualquer caractere não numérico
+   */
+  normalizarCpf(cpf: string): string {
+    return String(cpf || '').replace(/\D/g, '');
+  }
+
+  /**
+   * Aplica máscara de privacidade no CPF para listagens (RF-01, RF-07)
+   */
+  mascararCpf(cpf: string): string {
+    const limpo = this.normalizarCpf(cpf);
+    if (limpo.length === 11) {
+      return `${limpo.slice(0, 3)}.***.***-${limpo.slice(9)}`;
+    }
+    return '***.***.***-**';
+  }
+
+  /**
+   * Validações de domínio para criação
+   */
+  validarCriacao(dados: CreateColaboradorDto): void {
     const erros: string[] = [];
 
-    if (!dados.matricula || !String(dados.matricula).trim()) {
+    const matricula = dados.matricula?.trim();
+    if (!matricula) {
       erros.push('Matrícula é obrigatória.');
     }
-    if (!dados.nome_completo || !String(dados.nome_completo).trim()) {
+
+    const nome = (dados.nomeCompleto || dados.nome_completo)?.trim();
+    if (!nome) {
       erros.push('Nome completo é obrigatório.');
     }
-    if (!dados.cpf || !validarCpf(dados.cpf)) {
+
+    const cpfLimpo = this.normalizarCpf(dados.cpf);
+    if (!cpfLimpo || !validarCpf(cpfLimpo)) {
       erros.push('CPF informado é inválido.');
     }
-    if (!dados.data_nascimento || !validarDataIso(dados.data_nascimento)) {
-      erros.push('Data de nascimento inválida.');
-    }
-    if (!dados.data_admissao || !validarDataIso(dados.data_admissao)) {
-      erros.push('Data de admissão inválida.');
-    }
-    if (dados.data_nascimento && dados.data_admissao) {
-      if (dados.data_admissao <= dados.data_nascimento) {
-        erros.push('Data de admissão deve ser posterior à data de nascimento.');
-      }
+
+    const dataNasc = dados.dataNascimento || dados.data_nascimento;
+    if (!dataNasc || !validarDataIso(dataNasc)) {
+      erros.push('Data de nascimento inválida ou obrigatória (formato AAAA-MM-DD).');
+    } else {
       const hoje = new Date().toISOString().split('T')[0];
-      if (dados.data_nascimento > hoje) {
+      if (dataNasc > hoje) {
         erros.push('Data de nascimento não pode estar no futuro.');
       }
     }
-    if (!dados.email || !validarEmail(dados.email)) {
+
+    const dataAdm = dados.dataAdmissao || dados.data_admissao;
+    if (dataAdm) {
+      if (!validarDataIso(dataAdm)) {
+        erros.push('Data de admissão inválida (formato AAAA-MM-DD).');
+      } else if (dataNasc && dataAdm <= dataNasc) {
+        erros.push('Data de admissão deve ser posterior à data de nascimento.');
+      }
+    }
+
+    if (dados.email && !validarEmail(dados.email)) {
       erros.push('E-mail informado é inválido.');
-    }
-    if (!dados.cargo || !String(dados.cargo).trim()) {
-      erros.push('Cargo é obrigatório.');
-    }
-    if (!dados.setor || !String(dados.setor).trim()) {
-      erros.push('Setor é obrigatório.');
-    }
-    const salario = parseFloat(dados.salario_base);
-    if (isNaN(salario) || salario <= 0) {
-      erros.push('Salário base deve ser um valor numérico positivo.');
     }
 
     if (erros.length > 0) {
       throw new BadRequestException({
         sucesso: false,
-        mensagem: 'Existem inconsistências nos dados informados.',
+        mensagem: 'Inconsistência nos dados do colaborador.',
         erros,
       });
     }
   }
 
-  async listar(filtros: { termo?: string; situacao?: string; setor?: string }): Promise<any[]> {
-    let sql = `SELECT * FROM colaboradores WHERE 1=1`;
-    const params: any[] = [];
+  async listar(
+    query: QueryColaboradorDto,
+  ): Promise<{
+    sucesso: boolean;
+    total: number;
+    dados: any[];
+    data: any[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 20));
 
-    if (filtros.situacao && filtros.situacao !== 'todos') {
-      params.push(filtros.situacao);
-      sql += ` AND situacao = $${params.length}`;
-    }
-    if (filtros.setor) {
-      params.push(filtros.setor);
-      sql += ` AND setor = $${params.length}`;
-    }
-    if (filtros.termo) {
-      params.push(`%${filtros.termo}%`);
-      const p = `$${params.length}`;
-      sql += ` AND (LOWER(nome_completo) LIKE LOWER(${p}) OR LOWER(cpf) LIKE LOWER(${p}) OR LOWER(matricula) LIKE LOWER(${p}))`;
-    }
+    const { colaboradores, total } = await this.repository.listarPaginado(query);
+    const totalPages = Math.ceil(total / limit) || 0;
 
-    sql += ` ORDER BY id ASC`;
-    const res = await this.db.query(sql, params);
-    return res.rows;
+    const data = colaboradores.map((c) => ({
+      ...c,
+      cpf_mascarado: this.mascararCpf(c.cpf),
+      situacao: (c.situacao || 'ativo').toLowerCase(),
+    }));
+
+    return {
+      sucesso: true,
+      total,
+      dados: data,
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    };
   }
 
   async obterPorId(id: number): Promise<any> {
-    const res = await this.db.query(`SELECT * FROM colaboradores WHERE id = $1`, [id]);
-    if (res.rows.length === 0) {
-      throw new NotFoundException({ sucesso: false, mensagem: 'Colaborador não encontrado.' });
+    const colab = await this.repository.buscarPorId(id);
+    if (!colab) {
+      throw new NotFoundException({
+        sucesso: false,
+        mensagem: `Colaborador #${id} não encontrado.`,
+      });
     }
-    const colab = res.rows[0];
-    const depRes = await this.db.query(`SELECT * FROM dependentes WHERE colaborador_id = $1`, [id]);
-    colab.dependentes = depRes.rows;
-    return colab;
+    return {
+      ...colab,
+      cpf_mascarado: this.mascararCpf(colab.cpf),
+      situacao: (colab.situacao || 'ativo').toLowerCase(),
+    };
   }
 
-  async criar(dados: any, usuario = 'Sistema/Administrador'): Promise<any> {
-    this.validarDadosColaborador(dados);
+  async criar(dados: CreateColaboradorDto, usuario = 'Sistema/Administrador'): Promise<any> {
+    this.validarCriacao(dados);
 
-    // Unicidade de CPF e Matrícula
-    const checkCpf = await this.db.query(`SELECT id FROM colaboradores WHERE cpf = $1`, [dados.cpf]);
-    if (checkCpf.rows.length > 0) {
-      throw new ConflictException({ sucesso: false, mensagem: 'Já existe um colaborador cadastrado com este CPF.' });
+    const cpfNormalizado = this.normalizarCpf(dados.cpf);
+    const empresaId = dados.empresaId || dados.empresa_id || EMPRESA_PADRAO_UUID;
+    const matricula = dados.matricula.trim();
+
+    // 1. Prevenção de duplicidade de CPF na mesma empresa (RF-07, Seção 4.3)
+    const existenteCpf = await this.repository.buscarPorCpf(cpfNormalizado, empresaId);
+    if (existenteCpf) {
+      throw new ConflictException({
+        sucesso: false,
+        mensagem: 'Já existe um colaborador cadastrado com este CPF nesta empresa.',
+      });
     }
-    const checkMat = await this.db.query(`SELECT id FROM colaboradores WHERE matricula = $1`, [dados.matricula]);
-    if (checkMat.rows.length > 0) {
-      throw new ConflictException({ sucesso: false, mensagem: 'Já existe um colaborador cadastrado com esta Matrícula.' });
+
+    // 2. Prevenção de duplicidade de Matrícula na mesma empresa (RF-08, Seção 4.3)
+    const existenteMat = await this.repository.buscarPorMatricula(matricula, empresaId);
+    if (existenteMat) {
+      throw new ConflictException({
+        sucesso: false,
+        mensagem: 'Já existe um colaborador cadastrado com esta Matrícula nesta empresa.',
+      });
     }
 
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const res = await this.db.query(
-      `INSERT INTO colaboradores (
-        matricula, nome_completo, cpf, rg, data_nascimento, telefone, email,
-        logradouro, numero, bairro, cidade, uf, cep, data_admissao,
-        cargo, setor, salario_base, situacao, criado_em, atualizado_em
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'ativo',$18,$18)
-      RETURNING *`,
-      [
-        dados.matricula,
-        dados.nome_completo,
-        dados.cpf,
-        dados.rg || '',
-        dados.data_nascimento,
-        dados.telefone || '',
-        dados.email,
-        dados.logradouro || '',
-        dados.numero || '',
-        dados.bairro || '',
-        dados.cidade || '',
-        dados.uf || '',
-        dados.cep || '',
-        dados.data_admissao,
-        dados.cargo,
-        dados.setor,
-        parseFloat(dados.salario_base),
-        agora,
-      ],
-    );
+    const nomeCompleto = (dados.nomeCompleto || dados.nome_completo)!.trim();
+    const dataNascimento = (dados.dataNascimento || dados.data_nascimento)!;
+    const dataAdmissao = dados.dataAdmissao || dados.data_admissao || null;
+    const salarioBase = dados.salarioBase !== undefined ? dados.salarioBase : dados.salario_base;
 
-    const novo = res.rows[0];
+    const payloadFormatado = {
+      empresa_id: empresaId,
+      filial_id: dados.filialId || dados.filial_id || null,
+      matricula,
+      nome_completo: nomeCompleto,
+      cpf: cpfNormalizado,
+      data_nascimento: dataNascimento,
+      sexo: dados.sexo || null,
+      estado_civil: dados.estadoCivil || dados.estado_civil || null,
+      email: dados.email?.trim() || null,
+      telefone: dados.telefone?.trim() || null,
+      celular: dados.celular?.trim() || null,
+      cep: dados.cep?.trim() || null,
+      logradouro: dados.logradouro?.trim() || null,
+      numero: dados.numero?.trim() || null,
+      complemento: dados.complemento?.trim() || null,
+      bairro: dados.bairro?.trim() || null,
+      cidade: dados.cidade?.trim() || null,
+      uf: dados.uf?.trim() || null,
+      departamento_id: dados.departamentoId || dados.departamento_id || null,
+      cargo_id: dados.cargoId || dados.cargo_id || null,
+      data_admissao: dataAdmissao,
+      cargo: dados.cargo || dados.cargoId || 'Não Informado',
+      setor: dados.setor || dados.departamentoId || 'Geral',
+      salario_base: salarioBase !== undefined ? parseFloat(String(salarioBase)) : 0,
+      situacao: (dados.situacao || 'ATIVO').toUpperCase(),
+      observacoes: dados.observacoes || null,
+      rg: dados.rg || null,
+    };
+
+    const novo = await this.repository.inserir(payloadFormatado, usuario, agora);
 
     // Dependentes
-    if (Array.isArray(dados.dependentes)) {
-      for (const d of dados.dependentes) {
-        if (d.nome && d.parentesco) {
-          await this.db.query(
-            `INSERT INTO dependentes (colaborador_id, nome, cpf, parentesco) VALUES ($1, $2, $3, $4)`,
-            [novo.id, d.nome, d.cpf || '', d.parentesco],
-          );
-        }
-      }
+    if (Array.isArray(dados.dependentes) && dados.dependentes.length > 0) {
+      await this.repository.inserirDependentes(novo.id, dados.dependentes);
     }
 
-    // Histórico
-    await this.db.query(
-      `INSERT INTO historico_alteracoes (colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel)
-       VALUES ($1, $2, 'cadastro_inicial', NULL, 'Colaborador cadastrado', $3)`,
-      [novo.id, agora, usuario],
+    // Histórico de auditoria (RF-11)
+    await this.repository.inserirHistorico(
+      novo.id,
+      'CADASTRO',
+      'colaborador',
+      null,
+      'Colaborador cadastrado no sistema',
+      usuario,
+      agora,
     );
 
     return this.obterPorId(novo.id);
   }
 
-  async atualizar(id: number, dados: any, usuario = 'Sistema/Administrador'): Promise<any> {
+  async atualizar(
+    id: number,
+    dados: UpdateColaboradorDto,
+    usuario = 'Sistema/Administrador',
+  ): Promise<any> {
     const atual = await this.obterPorId(id);
-    this.validarDadosColaborador(dados, id);
-
-    // Unicidade de CPF e Matrícula desconsiderando o próprio id
-    const checkCpf = await this.db.query(`SELECT id FROM colaboradores WHERE cpf = $1 AND id <> $2`, [dados.cpf, id]);
-    if (checkCpf.rows.length > 0) {
-      throw new ConflictException({ sucesso: false, mensagem: 'Já existe outro colaborador cadastrado com este CPF.' });
-    }
-    const checkMat = await this.db.query(`SELECT id FROM colaboradores WHERE matricula = $1 AND id <> $2`, [dados.matricula, id]);
-    if (checkMat.rows.length > 0) {
-      throw new ConflictException({ sucesso: false, mensagem: 'Já existe outro colaborador cadastrado com esta Matrícula.' });
-    }
-
+    const empresaId = dados.empresaId || dados.empresa_id || atual.empresa_id || EMPRESA_PADRAO_UUID;
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-    // Registrar alterações no histórico
-    const campos = ['nome_completo', 'email', 'telefone', 'cargo', 'setor', 'salario_base'];
-    for (const c of campos) {
-      const valAnt = String(atual[c] ?? '');
-      const valNovo = String(dados[c] ?? '');
-      if (valAnt !== valNovo) {
-        await this.db.query(
-          `INSERT INTO historico_alteracoes (colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, agora, c, valAnt, valNovo, usuario],
+    const camposParaAtualizar: Record<string, any> = {};
+
+    // Valida e prepara CPF se enviado
+    if (dados.cpf !== undefined) {
+      const cpfLimpo = this.normalizarCpf(dados.cpf);
+      if (!validarCpf(cpfLimpo)) {
+        throw new BadRequestException({ sucesso: false, mensagem: 'CPF informado é inválido.' });
+      }
+      if (cpfLimpo !== atual.cpf) {
+        const existente = await this.repository.buscarPorCpf(cpfLimpo, empresaId);
+        if (existente && existente.id !== id) {
+          throw new ConflictException({
+            sucesso: false,
+            mensagem: 'Já existe outro colaborador cadastrado com este CPF nesta empresa.',
+          });
+        }
+        camposParaAtualizar['cpf'] = cpfLimpo;
+        await this.repository.inserirHistorico(id, 'ALTERACAO', 'cpf', atual.cpf, cpfLimpo, usuario, agora);
+      }
+    }
+
+    // Valida e prepara Matrícula se enviada
+    if (dados.matricula !== undefined) {
+      const mat = dados.matricula.trim();
+      if (!mat) {
+        throw new BadRequestException({ sucesso: false, mensagem: 'Matrícula não pode ser vazia.' });
+      }
+      if (mat !== atual.matricula) {
+        const existente = await this.repository.buscarPorMatricula(mat, empresaId);
+        if (existente && existente.id !== id) {
+          throw new ConflictException({
+            sucesso: false,
+            mensagem: 'Já existe outro colaborador cadastrado com esta Matrícula nesta empresa.',
+          });
+        }
+        camposParaAtualizar['matricula'] = mat;
+        await this.repository.inserirHistorico(id, 'ALTERACAO', 'matricula', atual.matricula, mat, usuario, agora);
+      }
+    }
+
+    // Mapeamento e auditoria de outros campos
+    const mapaCampos: [string, any][] = [
+      ['nome_completo', dados.nomeCompleto || dados.nome_completo],
+      ['data_nascimento', dados.dataNascimento || dados.data_nascimento],
+      ['sexo', dados.sexo],
+      ['estado_civil', dados.estadoCivil || dados.estado_civil],
+      ['email', dados.email],
+      ['telefone', dados.telefone],
+      ['celular', dados.celular],
+      ['cep', dados.cep],
+      ['logradouro', dados.logradouro],
+      ['numero', dados.numero],
+      ['complemento', dados.complemento],
+      ['bairro', dados.bairro],
+      ['cidade', dados.cidade],
+      ['uf', dados.uf],
+      ['departamento_id', dados.departamentoId || dados.departamento_id],
+      ['cargo_id', dados.cargoId || dados.cargo_id],
+      ['cargo', dados.cargo || dados.cargoId],
+      ['setor', dados.setor || dados.departamentoId],
+      ['data_admissao', dados.dataAdmissao || dados.data_admissao],
+      ['observacoes', dados.observacoes],
+      ['rg', dados.rg],
+      ['situacao', dados.situacao ? dados.situacao.toUpperCase() : undefined],
+    ];
+
+    for (const [col, val] of mapaCampos) {
+      if (val !== undefined && val !== null) {
+        const strVal = String(val).trim();
+        const strAnt = String(atual[col] ?? '').trim();
+        if (strVal !== strAnt) {
+          camposParaAtualizar[col] = strVal;
+          await this.repository.inserirHistorico(id, 'ALTERACAO', col, strAnt, strVal, usuario, agora);
+        }
+      }
+    }
+
+    if (dados.salarioBase !== undefined || dados.salario_base !== undefined) {
+      const sal = dados.salarioBase !== undefined ? dados.salarioBase : dados.salario_base;
+      const numSal = parseFloat(String(sal));
+      if (!isNaN(numSal) && numSal !== parseFloat(String(atual.salario_base || 0))) {
+        camposParaAtualizar['salario_base'] = numSal;
+        await this.repository.inserirHistorico(
+          id,
+          'ALTERACAO',
+          'salario_base',
+          String(atual.salario_base),
+          String(numSal),
+          usuario,
+          agora,
         );
       }
     }
 
-    await this.db.query(
-      `UPDATE colaboradores SET
-        matricula = $1, nome_completo = $2, cpf = $3, rg = $4, data_nascimento = $5,
-        telefone = $6, email = $7, logradouro = $8, numero = $9, bairro = $10,
-        cidade = $11, uf = $12, cep = $13, data_admissao = $14, cargo = $15,
-        setor = $16, salario_base = $17, atualizado_em = $18
-       WHERE id = $19`,
-      [
-        dados.matricula,
-        dados.nome_completo,
-        dados.cpf,
-        dados.rg || '',
-        dados.data_nascimento,
-        dados.telefone || '',
-        dados.email,
-        dados.logradouro || '',
-        dados.numero || '',
-        dados.bairro || '',
-        dados.cidade || '',
-        dados.uf || '',
-        dados.cep || '',
-        dados.data_admissao,
-        dados.cargo,
-        dados.setor,
-        parseFloat(dados.salario_base),
-        agora,
-        id,
-      ],
-    );
+    camposParaAtualizar['atualizado_por'] = usuario;
+    await this.repository.atualizar(id, camposParaAtualizar, agora);
 
     return this.obterPorId(id);
   }
 
   async inativar(id: number, motivo = '', usuario = 'Sistema/Administrador'): Promise<any> {
-    await this.obterPorId(id);
+    const atual = await this.obterPorId(id);
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    await this.db.query(`UPDATE colaboradores SET situacao = 'inativo', atualizado_em = $1 WHERE id = $2`, [agora, id]);
-    await this.db.query(
-      `INSERT INTO historico_alteracoes (colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel)
-       VALUES ($1, $2, 'situacao', 'ativo', 'inativo', $3)`,
-      [id, agora, `${usuario} (Motivo: ${motivo || 'Não informado'})`],
+
+    await this.repository.inativar(id, usuario, agora);
+
+    await this.repository.inserirHistorico(
+      id,
+      'INATIVACAO',
+      'situacao',
+      atual.situacao,
+      'INATIVO',
+      `${usuario} (Motivo: ${motivo || 'Confirmação do gestor'})`,
+      agora,
     );
+
     return this.obterPorId(id);
   }
 
   async reativar(id: number, usuario = 'Sistema/Administrador'): Promise<any> {
-    await this.obterPorId(id);
+    const atual = await this.obterPorId(id);
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    await this.db.query(`UPDATE colaboradores SET situacao = 'ativo', atualizado_em = $1 WHERE id = $2`, [agora, id]);
-    await this.db.query(
-      `INSERT INTO historico_alteracoes (colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel)
-       VALUES ($1, $2, 'situacao', 'inativo', 'ativo', $3)`,
-      [id, agora, usuario],
+
+    await this.repository.atualizar(id, { situacao: 'ativo', atualizado_por: usuario }, agora);
+
+    await this.repository.inserirHistorico(
+      id,
+      'REATIVACAO',
+      'situacao',
+      atual.situacao,
+      'ativo',
+      usuario,
+      agora,
     );
+
     return this.obterPorId(id);
   }
 
   async obterHistorico(id: number): Promise<any[]> {
     await this.obterPorId(id);
-    const res = await this.db.query(
-      `SELECT * FROM historico_alteracoes WHERE colaborador_id = $1 ORDER BY id DESC`,
-      [id],
-    );
-    return res.rows;
+    return this.repository.buscarHistorico(id);
   }
 
   async obterMetricas(): Promise<any> {
-    const resAtivos = await this.db.query(`SELECT COUNT(*) as total FROM colaboradores WHERE situacao = 'ativo'`);
-    const resInativos = await this.db.query(`SELECT COUNT(*) as total FROM colaboradores WHERE situacao = 'inativo'`);
-    const resDep = await this.db.query(`SELECT COUNT(*) as total FROM dependentes`);
-    const resSetores = await this.db.query(
-      `SELECT setor, COUNT(*) as qtd FROM colaboradores GROUP BY setor ORDER BY qtd DESC`,
-    );
-
-    return {
-      total_ativos: parseInt(resAtivos.rows[0]?.total || 0, 10),
-      total_inativos: parseInt(resInativos.rows[0]?.total || 0, 10),
-      total_dependentes: parseInt(resDep.rows[0]?.total || 0, 10),
-      por_setor: resSetores.rows,
-    };
+    return this.repository.obterMetricas();
   }
 }
-
