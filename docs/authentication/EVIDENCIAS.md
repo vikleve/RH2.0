@@ -1,0 +1,168 @@
+# RH2.0 — Relatório Oficial de Evidências de Autenticação Segura
+
+**Projeto:** RH2.0 — Sistema Integrado de Departamento Pessoal & Folha de Pagamento  
+**Módulo:** Login & Autenticação Segura (RF-LOGIN-001 a RF-LOGIN-006)  
+**Data:** 10 de Novembro de 2026  
+**Ambiente de Execução:** Windows 10/11 | Python 3.14.3 (`.venv`) | SQLite 3 / Dual-Mode PostgreSQL  
+**Quality Gate Final:** G4 — Evidências e Documentação Concluídas  
+
+---
+
+## 1. Resumo Executivo da Execução de Testes
+
+A suíte central consolidada de testes automatizados (`tests/executar_todos_testes.py`) foi executada em modo 100% headless sobre ambiente efêmero com banco de dados isolado e credenciais sintéticas.
+
+```text
+================================================================================
+ SUÍTE DE TESTES AUTOMATIZADOS — PORTAL DP & RH / RH2.0
+ Módulo 1 (Colaboradores), Segurança (Autenticação) & Módulo Folha de Pagamento
+ Projeto Interdisciplinar RH & GTI — Departamento Pessoal
+ Modo: Execução 100% em código (headless / sem abrir navegador)
+================================================================================
+
+RESUMO DA EXECUÇÃO: 77 testes executados em 13.72s
+Sucessos: 77
+Falhas:   0
+Erros:    0
+================================================================================
+>> TODOS OS CRITÉRIOS FUNCIONAIS (CA-01 A CA-10) E DE SEGURANÇA (CA-LOGIN-01 A CA-LOGIN-10)
+   FORAM ATENDIDOS COM 100% DE SUCESSO! <<
+```
+
+---
+
+## 2. Evidências Verificadas por Critério de Aceite (AC-01 a AC-16)
+
+### AC-01 — Tela de Autenticação Funcional e Identidade RH2.0
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_01_elementos_tela_login_rh20`
+- **Evidência Observada:** Validação sintática do DOM em `frontend/index.html`. Elementos verificados com sucesso:
+  - Título corporativo: `RH2.0`
+  - Campo de entrada: `<input type="text" id="login-identificador" autocomplete="username">`
+  - Campo de senha: `<input type="password" id="login-senha" autocomplete="current-password">`
+  - Ação de envio: `<button type="submit" id="btn-entrar">`
+  - Controle de visibilidade: `<button type="button" id="btn-toggle-senha">`
+  - Indicador animado: `<span class="spinner hidden" id="login-spinner">`
+- **Status:** **PASS**
+
+### AC-02 — Acessibilidade
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_02_acessibilidade`
+- **Evidência Observada:**
+  - Elemento de alerta configurado com `role="alert"` e `aria-live="assertive"`.
+  - Associação explícita entre labels e controles com `<label for="...">`.
+  - Botão de alternância com `aria-label="Mostrar ou ocultar senha"`.
+- **Status:** **PASS**
+
+### AC-03 — Responsividade
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_03_responsividade_css`
+- **Evidência Observada:** Regras de CSS em `frontend/styles.css` contendo media queries `@media (max-width: 480px)` ajustando padding, largura do card de login para 100% e impedindo overflow horizontal.
+- **Status:** **PASS**
+
+### AC-04 — Validação de Entradas no Frontend e Backend
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_04_validacao_entradas_backend`
+- **Evidência Observada:**
+  - Requisição com campos vazios retorna imediatamente `HTTP 400 Bad Request` com corpo `{"sucesso": false, "mensagem": "E-mail e senha são obrigatórios."}`.
+  - Submissão com apenas e-mail ou apenas senha também é rejeitada com `HTTP 400`.
+- **Status:** **PASS**
+
+### AC-05 — Login Válido e Estabelecimento de Sessão
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_05_login_valido_sucesso`
+- **Evidência Observada:**
+  - Requisição: `POST /api/auth/login` com credenciais homologadas.
+  - Resposta do servidor: `HTTP 200 OK`.
+  - Cabeçalho retornado: `Set-Cookie: session_token=<token_64_hex>; Path=/; HttpOnly; SameSite=Lax`.
+  - Payload retornado: Contém objeto `usuario` com `email`, `nome_completo` e `perfil`, sem campos de hash ou salt.
+- **Status:** **PASS**
+
+### AC-06 — Mensagens Genéricas sem Enumeração de Contas
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_06_mensagens_genericas_sem_enumeracao`
+- **Evidência Observada:**
+  - Caso 1 (E-mail inexistente): `HTTP 401 Unauthorized` com mensagem `"E-mail ou senha inválidos."`
+  - Caso 2 (Senha incorreta): `HTTP 401 Unauthorized` com mensagem `"E-mail ou senha inválidos."`
+  - Caso 3 (Conta inativa): `HTTP 401 Unauthorized` com a mesma mensagem neutra.
+  - Não há enumeração de usuários ou dicas de existência de contas.
+- **Status:** **PASS**
+
+### AC-07 — Proteção contra Força Bruta (Rate Limiting)
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_07_rate_limit_bloqueio_apos_5_tentativas`
+- **Evidência Observada:**
+  - Tentativas 1 a 5 com falha: `HTTP 401 Unauthorized`.
+  - Tentativa 6 imediata: Servidor responde com `HTTP 429 Too Many Requests`.
+  - Cabeçalho de bloqueio presente: `Retry-After: 900`.
+  - Evento de bloqueio registrado na tabela de auditoria.
+- **Status:** **PASS**
+
+### AC-08 — Proteção Criptográfica de Senhas
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_08_protecao_senhas_banco_e_logs`
+- **Evidência Observada:**
+  - Senha armazenada na coluna `senha_hash` como hex digest de 64 caracteres derivado com algoritmo **PBKDF2-HMAC-SHA256** (100.000 iterações).
+  - Salt exclusivo de 16 bytes (32 caracteres hex) por usuário gerado via `secrets.token_hex(16)`.
+  - Nenhuma senha em texto puro ou log de credenciais trafegado.
+- **Status:** **PASS**
+
+### AC-09 — Configuração Segura de Cookies e Sessão
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_09_ac_10_sessao_persiste_refresh`
+- **Evidência Observada:**
+  - Token de sessão opaco com 32 bytes de entropia criptográfica (`secrets.token_hex(32)`).
+  - Cookie emitido com flags `HttpOnly` e `SameSite=Lax`.
+  - Adição automática da flag `; Secure` quando o tráfego ocorre sobre HTTPS.
+- **Status:** **PASS**
+
+### AC-10 — Persistência da Sessão após Refresh
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_09_ac_10_sessao_persiste_refresh`
+- **Evidência Observada:**
+  - Requisição subsequente `GET /api/auth/me` enviando o Cookie `session_token` recebido no login.
+  - Resposta do servidor: `HTTP 200 OK` confirmando a identidade ativa do operador.
+- **Status:** **PASS**
+
+### AC-11 — Proteção Estrita de Rotas Privadas no Backend
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_11_rotas_privadas_bloqueadas_para_anonimos`
+- **Evidência Observada:**
+  - Requisição anônima a `GET /api/colaboradores`: `HTTP 401 Unauthorized` imediato com código `NAO_AUTENTICADO`.
+  - Requisição anônima a `GET /api/folha`: `HTTP 401 Unauthorized` imediato.
+  - O backend não depende da interface do frontend para garantir a proteção dos dados.
+- **Status:** **PASS**
+
+### AC-12 — Logout com Invalidação no Servidor
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_12_logout_invalida_sessao_no_servidor`
+- **Evidência Observada:**
+  - Envio de `POST /api/auth/logout`: Servidor invalida o registro no banco (`UPDATE sessoes SET revogado=1 WHERE token=?`).
+  - Cookie é limpo com `Set-Cookie: session_token=; Max-Age=0`.
+  - Tentativa de reutilizar o token anterior em `/api/auth/me` ou `/api/colaboradores` retorna `HTTP 401 Unauthorized`.
+- **Status:** **PASS**
+
+### AC-13 — Proteção CSRF / Origem em Operações Mutáveis
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_13_protecao_csrf_origem_rejeita_origem_fraudulenta`
+- **Evidência Observada:**
+  - Requisição `POST /api/auth/login` contendo cabeçalho `Origin: http://site-hacker-malicioso.com`.
+  - Resposta imediata: `HTTP 403 Forbidden` com código `ORIGEM_PROIBIDA`.
+- **Status:** **PASS**
+
+### AC-14 — Build, Lint e Syntax Check
+- **Comando:** `python -m py_compile backend/*.py tests/*.py api/*.py`
+- **Evidência Observada:** Compilação de todos os arquivos de backend, API serverless e suíte de testes com zero avisos e código de saída 0 (`exit code 0`).
+- **Status:** **PASS**
+
+### AC-15 — Testes Automatizados Consolidados
+- **Comando:** `python tests/executar_todos_testes.py`
+- **Evidência Observada:** 77 testes executados com 77 sucessos (100% de aprovação), englobando testes unitários, testes de folha de pagamento, testes de colaboradores, testes de integração de rede e testes de segurança de autenticação.
+- **Status:** **PASS**
+
+### AC-16 — Auditoria e Ausência de Segredos em Logs
+- **Comando:** `python tests/test_rate_limit_csrf.py TestAutenticacaoRH20.test_ac_16_auditoria_eventos_autenticacao`
+- **Evidência Observada:**
+  - Eventos `LOGIN_SUCESSO`, `LOGIN_FALHA`, `LOGOUT` e `BLOQUEIO_RATE_LIMIT` registrados cronologicamente na tabela `auditoria_autenticacao`.
+  - Inspeção de strings: Nenhuma senha em texto puro, hash completo, cookie ou token secreto é persistido nos detalhes de auditoria ou no console.
+- **Status:** **PASS**
+
+---
+
+## 3. Conclusão da Entrega
+
+O módulo de **Login e Autenticação Segura do RH2.0** foi construído e homologado em estrita observância à metodologia **Spec-Driven Development (SDD)**:
+1. **SPEC:** Requisitos funcionais (RF-LOGIN-001 a 006) e de governança corporativa mapeados.
+2. **PLAN:** Plano detalhado aprovado com registro de compatibilidade arquitetural.
+3. **TASKS:** 12 tarefas implementadas em ordem sem introduzir subsistemas paralelos.
+4. **IMPLEMENTATION:** Rate limiting, proteção CSRF/Origin, auditoria de segurança, regeneração de sessão e mensagens genéricas integrados à arquitetura oficial em Python/SQLite/PostgreSQL.
+5. **TESTS:** 77 testes headless automatizados executados com 100% de sucesso.
+6. **EVIDENCE:** Evidências reais documentadas e auditáveis.
+
