@@ -236,16 +236,32 @@ export class ColaboradoresRepository {
     return res.rows;
   }
 
-  async obterMetricas(): Promise<any> {
+  async obterMetricas(empresaId?: string): Promise<any> {
+    const whereEmpresa = empresaId ? ' AND empresa_id = $1' : '';
+    const params = empresaId ? [empresaId] : [];
+
     const resAtivos = await this.db.query(
-      `SELECT COUNT(*) as total FROM colaboradores WHERE LOWER(situacao) = 'ativo'`,
+      `SELECT COUNT(*) as total FROM colaboradores WHERE LOWER(situacao) = 'ativo'${whereEmpresa}`,
+      params,
     );
     const resInativos = await this.db.query(
-      `SELECT COUNT(*) as total FROM colaboradores WHERE LOWER(situacao) = 'inativo'`,
+      `SELECT COUNT(*) as total FROM colaboradores WHERE LOWER(situacao) = 'inativo'${whereEmpresa}`,
+      params,
     );
-    const resDep = await this.db.query(`SELECT COUNT(*) as total FROM dependentes`);
+    const resDep = empresaId
+      ? await this.db.query(
+          `SELECT COUNT(d.id) as total FROM dependentes d
+           JOIN colaboradores c ON c.id = d.colaborador_id
+           WHERE c.empresa_id = $1`,
+          [empresaId],
+        )
+      : await this.db.query(`SELECT COUNT(*) as total FROM dependentes`);
+
     const resSetores = await this.db.query(
-      `SELECT setor, COUNT(*) as qtd FROM colaboradores GROUP BY setor ORDER BY qtd DESC`,
+      `SELECT setor, COUNT(*) as qtd FROM colaboradores
+       ${empresaId ? 'WHERE empresa_id = $1' : ''}
+       GROUP BY setor ORDER BY qtd DESC`,
+      params,
     );
 
     return {
