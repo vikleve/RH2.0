@@ -95,3 +95,4 @@ export class CreateColaboradorDto {
   @IsArray()
   dependentes?: DependenteDto[];
 }
+

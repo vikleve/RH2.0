@@ -81,3 +81,4 @@ export class UpdateColaboradorDto {
   @IsArray()
   dependentes?: DependenteDto[];
 }
+

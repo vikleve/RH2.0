@@ -43,3 +43,4 @@ migrations/
 - **Transacionalidade**: Migrações devem ser executadas com suporte transacional (`BEGIN` / `COMMIT`).
 - **Fail-Fast**: Se qualquer arquivo de migração falhar na execução, a aplicação interrompe imediatamente o bootstrap, garantindo que o sistema não inicie em estado de schema incompleto ou corrompido.
 - **Ambiente de Testes (`pg-mem`)**: Durante a execução da suíte de testes sintéticos isolados, comandos específicos de infraestrutura de nuvem (como RLS policies ativas do PostgreSQL) são sanados dinamicamente para preservar total fidelidade lógica dos testes unitários e de integração sem necessitar de banco externo ligado.
+

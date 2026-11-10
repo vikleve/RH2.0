@@ -102,3 +102,4 @@ backend-nest/src/
     ├── folha/                 # Motor de cálculo CLT, INSS, IRRF, fechamento e reabertura
     └── rate-limiter/          # RateLimiterService em memória com expiração
 ```
+

@@ -11,3 +11,4 @@ export class LoginDto {
   @MaxLength(128, { message: 'Senha não pode exceder 128 caracteres.' })
   senha: string;
 }
+
