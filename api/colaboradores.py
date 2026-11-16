@@ -158,6 +158,7 @@ class handler(BaseHTTPRequestHandler):
         partes = [p for p in path.split("/") if p]
         # /api/colaboradores
         if len(partes) == 2 and partes[1] == "colaboradores":
+<<<<<<< HEAD
             termo     = (query.get("q") or query.get("search") or [None])[0]
             situacao  = (query.get("situacao", [None])[0])
             setor     = (query.get("setor") or query.get("departamentoId") or [None])[0]
@@ -175,6 +176,13 @@ class handler(BaseHTTPRequestHandler):
                     matricula=matricula,
                     cpf=cpf,
                 )
+=======
+            termo    = (query.get("q",        [None])[0])
+            situacao = (query.get("situacao", [None])[0])
+            setor    = (query.get("setor",    [None])[0])
+            try:
+                colabs = _get_service().listar(termo=termo, situacao=situacao, setor=setor)
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
                 return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})

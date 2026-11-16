@@ -13,12 +13,17 @@ const Estado = {
   colaboradorParaInativar: null,
   filtros: {
     termo: '',
+<<<<<<< HEAD
     nome: '',
     matricula: '',
     cpf: '',
     situacao: 'ativo',
     setor: '',
     cargo: ''
+=======
+    situacao: 'ativo',
+    setor: ''
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   },
   usaApi: window.location.protocol.startsWith('http')
 };
@@ -196,10 +201,15 @@ const AuthManager = {
     Estado.colaboradores = [];
     sessionStorage.removeItem('AUTH_TOKEN');
 
+<<<<<<< HEAD
     renderizarTabela([]);
     if (typeof atualizarMetricas === 'function') {
       atualizarMetricas();
     }
+=======
+    renderizarTabela();
+    atualizarCardsMetricas();
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
     const alerta = document.getElementById('login-alerta');
     const alertaMsg = document.getElementById('login-alerta-mensagem');
@@ -392,12 +402,17 @@ const DadosService = {
       try {
         const params = new URLSearchParams();
         if (filtros.termo) params.set('q', filtros.termo);
+<<<<<<< HEAD
         if (filtros.nome) params.set('nome', filtros.nome);
         if (filtros.matricula) params.set('matricula', filtros.matricula);
         if (filtros.cpf) params.set('cpf', filtros.cpf);
         if (filtros.situacao && filtros.situacao !== 'todos') params.set('situacao', filtros.situacao);
         if (filtros.setor) params.set('setor', filtros.setor);
         if (filtros.cargo) params.set('cargo', filtros.cargo);
+=======
+        if (filtros.situacao && filtros.situacao !== 'todos') params.set('situacao', filtros.situacao);
+        if (filtros.setor) params.set('setor', filtros.setor);
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
         const resp = await fetch(`${API_BASE}/colaboradores?${params.toString()}`, {
           headers: getAuthHeaders(),
@@ -541,6 +556,7 @@ const DadosService = {
     if (filtros.situacao && filtros.situacao !== 'todos') {
       lista = lista.filter(c => c.situacao === filtros.situacao);
     }
+<<<<<<< HEAD
     if (filtros.nome) {
       const nm = filtros.nome.toLowerCase().trim();
       lista = lista.filter(c => (c.nome_completo || '').toLowerCase().includes(nm));
@@ -564,17 +580,28 @@ const DadosService = {
     if (filtros.cargo) {
       const cg = filtros.cargo.toLowerCase().trim();
       lista = lista.filter(c => (c.cargo || '').toLowerCase().includes(cg));
+=======
+    if (filtros.setor) {
+      lista = lista.filter(c => c.setor === filtros.setor);
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     }
     if (filtros.termo) {
       const t = filtros.termo.toLowerCase().trim();
       const cpfLimpo = normalizarCpf(t);
       lista = lista.filter(c => 
+<<<<<<< HEAD
         (c.nome_completo || '').toLowerCase().includes(t) ||
         (c.matricula || '').toLowerCase().includes(t) ||
         (c.cpf || '').includes(t) ||
         (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo)) ||
         (c.cargo || '').toLowerCase().includes(t) ||
         (c.setor || '').toLowerCase().includes(t)
+=======
+        c.nome_completo.toLowerCase().includes(t) ||
+        c.matricula.toLowerCase().includes(t) ||
+        c.cpf.includes(t) ||
+        (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo))
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
       );
     }
     return lista;
@@ -1206,6 +1233,7 @@ function configurarEventos() {
     carregarColaboradores();
   });
 
+<<<<<<< HEAD
   const bindDebouncedFilter = (inputId, filterKey, applyCpfMask = false) => {
     let timer = null;
     const el = document.getElementById(inputId);
@@ -1230,10 +1258,15 @@ function configurarEventos() {
   const inputCargo = bindDebouncedFilter('filtro-cargo', 'cargo');
 
   const limparTodosFiltrosColaboradores = () => {
+=======
+  document.getElementById('btn-recarregar').addEventListener('click', carregarColaboradores);
+  document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     inputPesquisa.value = '';
     btnLimpar.classList.add('hidden');
     document.getElementById('filtro-situacao').value = 'todos';
     document.getElementById('filtro-setor').value = '';
+<<<<<<< HEAD
     if (inputNome) inputNome.value = '';
     if (inputMatricula) inputMatricula.value = '';
     if (inputCpf) inputCpf.value = '';
@@ -1248,6 +1281,11 @@ function configurarEventos() {
   if (btnLimparTopo) {
     btnLimparTopo.addEventListener('click', limparTodosFiltrosColaboradores);
   }
+=======
+    Estado.filtros = { termo: '', situacao: 'todos', setor: '' };
+    carregarColaboradores();
+  });
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
   // Máscaras de Entrada no Formulário
   document.getElementById('campo-cpf').addEventListener('input', (e) => {
@@ -1725,9 +1763,16 @@ const FolhaManager = {
       btnAddRubrica.addEventListener('click', () => {
         this.rubricasManuais.push({
           tipo: 'provento',
+<<<<<<< HEAD
           descricao: 'Bônus / Reembolso',
           referencia: 1,
           valor_total: 100.00
+=======
+          codigo: '',
+          descricao: '',
+          referencia: 1,
+          valor_total: 0
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         });
         this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
@@ -1802,8 +1847,13 @@ const FolhaManager = {
         <td>
           <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total}" min="0.01" step="0.01" style="font-size: 0.8rem; padding: 0.25rem;">
         </td>
+<<<<<<< HEAD
         <td class="text-right">
           <button type="button" class="btn-clear rub-remover" data-idx="${idx}" title="Remover rubrica" style="font-size: 1rem;">&times;</button>
+=======
+        <td>
+          <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">✕</button>
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         </td>
       `;
       corpo.appendChild(tr);

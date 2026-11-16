@@ -181,8 +181,13 @@ describe('Módulo de Cadastro de Colaboradores — SPEC-03 (NestJS E2E)', () => 
     expect(encontrado.cpf_mascarado).toBe('529.***.***-25');
   });
 
+<<<<<<< HEAD
   // RF-002 / RF-02: Pesquisa por nome, matrícula, CPF, cargo e setor
   it('RF-002: Pesquisa colaboradores por nome, matrícula, CPF, cargo e setor no backend', async () => {
+=======
+  // RF-02: Pesquisa por nome, CPF e matrícula
+  it('RF-02: Pesquisa colaboradores por termo no backend (search)', async () => {
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     const resPorNome = await request(app.getHttpServer())
       .get('/api/colaboradores?search=Carlos')
       .set('Cookie', authCookie);
@@ -198,6 +203,7 @@ describe('Módulo de Cadastro de Colaboradores — SPEC-03 (NestJS E2E)', () => 
     expect(resPorMat.status).toBe(200);
     expect(resPorMat.body.data.length).toBe(1);
     expect(resPorMat.body.data[0].matricula).toBe('SPEC03-001');
+<<<<<<< HEAD
 
     const resPorCpf = await request(app.getHttpServer())
       .get('/api/colaboradores?search=529.982.247-25')
@@ -228,6 +234,8 @@ describe('Módulo de Cadastro de Colaboradores — SPEC-03 (NestJS E2E)', () => 
 
     expect(resFiltroCargoSetor.status).toBe(200);
     expect(resFiltroCargoSetor.body.data.length).toBeGreaterThanOrEqual(1);
+=======
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   });
 
   // RF-03: Filtros combináveis

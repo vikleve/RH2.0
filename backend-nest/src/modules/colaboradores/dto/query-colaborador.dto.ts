@@ -32,6 +32,7 @@ export class QueryColaboradorDto {
 
   @IsOptional()
   @IsString()
+<<<<<<< HEAD
   cargo?: string;
 
   @IsOptional()
@@ -52,6 +53,8 @@ export class QueryColaboradorDto {
 
   @IsOptional()
   @IsString()
+=======
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   filialId?: string;
 
   @IsOptional()

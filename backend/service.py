@@ -159,6 +159,7 @@ class ColaboradorService:
         conn.close()
         return self.obter_por_id(colaborador_id)
 
+<<<<<<< HEAD
     def listar(
         self,
         termo: str = None,
@@ -170,6 +171,10 @@ class ColaboradorService:
         cpf: str = None,
     ) -> list:
         """Lista colaboradores com pesquisa e filtros por nome, matrícula, CPF, cargo e setor (RF-002)."""
+=======
+    def listar(self, termo: str = None, situacao: str = None, setor: str = None) -> list:
+        """Lista colaboradores com filtros opcionais."""
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         P = self._ph()
         pg = self._pg()
 
@@ -189,6 +194,7 @@ class ColaboradorService:
             params.append(situacao.lower())
 
         if setor and setor.strip():
+<<<<<<< HEAD
             padrao_setor = f"%{setor.strip()}%"
             if pg:
                 sql += f" AND c.setor ILIKE {P}"
@@ -230,6 +236,13 @@ class ColaboradorService:
             else:
                 sql += f" AND (c.cpf LIKE {P} OR ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P}))"
             params.extend([padrao_cpf_raw, cpf_dig, padrao_cpf_dig])
+=======
+            if pg:
+                sql += f" AND c.setor ILIKE {P}"
+            else:
+                sql += f" AND LOWER(c.setor) = LOWER({P})"
+            params.append(setor.strip())
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
         if termo and termo.strip():
             termo_limpo = termo.strip()
@@ -242,13 +255,18 @@ class ColaboradorService:
                     c.nome_completo ILIKE {P} OR
                     c.matricula     ILIKE {P} OR
                     c.cpf           ILIKE {P} OR
+<<<<<<< HEAD
                     ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') ILIKE {P}) OR
                     c.cargo         ILIKE {P} OR
                     c.setor         ILIKE {P}
+=======
+                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') ILIKE {P})
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
                 )"""
             else:
                 sql += f""" AND (
                     LOWER(c.nome_completo) LIKE LOWER({P}) OR
+<<<<<<< HEAD
                     LOWER(c.matricula) LIKE LOWER({P}) OR
                     c.cpf LIKE {P} OR
                     ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P}) OR
@@ -256,6 +274,13 @@ class ColaboradorService:
                     LOWER(c.setor) LIKE LOWER({P})
                 )"""
             params.extend([padrao, padrao, padrao, cpf_digitos, padrao_cpf, padrao, padrao])
+=======
+                    c.matricula LIKE {P} OR
+                    c.cpf LIKE {P} OR
+                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P})
+                )"""
+            params.extend([padrao, padrao, padrao, cpf_digitos, padrao_cpf])
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
         sql += " GROUP BY c.id ORDER BY c.nome_completo ASC"
 

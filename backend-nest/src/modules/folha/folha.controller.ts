@@ -16,12 +16,28 @@ import {
 import { FolhaService } from './folha.service';
 import { SessionGuard } from '../auth/session.guard';
 import { CsrfGuard } from '../csrf/csrf.guard';
+<<<<<<< HEAD
+=======
+import { CATALOGO_EVENTOS_FOLHA } from './catalogo-eventos';
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
 @Controller('folha')
 @UseGuards(SessionGuard, CsrfGuard)
 export class FolhaController {
   constructor(private readonly service: FolhaService) {}
 
+<<<<<<< HEAD
+=======
+  @Get('eventos-catalogo')
+  async listarEventosCatalogo() {
+    return {
+      sucesso: true,
+      total: CATALOGO_EVENTOS_FOLHA.length,
+      dados: CATALOGO_EVENTOS_FOLHA,
+    };
+  }
+
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   @Get()
   async listar(
     @Query('competencia') competencia?: string,

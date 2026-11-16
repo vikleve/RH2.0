@@ -75,6 +75,7 @@ export class ColaboradoresRepository {
 
     // Filtro por Departamento / Setor
     const dept = query.departamentoId || query.setor;
+<<<<<<< HEAD
     if (dept && dept.trim()) {
       params.push(dept.trim());
       const pExact = `$${params.length}`;
@@ -119,11 +120,20 @@ export class ColaboradoresRepository {
     }
 
     // Pesquisa textual unificada (RF-002: Nome, Matrícula, CPF, Cargo e Setor)
+=======
+    if (dept) {
+      params.push(dept);
+      whereClausula += ` AND (departamento_id = $${params.length} OR setor = $${params.length})`;
+    }
+
+    // Pesquisa textual (RF-02: Nome, CPF, Matrícula)
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     const termo = query.search || query.q;
     if (termo && termo.trim()) {
       const tLimpo = `%${termo.trim()}%`;
       params.push(tLimpo);
       const p = `$${params.length}`;
+<<<<<<< HEAD
       const cpfDigitos = termo.replace(/\D/g, '');
       if (cpfDigitos.length > 0) {
         params.push(`%${cpfDigitos}%`);
@@ -145,6 +155,13 @@ export class ColaboradoresRepository {
           LOWER(setor) LIKE LOWER(${p})
         )`;
       }
+=======
+      whereClausula += ` AND (
+        LOWER(nome_completo) LIKE LOWER(${p}) OR
+        LOWER(cpf) LIKE LOWER(${p}) OR
+        LOWER(matricula) LIKE LOWER(${p})
+      )`;
+>>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     }
 
     // Contagem total
