@@ -1,7 +1,7 @@
 /**
  * Sistema de Departamento Pessoal — Módulo 1: Cadastro de Colaboradores
  * Lógica do Frontend (Vanilla JavaScript)
- * Integração com API REST e fallback autônomo para LocalStorage
+ * Integração com API REST (persistência exclusiva no banco PostgreSQL)
  */
 
 // Estado global da aplicação
@@ -379,8 +379,26 @@ const AuthManager = {
 };
 
 // ============================================================================
-// Camada de Dados (API e LocalStorage Seguro)
+// Camada de Dados (somente API / banco de dados — sem persistência local)
 // ============================================================================
+const MSG_API_INDISPONIVEL = 'Não foi possível comunicar com o servidor. Abra o sistema pelo endereço do servidor (http/https); os dados não são salvos no navegador.';
+
+// Executa fetch e converte falhas de rede em erro claro (sem salvamento alternativo)
+async function requisitarApi(url, opcoes) {
+  let resp;
+  try {
+    resp = await fetch(url, opcoes);
+  } catch (e) {
+    throw new Error('Servidor indisponível: a operação não foi realizada e nada foi salvo. Tente novamente em instantes.');
+  }
+  if (resp.status === 503) {
+    let msg = 'Banco de dados indisponível: a operação não foi realizada.';
+    try { const j = await resp.json(); if (j && j.mensagem) msg = j.mensagem; } catch (_) {}
+    throw new Error(msg);
+  }
+  return resp;
+}
+
 const DadosService = {
   async listar(filtros = {}) {
     // Visitante não autenticado não deve receber lista de colaboradores
@@ -399,7 +417,7 @@ const DadosService = {
         if (filtros.setor) params.set('setor', filtros.setor);
         if (filtros.cargo) params.set('cargo', filtros.cargo);
 
-        const resp = await fetch(`${API_BASE}/colaboradores?${params.toString()}`, {
+        const resp = await requisitarApi(`${API_BASE}/colaboradores?${params.toString()}`, {
           headers: getAuthHeaders(),
           credentials: 'include'
         });
@@ -413,16 +431,16 @@ const DadosService = {
         if (data.sucesso) return data.dados;
         throw new Error(data.mensagem || 'Erro ao carregar colaboradores.');
       } catch (e) {
-        console.warn('Erro ao consultar API:', e.message);
-        return [];
+        console.error('Erro ao consultar API:', e.message);
+        throw e;
       }
     }
-    return this._listarLocal(filtros);
+    throw new Error(MSG_API_INDISPONIVEL);
   },
 
   async obter(id) {
     if (Estado.usaApi) {
-      const resp = await fetch(`${API_BASE}/colaboradores/${id}`, {
+      const resp = await requisitarApi(`${API_BASE}/colaboradores/${id}`, {
         headers: getAuthHeaders(),
         credentials: 'include'
       });
@@ -434,12 +452,12 @@ const DadosService = {
       if (data.sucesso) return data.dados;
       throw new Error(data.mensagem || 'Colaborador não encontrado.');
     }
-    return this._obterLocal(id);
+    throw new Error(MSG_API_INDISPONIVEL);
   },
 
   async cadastrar(dados) {
     if (Estado.usaApi) {
-      const resp = await fetch(`${API_BASE}/colaboradores`, {
+      const resp = await requisitarApi(`${API_BASE}/colaboradores`, {
         method: 'POST',
         headers: getAuthHeaders(),
         credentials: 'include',
@@ -457,12 +475,12 @@ const DadosService = {
       }
       return data.dados;
     }
-    return this._cadastrarLocal(dados);
+    throw new Error(MSG_API_INDISPONIVEL);
   },
 
   async atualizar(id, dados) {
     if (Estado.usaApi) {
-      const resp = await fetch(`${API_BASE}/colaboradores/${id}`, {
+      const resp = await requisitarApi(`${API_BASE}/colaboradores/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         credentials: 'include',
@@ -480,12 +498,12 @@ const DadosService = {
       }
       return data.dados;
     }
-    return this._atualizarLocal(id, dados);
+    throw new Error(MSG_API_INDISPONIVEL);
   },
 
   async inativar(id, motivo) {
     if (Estado.usaApi) {
-      const resp = await fetch(`${API_BASE}/colaboradores/${id}/inativar`, {
+      const resp = await requisitarApi(`${API_BASE}/colaboradores/${id}/inativar`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         credentials: 'include',
@@ -499,12 +517,12 @@ const DadosService = {
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao inativar colaborador');
       return data.dados;
     }
-    return this._inativarLocal(id, motivo);
+    throw new Error(MSG_API_INDISPONIVEL);
   },
 
   async reativar(id) {
     if (Estado.usaApi) {
-      const resp = await fetch(`${API_BASE}/colaboradores/${id}/reativar`, {
+      const resp = await requisitarApi(`${API_BASE}/colaboradores/${id}/reativar`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         credentials: 'include',
@@ -518,164 +536,7 @@ const DadosService = {
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao reativar colaborador');
       return data.dados;
     }
-    return this._reativarLocal(id);
-  },
-
-  // Implementação Local Segura (Sem seed para visitantes anônimos)
-  _getStorage() {
-    const raw = localStorage.getItem('DP_COLABORADORES');
-    if (!raw) return [];
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  },
-
-  _saveStorage(lista) {
-    localStorage.setItem('DP_COLABORADORES', JSON.stringify(lista));
-  },
-
-  _listarLocal(filtros) {
-    let lista = this._getStorage();
-    if (filtros.situacao && filtros.situacao !== 'todos') {
-      lista = lista.filter(c => c.situacao === filtros.situacao);
-    }
-    if (filtros.nome) {
-      const nm = filtros.nome.toLowerCase().trim();
-      lista = lista.filter(c => (c.nome_completo || '').toLowerCase().includes(nm));
-    }
-    if (filtros.matricula) {
-      const mt = filtros.matricula.toLowerCase().trim();
-      lista = lista.filter(c => (c.matricula || '').toLowerCase().includes(mt));
-    }
-    if (filtros.cpf) {
-      const cpfRaw = filtros.cpf.trim();
-      const cpfDig = normalizarCpf(cpfRaw);
-      lista = lista.filter(c =>
-        (c.cpf || '').includes(cpfRaw) ||
-        (cpfDig && normalizarCpf(c.cpf).includes(cpfDig))
-      );
-    }
-    if (filtros.setor) {
-      const s = filtros.setor.toLowerCase().trim();
-      lista = lista.filter(c => (c.setor || '').toLowerCase().includes(s));
-    }
-    if (filtros.cargo) {
-      const cg = filtros.cargo.toLowerCase().trim();
-      lista = lista.filter(c => (c.cargo || '').toLowerCase().includes(cg));
-    }
-    if (filtros.termo) {
-      const t = filtros.termo.toLowerCase().trim();
-      const cpfLimpo = normalizarCpf(t);
-      lista = lista.filter(c => 
-        (c.nome_completo || '').toLowerCase().includes(t) ||
-        (c.matricula || '').toLowerCase().includes(t) ||
-        (c.cpf || '').includes(t) ||
-        (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo)) ||
-        (c.cargo || '').toLowerCase().includes(t) ||
-        (c.setor || '').toLowerCase().includes(t)
-      );
-    }
-    return lista;
-  },
-
-  _obterLocal(id) {
-    const item = this._getStorage().find(c => c.id === parseInt(id, 10));
-    if (!item) throw new Error('Colaborador não encontrado.');
-    return item;
-  },
-
-  _cadastrarLocal(dados) {
-    const lista = this._getStorage();
-    const novoId = lista.length > 0 ? Math.max(...lista.map(c => c.id)) + 1 : 1;
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    const novo = {
-      ...dados,
-      id: novoId,
-      total_dependentes: (dados.dependentes || []).length,
-      historico: [
-        {
-          id: 1,
-          data_hora: agora,
-          campo_alterado: 'Criação de Cadastro',
-          valor_anterior: null,
-          valor_novo: `Colaborador ${dados.nome_completo} cadastrado com matrícula ${dados.matricula}.`,
-          usuario_responsavel: 'Administrador (RH/GTI)'
-        }
-      ]
-    };
-    lista.push(novo);
-    this._saveStorage(lista);
-    return novo;
-  },
-
-  _atualizarLocal(id, dados) {
-    const lista = this._getStorage();
-    const idx = lista.findIndex(c => c.id === parseInt(id, 10));
-    if (idx === -1) throw new Error('Colaborador não encontrado');
-
-    const antigo = lista[idx];
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const historico = antigo.historico || [];
-
-    // Checar alterações
-    if (antigo.cargo !== dados.cargo) {
-      historico.unshift({ id: historico.length + 1, data_hora: agora, campo_alterado: 'Cargo', valor_anterior: antigo.cargo, valor_novo: dados.cargo, usuario_responsavel: 'Administrador (RH/GTI)' });
-    }
-    if (antigo.salario_base !== dados.salario_base) {
-      historico.unshift({ id: historico.length + 1, data_hora: agora, campo_alterado: 'Salário-base', valor_anterior: formatarMoeda(antigo.salario_base), valor_novo: formatarMoeda(dados.salario_base), usuario_responsavel: 'Administrador (RH/GTI)' });
-    }
-
-    const atualizado = {
-      ...antigo,
-      ...dados,
-      id: antigo.id,
-      total_dependentes: (dados.dependentes || []).length,
-      historico
-    };
-    lista[idx] = atualizado;
-    this._saveStorage(lista);
-    return atualizado;
-  },
-
-  _inativarLocal(id, motivo) {
-    const lista = this._getStorage();
-    const colab = lista.find(c => c.id === parseInt(id, 10));
-    if (!colab) throw new Error('Colaborador não encontrado');
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    colab.situacao = 'inativo';
-    colab.historico = colab.historico || [];
-    colab.historico.unshift({
-      id: colab.historico.length + 1,
-      data_hora: agora,
-      campo_alterado: 'Situação do Vínculo',
-      valor_anterior: 'ativo',
-      valor_novo: `inativo (Motivo: ${motivo || 'Não informado'})`,
-      usuario_responsavel: 'Administrador (RH/GTI)'
-    });
-    this._saveStorage(lista);
-    return colab;
-  },
-
-  _reativarLocal(id) {
-    const lista = this._getStorage();
-    const colab = lista.find(c => c.id === parseInt(id, 10));
-    if (!colab) throw new Error('Colaborador não encontrado');
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    colab.situacao = 'ativo';
-    colab.historico = colab.historico || [];
-    colab.historico.unshift({
-      id: colab.historico.length + 1,
-      data_hora: agora,
-      campo_alterado: 'Situação do Vínculo',
-      valor_anterior: 'inativo',
-      valor_novo: 'ativo',
-      usuario_responsavel: 'Administrador (RH/GTI)'
-    });
-    this._saveStorage(lista);
-    return colab;
+    throw new Error(MSG_API_INDISPONIVEL);
   }
 };
 
