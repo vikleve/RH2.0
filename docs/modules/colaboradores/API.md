@@ -81,14 +81,16 @@
 
 ---
 
-## 4. Atualizar Colaborador (PATCH)
-- **Rota:** `PATCH /api/colaboradores/:id`
-- **Perfis Autorizados:** `administrador`, `analista_rh`
+## 4. Atualizar Colaborador e Controlar Alterações Cadastrais (PUT / PATCH — RF-003)
+- **Rotas:** `PATCH /api/colaboradores/:id`, `PUT /api/colaboradores/:id` e `GET /api/colaboradores/:id/historico`
+- **Perfis Autorizados:** `administrador`, `analista_rh` (`operador_dp` autorizado para leitura do histórico)
+- **Requisito Atendido (RF-003 — Obrigatório para Go-Live V1):** Controlar alterações cadastrais (Origem: SRS, Volume 3 — Requisitos Funcionais Detalhados).
 - **Regras:**
   * Valida permissão sobre o ID (retorna 404 caso seja de outra organização).
   * Impede alteração ou transferência de `empresaId` para outra organização fora do escopo (retorna 403 Forbidden).
-  * Preserva todos os campos omitidos na requisição.
-  * Registra evento na tabela `historico_alteracoes`.
+  * Impede duplicidade de CPF ou matrícula com outros registros existentes.
+  * Preserva todos os campos omitidos na requisição (`PATCH`).
+  * Registra cada campo modificado (`campo_alterado`, `valor_anterior`, `valor_novo`, `data_hora`, `usuario_responsavel` e justificativa opcional) na tabela `historico_alteracoes`.
 - **Código de Sucesso:** `200 OK`
 
 ---

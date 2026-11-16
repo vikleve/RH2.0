@@ -763,6 +763,20 @@
                 Nenhum dependente informado para este colaborador.
               </div>
             </fieldset>
+
+            <!-- SEÇÃO E: CONTROLE DE ALTERAÇÕES CADASTRAIS (RF-003) -->
+            <fieldset id="secao-controle-alteracoes" class="form-section hidden">
+              <legend class="section-legend">
+                <span class="section-number">E</span>
+                Controle de Alterações Cadastrais (RF-003)
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-12">
+                  <label for="campo-justificativa-alteracao">Justificativa / Motivo da Alteração Cadastral <span class="text-muted">(Opcional — Registrado na Trilha de Auditoria)</span></label>
+                  <input type="text" id="campo-justificativa-alteracao" class="form-control" placeholder="Ex: Promoção de cargo, atualização de endereço comprovada, retificação contratual...">
+                </div>
+              </div>
+            </fieldset>
           </div>
 
           <div class="modal-footer">
@@ -797,7 +811,7 @@
           <button class="modal-tab active" data-tab="tab-ficha">Ficha Cadastral</button>
           <button class="modal-tab" data-tab="tab-dependentes">Dependentes (<span
               id="detalhes-qtd-dep">0</span>)</button>
-          <button class="modal-tab" data-tab="tab-historico">Histórico de Alterações / Auditoria</button>
+          <button class="modal-tab" data-tab="tab-historico">Histórico de Alterações / Auditoria (<span id="detalhes-qtd-hist">0</span>)</button>
         </div>
 
         <div class="modal-body modal-scroll">

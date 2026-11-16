@@ -306,7 +306,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             )
             return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
 
-        # Rota protegida: Obter colaborador GET /api/colaboradores/<id>
+        # Rota protegida: Obter colaborador ou histórico GET /api/colaboradores/<id>[/historico]
         if path.startswith("/api/colaboradores/"):
             partes = path.strip("/").split("/")
             if len(partes) == 3 and partes[2].isdigit():
@@ -317,6 +317,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     colab = self.service.obter_por_id(colab_id)
                     return self._enviar_json(200, {"sucesso": True, "dados": colab})
+                except RecursoNaoEncontradoException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            if len(partes) == 4 and partes[2].isdigit() and partes[3] == "historico":
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                colab_id = int(partes[2])
+                try:
+                    historico = self.service.obter_historico(colab_id)
+                    return self._enviar_json(200, {"sucesso": True, "total": len(historico), "dados": historico})
                 except RecursoNaoEncontradoException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
@@ -705,11 +715,36 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PATCH(self):
-        """Trata inativação e reativação: PATCH /api/colaboradores/<id>/inativar ou /reativar."""
+        """Trata atualização cadastral (RF-003), inativação e reativação: PATCH /api/colaboradores/<id>[/inativar|/reativar]."""
         if not self._validar_csrf("PATCH"):
             return
         path, _ = self._obter_caminho_e_query()
         partes = path.strip("/").split("/")
+
+        if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            colab_id = int(partes[2])
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                atualizado = self.service.atualizar(colab_id, dados, usuario=nome_responsavel)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Colaborador atualizado com sucesso!",
+                    "dados": atualizado
+                })
+            except ValidacaoException as e:
+                return self._enviar_json(400, {
+                    "sucesso": False,
+                    "mensagem": "Existem inconsistências nos dados informados.",
+                    "erros": e.erros
+                })
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
 
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
             usuario_auth = self._exigir_autenticacao()

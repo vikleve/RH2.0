@@ -211,25 +211,35 @@ class TestModuloColaboradores(unittest.TestCase):
         self.assertEqual(res_setor_filtro[0]["matricula"], "RH-1001")
 
     # =========================================================================
-    # CA-05: EDIÇÃO DE DADOS
+    # CA-05 & CA-06 / RF-003: CONTROLE DE ALTERAÇÕES CADASTRAIS E AUDITORIA
     # =========================================================================
     def test_ca05_edicao_preservando_identificador(self):
-        """CA-05: Edita dados de um colaborador sem criar registro duplicado."""
+        """CA-05 / RF-003: Controla alterações cadastrais (completas ou parciais) preservando o identificador."""
         criado = self.service.cadastrar(self.dados_validos)
         cid = criado["id"]
 
-        dados_atualizados = dict(self.dados_validos)
-        dados_atualizados["cargo"] = "Coordenadora de RH"
-        dados_atualizados["salario_base"] = 6500.00
-
-        atualizado = self.service.atualizar(cid, dados_atualizados)
+        # Atualização parcial (estilo PATCH) enviando apenas os campos alterados e justificativa
+        atualizado = self.service.atualizar(
+            cid,
+            {"cargo": "Coordenadora de RH", "salario_base": 6500.00},
+            usuario="Admin RH",
+            justificativa="Promoção de cargo homologada",
+        )
 
         self.assertEqual(atualizado["id"], cid)
         self.assertEqual(atualizado["cargo"], "Coordenadora de RH")
         self.assertEqual(atualizado["salario_base"], 6500.00)
+        # Campos não enviados permanecem preservados
+        self.assertEqual(atualizado["nome_completo"], "Ana Clara Santos")
+        self.assertEqual(atualizado["matricula"], "RH-1001")
 
         # Garante que continua existindo apenas 1 registro no banco
         self.assertEqual(len(self.service.listar()), 1)
+
+        # Verifica consulta direta da trilha de alterações (RF-003)
+        historico = self.service.obter_historico(cid)
+        self.assertTrue(len(historico) >= 3)
+        self.assertTrue(any("Promoção de cargo homologada" in h["usuario_responsavel"] for h in historico))
 
     # =========================================================================
     # CA-06: HISTÓRICO DE ALTERAÇÕES (AUDITORIA)

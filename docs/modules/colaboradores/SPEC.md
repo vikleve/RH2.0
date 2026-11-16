@@ -79,6 +79,18 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_id ON usuarios(empresa_id);
   * Suporte a busca textual unificada (`?q=` ou `?search=`) abrangendo `nome_completo`, `matricula`, `cpf` (formatado ou numérico), `cargo` e `setor`.
   * Suporte a filtros dedicados combináveis (`?nome=`, `?matricula=`, `?cpf=`, `?cargo=`, `?setor=` / `?departamentoId=`).
 
-### 4.2 Arquitetura das Camadas
+### 4.2 RF-003 — Controle de Alterações Cadastrais (Módulo 01 — Gestão de Colaboradores)
+- **Código:** `RF-003`
+- **Módulo:** Módulo 01 — Gestão de Colaboradores
+- **Prioridade documental:** Obrigatório para Go-Live V1
+- **Descrição:** Controlar alterações cadastrais.
+- **Origem:** SRS, Volume 3 — Requisitos Funcionais Detalhados.
+- **Critérios de aceite e dependências:** Registrados somente quando explicitados no documento. Detalhamento adicional: pendente de definição.
+- **Implementação Técnica:**
+  * Atualização completa (`PUT /api/colaboradores/:id`) e parcial (`PATCH /api/colaboradores/:id`) preservando o identificador primário e os campos omitidos.
+  * Validação de integridade e bloqueio de duplicidade de CPF e matrícula em alterações cadastrais.
+  * Registro automático de cada campo modificado (`valor_anterior`, `valor_novo`, `data_hora`, `usuario_responsavel` e justificativa opcional) na tabela `historico_alteracoes`, consultável via `GET /api/colaboradores/:id/historico` e na aba de auditoria da ficha cadastral.
+
+### 4.3 Arquitetura das Camadas
 - **Frontend React + TypeScript & Frontend Vanilla JS**: Componentes tipados, barra de pesquisa unificada por nome, matrícula, CPF, cargo e setor, filtros dedicados por cargo e setor, modais segregados em 4 seções (Dados Pessoais, Contato & Endereço, Vínculo Contratual, Dependentes), máscara de CPF na interface e nas listagens, confirmação explícita de inativação lógica.
 - **Backend Python & Backend NestJS**: Camada controladora protegida por autenticação e CSRF, serviços de domínio e repositório parametrizado com proteção contra SQL Injection.

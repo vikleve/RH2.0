@@ -190,6 +190,16 @@ class handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        # /api/colaboradores/<id>/historico (RF-003)
+        if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit() and partes[3] == "historico":
+            try:
+                historico = _get_service().obter_historico(int(partes[2]))
+                return self._enviar_json(200, {"sucesso": True, "total": len(historico), "dados": historico})
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
     def do_POST(self):
@@ -260,6 +270,29 @@ class handler(BaseHTTPRequestHandler):
             return
 
         partes = [p for p in path.split("/") if p]
+        # PATCH /api/colaboradores/<id> — Controle de Alterações Cadastrais (RF-003)
+        if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
+            colab_id = int(partes[2])
+            try:
+                dados = self._ler_json_body()
+                nome_resp = f"{usuario['nome_completo']} ({usuario['perfil']})"
+                atualizado = _get_service().atualizar(colab_id, dados, usuario=nome_resp)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Colaborador atualizado com sucesso!",
+                    "dados": atualizado
+                })
+            except ValidacaoException as e:
+                return self._enviar_json(400, {
+                    "sucesso": False,
+                    "mensagem": "Existem inconsistencias nos dados informados.",
+                    "erros": e.erros
+                })
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+
         # /api/colaboradores/<id>/inativar  ou  /api/colaboradores/<id>/reativar
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
             colab_id = int(partes[2])

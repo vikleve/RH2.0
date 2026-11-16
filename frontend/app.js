@@ -59,30 +59,30 @@ function normalizarCpf(cpf) {
 function formatarCpf(cpf) {
   const d = normalizarCpf(cpf);
   if (d.length === 11) {
-    return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`;
+    return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`;
   }
   return cpf;
 }
 
 function mascaraCpf(valor) {
   let v = normalizarCpf(valor).slice(0, 11);
-  if (v.length > 9) return `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
-  if (v.length > 6) return `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6)}`;
-  if (v.length > 3) return `${v.slice(0,3)}.${v.slice(3)}`;
+  if (v.length > 9) return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9)}`;
+  if (v.length > 6) return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6)}`;
+  if (v.length > 3) return `${v.slice(0, 3)}.${v.slice(3)}`;
   return v;
 }
 
 function mascaraTelefone(valor) {
   let v = String(valor || '').replace(/\D/g, '').slice(0, 11);
-  if (v.length > 10) return `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
-  if (v.length > 6) return `(${v.slice(0,2)}) ${v.slice(2,6)}-${v.slice(6)}`;
-  if (v.length > 2) return `(${v.slice(0,2)}) ${v.slice(2)}`;
+  if (v.length > 10) return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+  if (v.length > 6) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+  if (v.length > 2) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
   return v;
 }
 
 function mascaraCep(valor) {
   let v = String(valor || '').replace(/\D/g, '').slice(0, 8);
-  if (v.length > 5) return `${v.slice(0,5)}-${v.slice(5)}`;
+  if (v.length > 5) return `${v.slice(0, 5)}-${v.slice(5)}`;
   return v;
 }
 
@@ -131,7 +131,7 @@ function exibirToast(mensagem, tipo = 'success') {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast toast-${tipo}`;
-  
+
   let icone = '✓';
   if (tipo === 'error') icone = '✕';
   if (tipo === 'warning') icone = '⚠';
@@ -156,7 +156,7 @@ const AuthManager = {
 
   async inicializar() {
     this.configurarEventosLogin();
-    
+
     // Tenta validar a sessão atual com o backend
     try {
       const resp = await fetch(`${API_BASE}/auth/me`, {
@@ -536,7 +536,208 @@ const DadosService = {
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao reativar colaborador');
       return data.dados;
     }
+<<<<<<< HEAD
     throw new Error(MSG_API_INDISPONIVEL);
+=======
+    return this._reativarLocal(id);
+  },
+
+  // Implementação Local Segura (Sem seed para visitantes anônimos)
+  _getStorage() {
+    const raw = localStorage.getItem('DP_COLABORADORES');
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  _saveStorage(lista) {
+    localStorage.setItem('DP_COLABORADORES', JSON.stringify(lista));
+  },
+
+  _listarLocal(filtros) {
+    let lista = this._getStorage();
+    if (filtros.situacao && filtros.situacao !== 'todos') {
+      lista = lista.filter(c => c.situacao === filtros.situacao);
+    }
+    if (filtros.nome) {
+      const nm = filtros.nome.toLowerCase().trim();
+      lista = lista.filter(c => (c.nome_completo || '').toLowerCase().includes(nm));
+    }
+    if (filtros.matricula) {
+      const mt = filtros.matricula.toLowerCase().trim();
+      lista = lista.filter(c => (c.matricula || '').toLowerCase().includes(mt));
+    }
+    if (filtros.cpf) {
+      const cpfRaw = filtros.cpf.trim();
+      const cpfDig = normalizarCpf(cpfRaw);
+      lista = lista.filter(c =>
+        (c.cpf || '').includes(cpfRaw) ||
+        (cpfDig && normalizarCpf(c.cpf).includes(cpfDig))
+      );
+    }
+    if (filtros.setor) {
+      const s = filtros.setor.toLowerCase().trim();
+      lista = lista.filter(c => (c.setor || '').toLowerCase().includes(s));
+    }
+    if (filtros.cargo) {
+      const cg = filtros.cargo.toLowerCase().trim();
+      lista = lista.filter(c => (c.cargo || '').toLowerCase().includes(cg));
+    }
+    if (filtros.termo) {
+      const t = filtros.termo.toLowerCase().trim();
+      const cpfLimpo = normalizarCpf(t);
+      lista = lista.filter(c =>
+        (c.nome_completo || '').toLowerCase().includes(t) ||
+        (c.matricula || '').toLowerCase().includes(t) ||
+        (c.cpf || '').includes(t) ||
+        (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo)) ||
+        (c.cargo || '').toLowerCase().includes(t) ||
+        (c.setor || '').toLowerCase().includes(t)
+      );
+    }
+    return lista;
+  },
+
+  _obterLocal(id) {
+    const item = this._getStorage().find(c => c.id === parseInt(id, 10));
+    if (!item) throw new Error('Colaborador não encontrado.');
+    return item;
+  },
+
+  _cadastrarLocal(dados) {
+    const lista = this._getStorage();
+    const novoId = lista.length > 0 ? Math.max(...lista.map(c => c.id)) + 1 : 1;
+    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    const novo = {
+      ...dados,
+      id: novoId,
+      total_dependentes: (dados.dependentes || []).length,
+      historico: [
+        {
+          id: 1,
+          data_hora: agora,
+          campo_alterado: 'Criação de Cadastro',
+          valor_anterior: null,
+          valor_novo: `Colaborador ${dados.nome_completo} cadastrado com matrícula ${dados.matricula}.`,
+          usuario_responsavel: 'Administrador (RH/GTI)'
+        }
+      ]
+    };
+    lista.push(novo);
+    this._saveStorage(lista);
+    return novo;
+  },
+
+  _atualizarLocal(id, dados) {
+    const lista = this._getStorage();
+    const idx = lista.findIndex(c => c.id === parseInt(id, 10));
+    if (idx === -1) throw new Error('Colaborador não encontrado');
+
+    const antigo = lista[idx];
+    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const historico = antigo.historico || [];
+    const justificativa = (dados.justificativa || '').trim();
+    const responsavel = justificativa
+      ? `Administrador (RH/GTI) (Justificativa: ${justificativa})`
+      : 'Administrador (RH/GTI)';
+
+    const camposMonitorados = [
+      ['nome_completo', 'Nome Completo'],
+      ['cpf', 'CPF'],
+      ['rg', 'RG'],
+      ['data_nascimento', 'Data de Nascimento'],
+      ['telefone', 'Telefone'],
+      ['email', 'E-mail'],
+      ['logradouro', 'Logradouro'],
+      ['numero', 'Numero'],
+      ['bairro', 'Bairro'],
+      ['cidade', 'Cidade'],
+      ['uf', 'UF'],
+      ['cep', 'CEP'],
+      ['matricula', 'Matricula'],
+      ['data_admissao', 'Data de Admissao'],
+      ['cargo', 'Cargo'],
+      ['setor', 'Setor'],
+      ['situacao', 'Situação do Vínculo']
+    ];
+
+    camposMonitorados.forEach(([chave, rotulo]) => {
+      if (dados[chave] !== undefined && String(antigo[chave] || '').trim() !== String(dados[chave] || '').trim()) {
+        historico.unshift({
+          id: historico.length + 1,
+          data_hora: agora,
+          campo_alterado: rotulo,
+          valor_anterior: String(antigo[chave] || ''),
+          valor_novo: String(dados[chave] || ''),
+          usuario_responsavel: responsavel
+        });
+      }
+    });
+
+    if (dados.salario_base !== undefined && antigo.salario_base !== dados.salario_base) {
+      historico.unshift({
+        id: historico.length + 1,
+        data_hora: agora,
+        campo_alterado: 'Salário-base',
+        valor_anterior: formatarMoeda(antigo.salario_base),
+        valor_novo: formatarMoeda(dados.salario_base),
+        usuario_responsavel: responsavel
+      });
+    }
+
+    const atualizado = {
+      ...antigo,
+      ...dados,
+      id: antigo.id,
+      total_dependentes: (dados.dependentes || []).length,
+      historico
+    };
+    lista[idx] = atualizado;
+    this._saveStorage(lista);
+    return atualizado;
+  },
+
+  _inativarLocal(id, motivo) {
+    const lista = this._getStorage();
+    const colab = lista.find(c => c.id === parseInt(id, 10));
+    if (!colab) throw new Error('Colaborador não encontrado');
+    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    colab.situacao = 'inativo';
+    colab.historico = colab.historico || [];
+    colab.historico.unshift({
+      id: colab.historico.length + 1,
+      data_hora: agora,
+      campo_alterado: 'Situação do Vínculo',
+      valor_anterior: 'ativo',
+      valor_novo: `inativo (Motivo: ${motivo || 'Não informado'})`,
+      usuario_responsavel: 'Administrador (RH/GTI)'
+    });
+    this._saveStorage(lista);
+    return colab;
+  },
+
+  _reativarLocal(id) {
+    const lista = this._getStorage();
+    const colab = lista.find(c => c.id === parseInt(id, 10));
+    if (!colab) throw new Error('Colaborador não encontrado');
+    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    colab.situacao = 'ativo';
+    colab.historico = colab.historico || [];
+    colab.historico.unshift({
+      id: colab.historico.length + 1,
+      data_hora: agora,
+      campo_alterado: 'Situação do Vínculo',
+      valor_anterior: 'inativo',
+      valor_novo: 'ativo',
+      usuario_responsavel: 'Administrador (RH/GTI)'
+    });
+    this._saveStorage(lista);
+    return colab;
+>>>>>>> 0a88d5b (Atualizacoes do sistema RH2.0)
   }
 };
 
@@ -570,8 +771,8 @@ function renderizarTabela(lista) {
     if (colab.situacao === 'inativo') tr.classList.add('row-inativo');
 
     const totalDep = colab.total_dependentes !== undefined ? colab.total_dependentes : (colab.dependentes ? colab.dependentes.length : 0);
-    const badgeSituacao = colab.situacao === 'ativo' 
-      ? '<span class="badge badge-ativo">Ativo</span>' 
+    const badgeSituacao = colab.situacao === 'ativo'
+      ? '<span class="badge badge-ativo">Ativo</span>'
       : '<span class="badge badge-inativo">Inativo</span>';
 
     const botaoStatus = colab.situacao === 'ativo'
@@ -715,6 +916,10 @@ function abrirModalNovo() {
   document.getElementById('campo-situacao').value = 'ativo';
   document.getElementById('container-dependentes').innerHTML = '';
   document.getElementById('dependentes-vazio').classList.remove('hidden');
+  const secAlt = document.getElementById('secao-controle-alteracoes');
+  if (secAlt) secAlt.classList.add('hidden');
+  const inputJust = document.getElementById('campo-justificativa-alteracao');
+  if (inputJust) inputJust.value = '';
   limparErrosFormulario();
   document.getElementById('modal-form').classList.remove('hidden');
 }
@@ -725,6 +930,10 @@ async function abrirModalEditar(id) {
     Estado.colaboradorEmEdicao = colab;
     document.getElementById('form-modal-title').textContent = `Editar Colaborador: ${colab.nome_completo}`;
     document.getElementById('colaborador-id').value = colab.id;
+    const secAlt = document.getElementById('secao-controle-alteracoes');
+    if (secAlt) secAlt.classList.remove('hidden');
+    const inputJust = document.getElementById('campo-justificativa-alteracao');
+    if (inputJust) inputJust.value = '';
 
     // Preenchimento dos campos
     document.getElementById('campo-nome').value = colab.nome_completo || '';
@@ -796,6 +1005,7 @@ async function salvarColaborador(e) {
     cargo: document.getElementById('campo-cargo').value.trim(),
     setor: document.getElementById('campo-setor').value,
     salario_base: document.getElementById('campo-salario').value,
+    justificativa: (document.getElementById('campo-justificativa-alteracao')?.value || '').trim(),
     dependentes: coletarDependentesDoFormulario()
   };
 
@@ -845,8 +1055,8 @@ function aplicarErrosNosCampos(erros) {
     const span = document.getElementById(`erro-${campo}`);
     if (span) span.textContent = Array.isArray(msg) ? msg.join(', ') : msg;
 
-    const input = document.getElementById(`campo-${campo.replace('_', '-')}`) || 
-                  document.querySelector(`[name="${campo}"]`);
+    const input = document.getElementById(`campo-${campo.replace('_', '-')}`) ||
+      document.querySelector(`[name="${campo}"]`);
     if (input) {
       input.classList.add('is-invalid');
       if (!primeiroInvalido) primeiroInvalido = input;
@@ -880,8 +1090,8 @@ async function abrirModalDetalhes(id) {
     document.getElementById('view-cargo').textContent = colab.cargo;
     document.getElementById('view-setor').textContent = colab.setor;
     document.getElementById('view-salario').textContent = formatarMoeda(colab.salario_base);
-    document.getElementById('view-situacao').innerHTML = colab.situacao === 'ativo' 
-      ? '<span class="badge badge-ativo">Ativo</span>' 
+    document.getElementById('view-situacao').innerHTML = colab.situacao === 'ativo'
+      ? '<span class="badge badge-ativo">Ativo</span>'
       : '<span class="badge badge-inativo">Inativo</span>';
 
     // Dependentes
@@ -909,9 +1119,11 @@ async function abrirModalDetalhes(id) {
       `;
     }
 
-    // Histórico de Alterações / Auditoria
+    // Histórico de Alterações / Auditoria (RF-003)
     const timeline = document.getElementById('detalhes-timeline');
     const historico = colab.historico || [];
+    const elQtdHist = document.getElementById('detalhes-qtd-hist');
+    if (elQtdHist) elQtdHist.textContent = historico.length;
     if (historico.length === 0) {
       timeline.innerHTML = '<p class="text-muted">Nenhuma alteração registrada até o momento.</p>';
     } else {

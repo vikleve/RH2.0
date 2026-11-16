@@ -300,12 +300,32 @@ class ColaboradorService:
             colab["salario_base"] = float(colab["salario_base"])
         return colab
 
-    def atualizar(self, colaborador_id: int, dados: dict, usuario: str = "Sistema/Administrador") -> dict:
-        """Atualiza dados do colaborador preservando o ID e auditando alteracoes."""
+    def obter_historico(self, colaborador_id: int) -> list:
+        """Retorna a trilha auditada de alteracoes cadastrais do colaborador (RF-003)."""
+        colab = self.obter_por_id(colaborador_id)
+        return colab.get("historico", [])
+
+    def atualizar(
+        self,
+        colaborador_id: int,
+        dados: dict,
+        usuario: str = "Sistema/Administrador",
+        justificativa: str = None,
+    ) -> dict:
+        """Controla e audita alteracoes cadastrais do colaborador preservando o ID (RF-003)."""
         atual = self.obter_por_id(colaborador_id)
-        is_valido, erros, sanitizado = validar_formulario_colaborador(dados, is_edicao=True)
+        payload_mesclado = {**atual, **(dados or {})}
+        is_valido, erros, sanitizado = validar_formulario_colaborador(payload_mesclado, is_edicao=True)
         if not is_valido:
             raise ValidacaoException(erros)
+
+        motivo_alt = (
+            justificativa
+            or (dados or {}).get("justificativa")
+            or (dados or {}).get("motivo_alteracao")
+            or ""
+        ).strip()
+        responsavel_auditado = f"{usuario} (Justificativa: {motivo_alt})" if motivo_alt else usuario
 
         P = self._ph()
         conn = self._conn()
@@ -387,7 +407,7 @@ class ColaboradorService:
                     colaborador_id, data_hora, campo_alterado,
                     valor_anterior, valor_novo, usuario_responsavel
                 ) VALUES ({P},{P},{P},{P},{P},{P})
-            """, (colaborador_id, agora, campo, antigo, novo, usuario))
+            """, (colaborador_id, agora, campo, antigo, novo, responsavel_auditado))
 
         conn.commit()
         conn.close()
