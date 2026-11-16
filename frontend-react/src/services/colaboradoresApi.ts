@@ -122,3 +122,4 @@ export const colaboradoresApi = {
     return json.dados || [];
   },
 };
+

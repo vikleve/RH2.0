@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
+import * as express from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { validarOrigemCors } from './cors.config';
 
@@ -42,6 +45,25 @@ async function bootstrap() {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
   });
+
+  // Servir frontend estático na raiz
+  const candidatosFrontend = [
+    path.resolve(process.cwd(), '../frontend'),
+    path.resolve(process.cwd(), 'frontend'),
+    path.resolve(__dirname, '../../frontend'),
+    path.resolve(__dirname, '../../../frontend'),
+  ];
+  const frontendDir = candidatosFrontend.find((dir) => fs.existsSync(dir));
+  if (frontendDir) {
+    app.use(express.static(frontendDir));
+    app.use((req: any, res: any, next: any) => {
+      if (req.method === 'GET' && !req.path.startsWith('/api')) {
+        return res.sendFile(path.join(frontendDir, 'index.html'));
+      }
+      next();
+    });
+    logger.log(`Frontend integrado ativo e servido a partir de: ${frontendDir}`);
+  }
 
   const port = process.env.PORT || 8000;
   await app.listen(port);

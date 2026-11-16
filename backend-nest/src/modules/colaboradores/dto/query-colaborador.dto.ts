@@ -38,3 +38,4 @@ export class QueryColaboradorDto {
   @IsString()
   empresaId?: string;
 }
+

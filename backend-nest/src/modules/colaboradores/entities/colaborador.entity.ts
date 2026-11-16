@@ -35,3 +35,4 @@ export interface ColaboradorEntity {
   atualizado_por?: string | null;
   dependentes?: any[];
 }
+

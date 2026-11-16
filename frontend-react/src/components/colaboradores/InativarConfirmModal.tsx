@@ -100,3 +100,4 @@ export const InativarConfirmModal: React.FC<Props> = ({
     </div>
   );
 };
+

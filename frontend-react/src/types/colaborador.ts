@@ -78,3 +78,4 @@ export interface ColaboradorFormData {
   situacao?: string;
   observacoes?: string;
 }
+

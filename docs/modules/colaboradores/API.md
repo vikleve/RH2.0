@@ -74,3 +74,4 @@
 - **Rota:** `PATCH /api/colaboradores/:id/inativar`
 - **Código de Sucesso:** `200 OK`
 - **Payload:** `{ "motivo": "Justificativa opcional da inativação" }`
+

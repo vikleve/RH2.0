@@ -24,3 +24,4 @@ A validação de qualidade do SPEC-03 seguiu a pirâmide de testes corporativa:
 | **CT-09** | Visualização completa de colaborador | `GET /api/colaboradores/:id` | HTTP 200 dados cadastrais | **PASS** |
 | **CT-10** | Atualização parcial preservando campos | `PATCH /api/colaboradores/:id` | HTTP 200 dados atualizados | **PASS** |
 | **CT-11** | Inativação lógica com confirmação | `PATCH /api/colaboradores/:id/inativar` | HTTP 200 situacao='inativo' | **PASS** |
+

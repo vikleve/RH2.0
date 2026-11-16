@@ -308,3 +308,4 @@ export const ColaboradoresPage: React.FC = () => {
     </div>
   );
 };
+

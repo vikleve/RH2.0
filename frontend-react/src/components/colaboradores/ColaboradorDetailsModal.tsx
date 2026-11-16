@@ -163,3 +163,4 @@ export const ColaboradorDetailsModal: React.FC<Props> = ({
     </div>
   );
 };
+

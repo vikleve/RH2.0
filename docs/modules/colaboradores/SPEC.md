@@ -37,3 +37,4 @@ Entidade `colaboradores` persistida no PostgreSQL:
 | `observacoes` | TEXT | Anotações administrativas |
 | `criado_em`, `atualizado_em` | TIMESTAMP | Controle cronológico de auditoria |
 | `criado_por`, `atualizado_por` | VARCHAR / UUID | Responsável pela ação |
+

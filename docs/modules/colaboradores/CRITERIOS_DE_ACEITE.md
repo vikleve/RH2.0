@@ -24,3 +24,4 @@
 - [x] **CA-14 (Segurança & RBAC)**: Proteção por autenticação centralizada (`SessionGuard`) e autorização por perfil (`RolesGuard`).
 - [x] **CA-15 (Auditoria Integral)**: Eventos de `CADASTRO`, `ALTERACAO` e `INATIVACAO` registrados na tabela `historico_alteracoes`.
 - [x] **CA-16 (Suíte de Testes)**: 11 testes E2E dedicados ao SPEC-03 aprovados, totalizando 37/37 testes passando com 100% de sucesso.
+
