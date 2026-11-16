@@ -36,18 +36,11 @@
 
 ---
 
-<<<<<<< HEAD
 ## 2. Listar Colaboradores (Paginado & Multiempresa — RF-002)
 - **Rota:** `GET /api/colaboradores`
 - **Perfis Autorizados:** `administrador`, `analista_rh`, `operador_dp`
 - **Query Parameters:** `page`, `limit`, `search` (ou `q`), `nome`, `matricula`, `cpf`, `cargo`, `cargoId`, `setor`, `departamentoId`, `situacao`, `filialId`, `empresaId`
 - **Requisito Atendido (RF-002 — Obrigatório para Go-Live V1):** Permite pesquisa unificada (`search` / `q`) ou filtrada individualmente por **nome, matrícula, CPF, cargo e setor** (Origem: SRS, Volume 3 — Requisitos Funcionais Detalhados).
-=======
-## 2. Listar Colaboradores (Paginado & Multiempresa)
-- **Rota:** `GET /api/colaboradores`
-- **Perfis Autorizados:** `administrador`, `analista_rh`, `operador_dp`
-- **Query Parameters:** `page`, `limit`, `search`, `situacao`, `departamentoId`, `filialId`, `empresaId`
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 - **Regra de Segurança Multiempresa:**
   * Se o usuário possui escopo restrito a uma empresa, a consulta é **automaticamente restrita** àquela empresa.
   * Se o usuário tentar passar `?empresaId=` de uma organização que não lhe pertence, o backend retorna `HTTP 403 Forbidden` (`EMPRESA_NAO_AUTORIZADA`).

@@ -13,17 +13,12 @@ const Estado = {
   colaboradorParaInativar: null,
   filtros: {
     termo: '',
-<<<<<<< HEAD
     nome: '',
     matricula: '',
     cpf: '',
     situacao: 'ativo',
     setor: '',
     cargo: ''
-=======
-    situacao: 'ativo',
-    setor: ''
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   },
   usaApi: window.location.protocol.startsWith('http')
 };
@@ -201,15 +196,10 @@ const AuthManager = {
     Estado.colaboradores = [];
     sessionStorage.removeItem('AUTH_TOKEN');
 
-<<<<<<< HEAD
     renderizarTabela([]);
     if (typeof atualizarMetricas === 'function') {
       atualizarMetricas();
     }
-=======
-    renderizarTabela();
-    atualizarCardsMetricas();
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
     const alerta = document.getElementById('login-alerta');
     const alertaMsg = document.getElementById('login-alerta-mensagem');
@@ -402,17 +392,12 @@ const DadosService = {
       try {
         const params = new URLSearchParams();
         if (filtros.termo) params.set('q', filtros.termo);
-<<<<<<< HEAD
         if (filtros.nome) params.set('nome', filtros.nome);
         if (filtros.matricula) params.set('matricula', filtros.matricula);
         if (filtros.cpf) params.set('cpf', filtros.cpf);
         if (filtros.situacao && filtros.situacao !== 'todos') params.set('situacao', filtros.situacao);
         if (filtros.setor) params.set('setor', filtros.setor);
         if (filtros.cargo) params.set('cargo', filtros.cargo);
-=======
-        if (filtros.situacao && filtros.situacao !== 'todos') params.set('situacao', filtros.situacao);
-        if (filtros.setor) params.set('setor', filtros.setor);
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
         const resp = await fetch(`${API_BASE}/colaboradores?${params.toString()}`, {
           headers: getAuthHeaders(),
@@ -556,7 +541,6 @@ const DadosService = {
     if (filtros.situacao && filtros.situacao !== 'todos') {
       lista = lista.filter(c => c.situacao === filtros.situacao);
     }
-<<<<<<< HEAD
     if (filtros.nome) {
       const nm = filtros.nome.toLowerCase().trim();
       lista = lista.filter(c => (c.nome_completo || '').toLowerCase().includes(nm));
@@ -580,28 +564,17 @@ const DadosService = {
     if (filtros.cargo) {
       const cg = filtros.cargo.toLowerCase().trim();
       lista = lista.filter(c => (c.cargo || '').toLowerCase().includes(cg));
-=======
-    if (filtros.setor) {
-      lista = lista.filter(c => c.setor === filtros.setor);
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     }
     if (filtros.termo) {
       const t = filtros.termo.toLowerCase().trim();
       const cpfLimpo = normalizarCpf(t);
       lista = lista.filter(c => 
-<<<<<<< HEAD
         (c.nome_completo || '').toLowerCase().includes(t) ||
         (c.matricula || '').toLowerCase().includes(t) ||
         (c.cpf || '').includes(t) ||
         (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo)) ||
         (c.cargo || '').toLowerCase().includes(t) ||
         (c.setor || '').toLowerCase().includes(t)
-=======
-        c.nome_completo.toLowerCase().includes(t) ||
-        c.matricula.toLowerCase().includes(t) ||
-        c.cpf.includes(t) ||
-        (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo))
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
       );
     }
     return lista;
@@ -1233,7 +1206,6 @@ function configurarEventos() {
     carregarColaboradores();
   });
 
-<<<<<<< HEAD
   const bindDebouncedFilter = (inputId, filterKey, applyCpfMask = false) => {
     let timer = null;
     const el = document.getElementById(inputId);
@@ -1258,15 +1230,10 @@ function configurarEventos() {
   const inputCargo = bindDebouncedFilter('filtro-cargo', 'cargo');
 
   const limparTodosFiltrosColaboradores = () => {
-=======
-  document.getElementById('btn-recarregar').addEventListener('click', carregarColaboradores);
-  document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     inputPesquisa.value = '';
     btnLimpar.classList.add('hidden');
     document.getElementById('filtro-situacao').value = 'todos';
     document.getElementById('filtro-setor').value = '';
-<<<<<<< HEAD
     if (inputNome) inputNome.value = '';
     if (inputMatricula) inputMatricula.value = '';
     if (inputCpf) inputCpf.value = '';
@@ -1281,11 +1248,6 @@ function configurarEventos() {
   if (btnLimparTopo) {
     btnLimparTopo.addEventListener('click', limparTodosFiltrosColaboradores);
   }
-=======
-    Estado.filtros = { termo: '', situacao: 'todos', setor: '' };
-    carregarColaboradores();
-  });
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
   // Máscaras de Entrada no Formulário
   document.getElementById('campo-cpf').addEventListener('input', (e) => {
@@ -1352,6 +1314,31 @@ const FolhaManager = {
         await this.carregarFolhas();
       });
     }
+  },
+
+  catalogoEventos: [],
+
+  async carregarCatalogoEventos() {
+    if (this.catalogoEventos.length > 0) return;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/eventos-catalogo`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const json = await resp.json();
+      if (resp.ok && json.sucesso && Array.isArray(json.dados)) {
+        this.catalogoEventos = json.dados;
+      } else {
+        exibirToast('Não foi possível carregar a lista de eventos da folha.', 'warning');
+      }
+    } catch (e) {
+      console.error('Erro ao carregar catálogo de eventos:', e);
+      exibirToast('Não foi possível carregar a lista de eventos da folha.', 'warning');
+    }
+  },
+
+  escaparHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   },
 
   async carregarParametros() {
@@ -1662,6 +1649,7 @@ const FolhaManager = {
     document.getElementById('folha-campo-divisor').value = '220';
 
     await this.carregarColaboradoresElegiveis();
+    await this.carregarCatalogoEventos();
     this.renderizarRubricasManuais();
     this.atualizarPreviaCalculo();
 
@@ -1683,6 +1671,7 @@ const FolhaManager = {
       this.folhaEmEdicao = folha;
 
       await this.carregarColaboradoresElegiveis();
+      await this.carregarCatalogoEventos();
 
       document.getElementById('modal-folha-title').textContent = `Editar & Recalcular Folha #${folha.id}`;
       document.getElementById('folha-id-edicao').value = folha.id;
@@ -1703,17 +1692,21 @@ const FolhaManager = {
       let atrasos = '';
       this.rubricasManuais = [];
 
+      const refNumerica = (it) => parseFloat(String(it.unidade_referencia || '').replace(',', '.')) || Number(it.referencia) || '';
       (folha.itens || []).forEach(it => {
-        if (it.codigo_evento === '101') he50 = it.referencia;
-        else if (it.codigo_evento === '102') he100 = it.referencia;
-        else if (it.codigo_evento === '103') noturno = it.referencia;
-        else if (it.codigo_evento === '201') faltas = it.referencia;
-        else if (it.codigo_evento === '202') atrasos = it.referencia;
-        else if (it.origem === 'manual') {
+        if (it.origem !== 'manual' && it.codigo_evento === '101') {
+          if (String(it.descricao).includes('100%')) he100 = refNumerica(it);
+          else he50 = refNumerica(it);
+        }
+        else if (it.origem !== 'manual' && it.codigo_evento === '102') noturno = refNumerica(it);
+        else if (it.origem !== 'manual' && it.codigo_evento === '201') faltas = refNumerica(it);
+        else if (it.origem !== 'manual' && it.codigo_evento === '202') atrasos = refNumerica(it);
+        else if (it.origem === 'manual' && it.tipo !== 'informativo') {
           this.rubricasManuais.push({
             tipo: it.tipo,
+            codigo: this.catalogoEventos.some(c => c.codigo === it.codigo_evento) ? it.codigo_evento : '__outro',
             descricao: it.descricao,
-            referencia: it.referencia,
+            referencia: parseFloat(String(it.unidade_referencia || '').replace(',', '.')) || 1,
             valor_total: it.valor_total
           });
         }
@@ -1763,16 +1756,10 @@ const FolhaManager = {
       btnAddRubrica.addEventListener('click', () => {
         this.rubricasManuais.push({
           tipo: 'provento',
-<<<<<<< HEAD
-          descricao: 'Bônus / Reembolso',
-          referencia: 1,
-          valor_total: 100.00
-=======
           codigo: '',
           descricao: '',
           referencia: 1,
           valor_total: 0
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         });
         this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
@@ -1815,6 +1802,27 @@ const FolhaManager = {
     }
   },
 
+  montarOpcoesEventos(rub) {
+    const eventos = this.catalogoEventos.filter(c => c.tipo === rub.tipo);
+    const porCategoria = {};
+    eventos.forEach(ev => {
+      (porCategoria[ev.categoria] = porCategoria[ev.categoria] || []).push(ev);
+    });
+
+    let html = `<option value="">Selecione o evento...</option>`;
+    Object.keys(porCategoria).forEach(cat => {
+      html += `<optgroup label="${this.escaparHtml(cat)}">`;
+      porCategoria[cat].forEach(ev => {
+        const sel = rub.codigo === ev.codigo ? 'selected' : '';
+        const dica = ev.observacao ? ` title="${this.escaparHtml(ev.observacao)}"` : '';
+        html += `<option value="${this.escaparHtml(ev.codigo)}" ${sel}${dica}>${this.escaparHtml(ev.codigo)} — ${this.escaparHtml(ev.evento)}</option>`;
+      });
+      html += `</optgroup>`;
+    });
+    html += `<option value="__outro" ${rub.codigo === '__outro' ? 'selected' : ''}>Outro (descrição livre)</option>`;
+    return html;
+  },
+
   renderizarRubricasManuais() {
     const wrapper = document.getElementById('wrapper-rubricas-manuais');
     const corpo = document.getElementById('corpo-rubricas-manuais');
@@ -1839,7 +1847,10 @@ const FolhaManager = {
           </select>
         </td>
         <td>
-          <input type="text" class="form-control rub-desc" data-idx="${idx}" value="${rub.descricao}" placeholder="Ex: Gratificação..." style="font-size: 0.8rem; padding: 0.25rem;">
+          <select class="form-control select-control rub-evento" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.25rem;">
+            ${this.montarOpcoesEventos(rub)}
+          </select>
+          <input type="text" class="form-control rub-desc" data-idx="${idx}" value="${this.escaparHtml(rub.descricao)}" placeholder="Descreva o evento..." style="font-size: 0.8rem; padding: 0.25rem; margin-top: 0.25rem; ${rub.codigo === '__outro' ? '' : 'display: none;'}">
         </td>
         <td>
           <input type="number" class="form-control rub-ref" data-idx="${idx}" value="${rub.referencia}" min="1" step="0.5" style="font-size: 0.8rem; padding: 0.25rem;">
@@ -1847,13 +1858,8 @@ const FolhaManager = {
         <td>
           <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total}" min="0.01" step="0.01" style="font-size: 0.8rem; padding: 0.25rem;">
         </td>
-<<<<<<< HEAD
-        <td class="text-right">
-          <button type="button" class="btn-clear rub-remover" data-idx="${idx}" title="Remover rubrica" style="font-size: 1rem;">&times;</button>
-=======
         <td>
           <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">✕</button>
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         </td>
       `;
       corpo.appendChild(tr);
@@ -1861,7 +1867,28 @@ const FolhaManager = {
 
     corpo.querySelectorAll('.rub-tipo').forEach(el => {
       el.addEventListener('change', (e) => {
-        this.rubricasManuais[e.target.dataset.idx].tipo = e.target.value;
+        const rub = this.rubricasManuais[e.target.dataset.idx];
+        rub.tipo = e.target.value;
+        // Ao trocar o tipo, a lista de eventos muda: limpa o evento escolhido
+        rub.codigo = '';
+        rub.descricao = '';
+        this.renderizarRubricasManuais();
+        this.atualizarPreviaCalculo();
+      });
+    });
+
+    corpo.querySelectorAll('.rub-evento').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const rub = this.rubricasManuais[e.target.dataset.idx];
+        const cod = e.target.value;
+        rub.codigo = cod;
+        if (cod === '__outro') {
+          rub.descricao = '';
+        } else {
+          const ev = this.catalogoEventos.find(c => c.codigo === cod);
+          rub.descricao = ev ? ev.evento : '';
+        }
+        this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
       });
     });
@@ -1903,16 +1930,16 @@ const FolhaManager = {
     const faltas = Number(document.getElementById('folha-campo-faltas').value || 0);
     const atrasos = Number(document.getElementById('folha-campo-atrasos').value || 0);
 
-    if (he50 > 0) eventos.push({ codigo: 'HE50', quantidade: he50, percentual: 50.0 });
-    if (he100 > 0) eventos.push({ codigo: 'HE100', quantidade: he100, percentual: 100.0 });
-    if (noturno > 0) eventos.push({ codigo: 'NOTURNO', quantidade: noturno, percentual: 20.0 });
-    if (faltas > 0) eventos.push({ codigo: 'FALTA', quantidade: faltas });
-    if (atrasos > 0) eventos.push({ codigo: 'ATRASO', quantidade: atrasos });
+    if (he50 > 0) eventos.push({ tipo: 'hora_extra', codigo: 'HE50', quantidade: he50, percentual: 50.0 });
+    if (he100 > 0) eventos.push({ tipo: 'hora_extra', codigo: 'HE100', quantidade: he100, percentual: 100.0 });
+    if (noturno > 0) eventos.push({ tipo: 'adicional_noturno', codigo: 'NOTURNO', quantidade: noturno, percentual: 20.0 });
+    if (faltas > 0) eventos.push({ tipo: 'falta', codigo: 'FALTA', quantidade: faltas });
+    if (atrasos > 0) eventos.push({ tipo: 'atraso', codigo: 'ATRASO', quantidade: atrasos });
 
     this.rubricasManuais.forEach((r, i) => {
-      if (r.valor_total > 0 && r.descricao) {
+      if (r.valor_total > 0 && r.descricao && r.codigo) {
         eventos.push({
-          codigo: `MANUAL_${i+1}`,
+          codigo: r.codigo === '__outro' ? undefined : r.codigo,
           descricao: r.descricao,
           tipo: r.tipo,
           referencia: r.referencia,
@@ -1986,16 +2013,26 @@ const FolhaManager = {
 
     const alerta = document.getElementById('folha-form-alerta');
     alerta.classList.add('hidden');
+    const mostrarErro = (msg) => {
+      alerta.textContent = msg;
+      alerta.classList.remove('hidden');
+      alerta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      exibirToast(msg, 'error');
+    };
+
+    const incompletas = this.rubricasManuais.filter(r => Number(r.valor_total) > 0 && (!r.codigo || !r.descricao));
+    if (incompletas.length > 0) {
+      mostrarErro('Selecione o evento (ou informe a descrição em "Outro") em todas as linhas com valor.');
+      return;
+    }
 
     if (!colabId) {
-      alerta.textContent = 'Selecione um colaborador ativo para a folha.';
-      alerta.classList.remove('hidden');
+      mostrarErro('Selecione um colaborador ativo para a folha.');
       return;
     }
 
     if (!competencia) {
-      alerta.textContent = 'Informe a competência no formato AAAA-MM.';
-      alerta.classList.remove('hidden');
+      mostrarErro('Informe a competência no formato AAAA-MM.');
       return;
     }
 
@@ -2015,23 +2052,21 @@ const FolhaManager = {
     const metodo = folhaId ? 'PUT' : 'POST';
     const url = folhaId ? `${API_BASE}/folha/${folhaId}` : `${API_BASE}/folha`;
 
+    const btnSalvar = document.querySelector('#form-folha-pagamento button[type="submit"]') || document.getElementById('btn-salvar-folha');
+    if (btnSalvar) btnSalvar.disabled = true;
+
     try {
       const resp = await fetch(url, {
         method: metodo,
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: json.stringify ? JSON.stringify(payload) : null
+        body: JSON.stringify(payload)
       });
 
       const resJson = await resp.json();
 
       if (!resp.ok) {
-        if (resJson.erros && resJson.erros.competencia) {
-          alerta.textContent = resJson.erros.competencia;
-        } else {
-          alerta.textContent = resJson.mensagem || 'Ocorreu um erro ao processar a folha.';
-        }
-        alerta.classList.remove('hidden');
+        mostrarErro((resJson.erros && resJson.erros.competencia) || resJson.mensagem || 'Ocorreu um erro ao processar a folha.');
         return;
       }
 
@@ -2044,8 +2079,9 @@ const FolhaManager = {
       }
     } catch (e) {
       console.error('Falha ao salvar folha:', e);
-      alerta.textContent = 'Erro de comunicação com o servidor backend.';
-      alerta.classList.remove('hidden');
+      mostrarErro('Erro de comunicação com o servidor backend.');
+    } finally {
+      if (btnSalvar) btnSalvar.disabled = false;
     }
   },
 

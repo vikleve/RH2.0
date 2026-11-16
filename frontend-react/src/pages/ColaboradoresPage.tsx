@@ -12,7 +12,6 @@ export const ColaboradoresPage: React.FC = () => {
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-<<<<<<< HEAD
   // Filtros (RF-002: Nome, Matrícula, CPF, Cargo e Setor)
   const [search, setSearch] = useState('');
   const [nome, setNome] = useState('');
@@ -21,12 +20,6 @@ export const ColaboradoresPage: React.FC = () => {
   const [situacao, setSituacao] = useState('');
   const [departamento, setDepartamento] = useState('');
   const [cargo, setCargo] = useState('');
-=======
-  // Filtros
-  const [search, setSearch] = useState('');
-  const [situacao, setSituacao] = useState('');
-  const [departamento, setDepartamento] = useState('');
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
   const [page, setPage] = useState(1);
 
   // Modais
@@ -47,17 +40,12 @@ export const ColaboradoresPage: React.FC = () => {
         page,
         limit: 10,
         search: search.trim() || undefined,
-<<<<<<< HEAD
         nome: nome.trim() || undefined,
         matricula: matricula.trim() || undefined,
         cpf: cpf.trim() || undefined,
         situacao: situacao || undefined,
         departamentoId: departamento.trim() || undefined,
         cargo: cargo.trim() || undefined,
-=======
-        situacao: situacao || undefined,
-        departamentoId: departamento || undefined,
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
       });
       setColaboradores(res.data);
       setMeta(res.meta);
@@ -66,11 +54,7 @@ export const ColaboradoresPage: React.FC = () => {
     } finally {
       setCarregando(false);
     }
-<<<<<<< HEAD
   }, [page, search, nome, matricula, cpf, situacao, departamento, cargo]);
-=======
-  }, [page, search, situacao, departamento]);
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
   useEffect(() => {
     carregarColaboradores();
@@ -139,7 +123,6 @@ export const ColaboradoresPage: React.FC = () => {
         </div>
       )}
 
-<<<<<<< HEAD
       {/* Barra de Pesquisa e Filtros (RF-002: Nome, Matrícula, CPF, Cargo e Setor) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
@@ -213,39 +196,6 @@ export const ColaboradoresPage: React.FC = () => {
             }}
             style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
           />
-=======
-      {/* Barra de Pesquisa e Filtros (RF-02, RF-03) */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
-        <div style={{ flex: '2', minWidth: '240px' }}>
-          <input
-            type="text"
-            placeholder="Pesquisar por nome, CPF ou matrícula..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        <div style={{ flex: '1', minWidth: '150px' }}>
-          <select
-            value={situacao}
-            onChange={(e) => {
-              setSituacao(e.target.value);
-              setPage(1);
-            }}
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff' }}
-          >
-            <option value="">Todas as Situações</option>
-            <option value="ATIVO">Ativos</option>
-            <option value="INATIVO">Inativos</option>
-          </select>
-        </div>
-
-        <div style={{ flex: '1', minWidth: '180px' }}>
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
           <input
             type="text"
             placeholder="Filtrar por setor..."
@@ -254,11 +204,7 @@ export const ColaboradoresPage: React.FC = () => {
               setDepartamento(e.target.value);
               setPage(1);
             }}
-<<<<<<< HEAD
             style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
-=======
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
           />
         </div>
       </div>
