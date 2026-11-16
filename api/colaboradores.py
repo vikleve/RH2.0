@@ -28,6 +28,7 @@ except ImportError:
 
 from http.server import BaseHTTPRequestHandler
 
+from backend.database import erro_http
 from backend.auth import AuthService
 from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
 
@@ -100,7 +101,7 @@ class handler(BaseHTTPRequestHandler):
         try:
             usuario = _get_auth().validar_sessao(token)
         except Exception as e:
-            self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+            self._enviar_json(*erro_http(e))
             return None
         if not usuario:
             self._enviar_json(401, {
@@ -177,7 +178,7 @@ class handler(BaseHTTPRequestHandler):
                 )
                 return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         # /api/colaboradores/<id>
         if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
@@ -187,7 +188,7 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -217,7 +218,7 @@ class handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -248,7 +249,7 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -286,6 +287,6 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})

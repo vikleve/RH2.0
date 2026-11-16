@@ -19,6 +19,7 @@ except ImportError:
 
 from http.server import BaseHTTPRequestHandler
 
+from backend.database import erro_http
 from backend.auth import AuthService, CredenciaisInvalidasException
 
 _auth_service = None
@@ -90,4 +91,4 @@ class handler(BaseHTTPRequestHandler):
         except CredenciaisInvalidasException as e:
             return self._enviar_json(401, {"sucesso": False, "mensagem": str(e)})
         except Exception as e:
-            return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+            return self._enviar_json(*erro_http(e))
