@@ -122,7 +122,16 @@ INSERT INTO folha_parametros (
     TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 ) ON CONFLICT (codigo) DO NOTHING;
 
--- 7. POLÍTICAS DE ROW LEVEL SECURITY (RLS) NO SUPABASE
+-- 7. POLÍTICAS DE ROW LEVEL SECURITY (RLS) NO SUPABASE / POSTGRESQL
+-- Garante que a role 'authenticated' exista para compatibilidade com PostgreSQL local e Supabase
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+        CREATE ROLE authenticated;
+    END IF;
+END
+$$;
+
 -- Habilita RLS em todas as tabelas da Folha
 ALTER TABLE folha_parametros ENABLE ROW LEVEL SECURITY;
 ALTER TABLE folhas_pagamento ENABLE ROW LEVEL SECURITY;
