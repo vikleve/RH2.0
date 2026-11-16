@@ -29,6 +29,7 @@ try:
         FolhaValidacaoException,
     )
     from .service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
+    from .database import erro_http, status_banco
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -42,6 +43,7 @@ except ImportError:
         FolhaValidacaoException,
     )
     from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
+    from backend.database import erro_http, status_banco
 
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -264,6 +266,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         """Trata requisições GET para API e para arquivos estáticos."""
         path, query = self._obter_caminho_e_query()
 
+        # Diagnostico publico: GET /api/health — confirma o banco em uso (sem expor credenciais)
+        if path == "/api/health":
+            try:
+                return self._enviar_json(200, {"sucesso": True, **status_banco()})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         # Rota de verificação de sessão: GET /api/auth/me
         if path == "/api/auth/me":
             usuario = self._exigir_autenticacao()
@@ -432,7 +441,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         # Rota protegida: Logout POST /api/auth/logout
         if path == "/api/auth/logout":
@@ -468,7 +477,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         # Rota protegida: Salvar parâmetros da folha POST /api/folha/parametros
         if path == "/api/folha/parametros":
@@ -485,7 +494,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     "dados": salvo
                 })
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         # Rota protegida: Criar folha POST /api/folha
         if path == "/api/folha":
@@ -533,7 +542,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         # Rota protegida: Ações na folha POST /api/folha/<id>/fechar ou /reabrir ou /calcular
         if path.startswith("/api/folha/"):
@@ -592,7 +601,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except FolhaNaoEncontradaException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
                 except Exception as e:
-                    return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                    return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
@@ -626,7 +635,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         if len(partes) == 3 and partes[1] == "folha" and partes[2].isdigit():
             usuario_auth = self._exigir_autenticacao()
@@ -663,7 +672,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except FolhaNaoEncontradaException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
@@ -691,7 +700,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except FolhaNaoEncontradaException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
@@ -730,7 +739,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 

@@ -3,9 +3,10 @@ Modulo de Banco de Dados — Dual-mode: PostgreSQL (producao) + SQLite (local/te
 Camada de persistencia relacional com integridade referencial.
 Atende a RF-01 a RF-09, CA-07, CA-08.
 
-Em producao (Vercel): define DATABASE_URL como variavel de ambiente apontando para
-  PostgreSQL externo (Supabase, Neon, Railway, etc).
-Em desenvolvimento local: usa SQLite automaticamente se DATABASE_URL nao estiver definida.
+Em producao (Vercel): DATABASE_URL e OBRIGATORIA (PostgreSQL: Supabase, Neon, etc).
+  Sem ela a aplicacao falha de forma explicita (DatabaseConfigError) — NAO ha fallback
+  silencioso para SQLite, cujo arquivo em /tmp nao persiste entre execucoes serverless.
+Em desenvolvimento local: usa SQLite se DATABASE_URL nao estiver definida.
 Os testes passam db_path explicito => sempre SQLite isolado.
 """
 import os
@@ -23,6 +24,48 @@ try:
         load_dotenv(_env_file)
 except ImportError:
     pass
+
+class DatabaseConfigError(RuntimeError):
+    """Configuracao de banco ausente/invalida (ex.: DATABASE_URL ausente em producao)."""
+
+
+class DatabaseUnavailableError(RuntimeError):
+    """Banco indisponivel. A mensagem NUNCA contem a URL/credenciais de conexao."""
+
+
+def em_producao() -> bool:
+    """True quando rodando na Vercel ou com ambiente marcado como producao."""
+    if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"):
+        return True
+    for nome in ("APP_ENV", "ENVIRONMENT", "NODE_ENV", "ENV"):
+        if (os.environ.get(nome) or "").strip().lower() in ("production", "prod", "producao"):
+            return True
+    return False
+
+
+def erro_http(exc: Exception):
+    """
+    Converte uma excecao em (status, corpo_json) para respostas da API.
+    Falhas de banco => 503 com mensagem clara e sem detalhes sensiveis.
+    """
+    if isinstance(exc, (DatabaseConfigError, DatabaseUnavailableError)):
+        return 503, {
+            "sucesso": False,
+            "codigo": "BANCO_INDISPONIVEL",
+            "mensagem": str(exc),
+        }
+    try:
+        import psycopg2
+        if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+            return 503, {
+                "sucesso": False,
+                "codigo": "BANCO_INDISPONIVEL",
+                "mensagem": "Banco de dados indisponivel no momento. A operacao nao foi realizada.",
+            }
+    except ImportError:
+        pass
+    return 500, {"sucesso": False, "mensagem": f"Erro interno: {exc}"}
+
 
 _SQLITE_PATH = os.environ.get(
     "DB_PATH",
@@ -67,7 +110,14 @@ def _usar_postgres(db_path: str = None) -> bool:
     """
     if db_path:
         return False
-    return bool(get_database_url())
+    if get_database_url():
+        return True
+    if em_producao():
+        raise DatabaseConfigError(
+            "DATABASE_URL nao configurada: o PostgreSQL e obrigatorio em producao. "
+            "Cadastre a variavel como segredo no ambiente Production da Vercel."
+        )
+    return False  # desenvolvimento local: SQLite
 
 
 def _get_pg_conn():
@@ -79,6 +129,8 @@ def _get_pg_conn():
             "psycopg2-binary nao encontrado. Execute: pip install psycopg2-binary"
         )
     url = get_database_url()
+    if not url:
+        raise DatabaseConfigError("DATABASE_URL nao configurada: o PostgreSQL e obrigatorio.")
     dsn = url.replace("postgres://", "postgresql://", 1)
 
     # Se for servico em nuvem (Neon, Supabase, Railway, Render) e nao especificar sslmode, garante sslmode=require
@@ -89,7 +141,16 @@ def _get_pg_conn():
     ):
         dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
 
-    return psycopg2.connect(dsn)
+    if "connect_timeout=" not in dsn:
+        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "10")
+
+    try:
+        return psycopg2.connect(dsn)
+    except psycopg2.OperationalError:
+        # Nao propaga a mensagem original: ela pode revelar host/usuario do banco.
+        raise DatabaseUnavailableError(
+            "Banco de dados indisponivel no momento. A operacao nao foi realizada e nenhum dado foi salvo."
+        ) from None
 
 
 def _get_sqlite_conn(db_path: str = None) -> sqlite3.Connection:
@@ -544,6 +605,22 @@ def insert_returning_id(
         return cursor.fetchone()[0]
     cursor.execute(sql_sqlite, params)
     return cursor.lastrowid
+
+
+def status_banco(db_path: str = None) -> dict:
+    """
+    Verifica de fato o banco ativo (SELECT 1). Nao expoe URL nem credenciais.
+    Usado pelo endpoint /api/health para confirmar que o PostgreSQL esta em uso.
+    """
+    pg = _usar_postgres(db_path)
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+    finally:
+        conn.close()
+    return {"banco": "postgresql" if pg else "sqlite", "conectado": True, "producao": em_producao()}
 
 
 def ph(db_path: str = None) -> str:
