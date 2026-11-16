@@ -238,5 +238,71 @@ describe('Colaboradores e Folha de Pagamento RH2.0 (NestJS E2E)', () => {
 
     expect(resCheck.body.dados.situacao).toBe('cancelada');
   });
+
+  it('11. Deve consultar o catálogo oficial de eventos da folha (GET /api/folha/eventos-catalogo)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/folha/eventos-catalogo')
+      .set('Cookie', authCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.sucesso).toBe(true);
+    expect(res.body.total).toBe(82);
+
+    const codigos = res.body.dados.map((e: any) => e.codigo);
+    expect(codigos).toContain('0520'); // Adiantamento salarial
+    expect(codigos).toContain('0010'); // Horas extras 50%
+    expect(codigos).toContain('0011'); // Horas extras 100%
+    expect(codigos).toContain('0075'); // Abono / benefício indenizatório
+  });
+
+  it('12. Deve calcular e persistir eventos avulsos do catálogo (Adiantamento, Abono) em folha_itens', async () => {
+    const payload = {
+      colaborador_id: colaboradorId,
+      competencia: '2026-11',
+      dias_trabalhados: 30,
+      dias_mes: 30,
+      horas_divisor: 220,
+      eventos: [
+        {
+          codigo: '0520',
+          descricao: 'Adiantamento salarial',
+          tipo: 'desconto',
+          referencia: 1,
+          valor_total: 500.0,
+        },
+        {
+          codigo: '0075',
+          descricao: 'Abono / benefício indenizatório',
+          tipo: 'provento',
+          referencia: 1,
+          valor_total: 300.0,
+        },
+      ],
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/folha')
+      .set('Cookie', authCookie)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.sucesso).toBe(true);
+
+    const itens = res.body.dados.itens;
+    const adiantamentoItem = itens.find((it: any) => it.codigo_evento === '0520');
+    expect(adiantamentoItem).toBeDefined();
+    expect(adiantamentoItem.tipo).toBe('desconto');
+    expect(adiantamentoItem.valor_total).toBe(500.0);
+
+    const abonoItem = itens.find((it: any) => it.codigo_evento === '0075');
+    expect(abonoItem).toBeDefined();
+    expect(abonoItem.tipo).toBe('provento');
+    expect(abonoItem.valor_total).toBe(300.0);
+
+    // Salário base 6000 + 300 abono = 6300 proventos
+    expect(res.body.dados.total_proventos).toBe(6300.0);
+    // Total descontos deve incluir os 500 de adiantamento
+    expect(res.body.dados.total_descontos).toBeGreaterThanOrEqual(500.0);
+  });
 });
 

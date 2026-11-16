@@ -17,6 +17,7 @@ import {
   arredondarMoeda,
   toDecimal,
 } from './folha-calculos.engine';
+import { CATALOGO_EVENTOS_FOLHA } from './catalogo-eventos';
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -216,6 +217,94 @@ export class FolhaService {
             incide_irrf: 0,
             memoria_calculo: resAtraso.memoria,
           });
+        } else if (ev.tipo === 'provento') {
+          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
+          if (vTotal.greaterThan(0)) {
+            totalProventos = totalProventos.plus(vTotal);
+            const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
+            itensCalculados.push({
+              codigo_rubrica: String(ev.codigo || '0075'),
+              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Provento Avulso'),
+              tipo_rubrica: 'provento',
+              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
+              valor_total: vTotal.toNumber(),
+              origem: 'manual',
+              incide_inss: ev.incide_inss ?? (evCat ? evCat.inss : 1),
+              incide_fgts: ev.incide_fgts ?? (evCat ? evCat.fgts : 1),
+              incide_irrf: ev.incide_irrf ?? (evCat ? evCat.irrf : 1),
+              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso / manual',
+            });
+          }
+        } else if (ev.tipo === 'desconto') {
+          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
+          if (vTotal.greaterThan(0)) {
+            totalDescontos = totalDescontos.plus(vTotal);
+            const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
+            itensCalculados.push({
+              codigo_rubrica: String(ev.codigo || '0520'),
+              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Desconto Avulso'),
+              tipo_rubrica: 'desconto',
+              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
+              valor_total: vTotal.toNumber(),
+              origem: 'manual',
+              incide_inss: 0,
+              incide_fgts: 0,
+              incide_irrf: 0,
+              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso / manual',
+            });
+          }
+        } else if (ev.tipo === 'informativo') {
+          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
+          const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
+          itensCalculados.push({
+            codigo_rubrica: String(ev.codigo || '0901'),
+            descricao_rubrica: String(ev.descricao || evCat?.evento || 'Informativo'),
+            tipo_rubrica: 'informativo',
+            referencia_valor: ev.referencia ? String(ev.referencia) : '',
+            valor_total: vTotal.toNumber(),
+            origem: 'manual',
+            incide_inss: 0,
+            incide_fgts: 0,
+            incide_irrf: 0,
+            memoria_calculo: ev.memoria_calculo || 'Evento informativo',
+          });
+        } else if (ev.codigo) {
+          const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
+          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
+          const tipoDeterminado = evCat
+            ? evCat.tipo
+            : ev.codigo.startsWith('05')
+              ? 'desconto'
+              : 'provento';
+          if (tipoDeterminado === 'provento' && vTotal.greaterThan(0)) {
+            totalProventos = totalProventos.plus(vTotal);
+            itensCalculados.push({
+              codigo_rubrica: String(ev.codigo),
+              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Provento Avulso'),
+              tipo_rubrica: 'provento',
+              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
+              valor_total: vTotal.toNumber(),
+              origem: 'manual',
+              incide_inss: evCat ? evCat.inss : 1,
+              incide_fgts: evCat ? evCat.fgts : 1,
+              incide_irrf: evCat ? evCat.irrf : 1,
+              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso',
+            });
+          } else if (tipoDeterminado === 'desconto' && vTotal.greaterThan(0)) {
+            totalDescontos = totalDescontos.plus(vTotal);
+            itensCalculados.push({
+              codigo_rubrica: String(ev.codigo),
+              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Desconto Avulso'),
+              tipo_rubrica: 'desconto',
+              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
+              valor_total: vTotal.toNumber(),
+              origem: 'manual',
+              incide_inss: 0,
+              incide_fgts: 0,
+              incide_irrf: 0,
+              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso',
+            });
+          }
         }
       }
     }
@@ -237,9 +326,19 @@ export class FolhaService {
       });
     }
 
-    // Base legal para encargos
-    const baseInss = totalProventos;
-    const baseFgts = totalProventos;
+    // Base legal para encargos (apenas proventos com incidência positiva)
+    let baseInss = new Decimal('0.00');
+    let baseFgts = new Decimal('0.00');
+    for (const it of itensCalculados) {
+      if (it.tipo_rubrica === 'provento') {
+        if (it.incide_inss !== 0) {
+          baseInss = baseInss.plus(toDecimal(it.valor_total));
+        }
+        if (it.incide_fgts !== 0) {
+          baseFgts = baseFgts.plus(toDecimal(it.valor_total));
+        }
+      }
+    }
 
     // Cálculo INSS Progressivo
     const resInss = calcularInssProgressivo(baseInss);

@@ -16,11 +16,21 @@ import {
 import { FolhaService } from './folha.service';
 import { SessionGuard } from '../auth/session.guard';
 import { CsrfGuard } from '../csrf/csrf.guard';
+import { CATALOGO_EVENTOS_FOLHA } from './catalogo-eventos';
 
 @Controller('folha')
 @UseGuards(SessionGuard, CsrfGuard)
 export class FolhaController {
   constructor(private readonly service: FolhaService) {}
+
+  @Get('eventos-catalogo')
+  async listarEventosCatalogo() {
+    return {
+      sucesso: true,
+      total: CATALOGO_EVENTOS_FOLHA.length,
+      dados: CATALOGO_EVENTOS_FOLHA,
+    };
+  }
 
   @Get()
   async listar(

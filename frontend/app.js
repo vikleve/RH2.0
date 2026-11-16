@@ -1659,9 +1659,10 @@ const FolhaManager = {
       btnAddRubrica.addEventListener('click', () => {
         this.rubricasManuais.push({
           tipo: 'provento',
-          descricao: 'Bônus / Reembolso',
+          codigo: '',
+          descricao: '',
           referencia: 1,
-          valor_total: 100.00
+          valor_total: 0
         });
         this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
@@ -1736,8 +1737,8 @@ const FolhaManager = {
         <td>
           <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total}" min="0.01" step="0.01" style="font-size: 0.8rem; padding: 0.25rem;">
         </td>
-        <td class="text-right">
-          <button type="button" class="btn-clear rub-remover" data-idx="${idx}" title="Remover rubrica" style="font-size: 1rem;">&times;</button>
+        <td>
+          <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">✕</button>
         </td>
       `;
       corpo.appendChild(tr);
