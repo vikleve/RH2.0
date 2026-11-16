@@ -29,28 +29,28 @@ export class ColaboradoresController {
 
   @Get('metricas')
   @Roles('administrador', 'analista_rh', 'operador_dp')
-  async obterMetricas() {
-    const metricas = await this.service.obterMetricas();
+  async obterMetricas(@Req() req: any) {
+    const metricas = await this.service.obterMetricas(req?.user);
     return { sucesso: true, dados: metricas };
   }
 
   @Get()
   @Roles('administrador', 'analista_rh', 'operador_dp')
-  async listar(@Query() query: QueryColaboradorDto) {
-    return this.service.listar(query);
+  async listar(@Query() query: QueryColaboradorDto, @Req() req: any) {
+    return this.service.listar(query, req?.user);
   }
 
   @Get(':id')
   @Roles('administrador', 'analista_rh', 'operador_dp')
-  async obterPorId(@Param('id', ParseIntPipe) id: number) {
-    const colab = await this.service.obterPorId(id);
+  async obterPorId(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const colab = await this.service.obterPorId(id, req?.user);
     return { sucesso: true, dados: colab, ...colab };
   }
 
   @Get(':id/historico')
   @Roles('administrador', 'analista_rh', 'operador_dp')
-  async obterHistorico(@Param('id', ParseIntPipe) id: number) {
-    const lista = await this.service.obterHistorico(id);
+  async obterHistorico(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const lista = await this.service.obterHistorico(id, req?.user);
     return { sucesso: true, total: lista.length, dados: lista };
   }
 
@@ -61,7 +61,7 @@ export class ColaboradoresController {
     const nomeResp = req.user
       ? `${req.user.nome_completo} (${req.user.perfil})`
       : 'Sistema/Administrador';
-    const criado = await this.service.criar(body, nomeResp);
+    const criado = await this.service.criar(body, nomeResp, req?.user);
     return {
       sucesso: true,
       mensagem: 'Colaborador cadastrado com sucesso!',
@@ -82,7 +82,7 @@ export class ColaboradoresController {
     const nomeResp = req.user
       ? `${req.user.nome_completo} (${req.user.perfil})`
       : 'Sistema/Administrador';
-    const atualizado = await this.service.atualizar(id, body, nomeResp);
+    const atualizado = await this.service.atualizar(id, body, nomeResp, req?.user);
     return {
       sucesso: true,
       mensagem: 'Colaborador atualizado com sucesso!',
@@ -115,7 +115,7 @@ export class ColaboradoresController {
     const nomeResp = req.user
       ? `${req.user.nome_completo} (${req.user.perfil})`
       : 'Sistema/Administrador';
-    const dados = await this.service.inativar(id, motivo, nomeResp);
+    const dados = await this.service.inativar(id, motivo, nomeResp, req?.user);
     return {
       sucesso: true,
       mensagem: 'Colaborador inativado com sucesso. Histórico preservado.',
@@ -131,7 +131,7 @@ export class ColaboradoresController {
     const nomeResp = req.user
       ? `${req.user.nome_completo} (${req.user.perfil})`
       : 'Sistema/Administrador';
-    const dados = await this.service.reativar(id, nomeResp);
+    const dados = await this.service.reativar(id, nomeResp, req?.user);
     return {
       sucesso: true,
       mensagem: 'Colaborador reativado com sucesso.',

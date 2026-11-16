@@ -117,7 +117,7 @@ export class AuthService implements OnModuleInit {
 
     const identLimpo = identificador.trim().toLowerCase();
     const res = await this.db.query(
-      `SELECT id, email, usuario, nome_completo, senha_hash, salt, perfil, status
+      `SELECT id, email, usuario, nome_completo, senha_hash, salt, perfil, status, empresa_id, filial_id, empresas_autorizadas
        FROM usuarios
        WHERE LOWER(email) = $1 OR LOWER(usuario) = $2`,
       [identLimpo, identLimpo],
@@ -212,6 +212,9 @@ export class AuthService implements OnModuleInit {
         usuario: usuario.usuario,
         nome_completo: usuario.nome_completo,
         perfil: usuario.perfil,
+        empresa_id: usuario.empresa_id,
+        filial_id: usuario.filial_id,
+        empresas_autorizadas: usuario.empresas_autorizadas,
       },
       token,
     };
@@ -223,7 +226,7 @@ export class AuthService implements OnModuleInit {
     const tokenHash = this.hashToken(token);
 
     const res = await this.db.query(
-      `SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil
+      `SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id, u.filial_id, u.empresas_autorizadas
        FROM sessoes s
        JOIN usuarios u ON u.id = s.usuario_id
        WHERE (s.token = $1 OR s.token = $3)

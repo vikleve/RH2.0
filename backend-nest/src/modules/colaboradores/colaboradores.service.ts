@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -32,6 +33,76 @@ export class ColaboradoresService {
       return `${limpo.slice(0, 3)}.***.***-${limpo.slice(9)}`;
     }
     return '***.***.***-**';
+  }
+
+  /**
+   * Determina a lista de IDs de empresa que o usuário tem autorização para operar.
+   * Retorna null quando o usuário tem permissão global (ex: administrador irrestrito).
+   * Retorna array de strings de UUIDs quando o usuário é restrito a empresas específicas.
+   */
+  obterEmpresasAutorizadas(user?: any): string[] | null {
+    if (!user) {
+      return null;
+    }
+
+    // Administrador possui acesso global por padrão, a menos que possua restrição explícita em empresas_autorizadas
+    if (user.perfil === 'administrador') {
+      if (user.empresas_autorizadas && user.empresas_autorizadas !== '*') {
+        try {
+          const parsed = JSON.parse(user.empresas_autorizadas);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((e) => String(e).trim());
+          }
+        } catch {
+          const split = user.empresas_autorizadas
+            .split(',')
+            .map((e: string) => e.trim())
+            .filter(Boolean);
+          if (split.length > 0) return split;
+        }
+      }
+      return null;
+    }
+
+    // Para analistas e operadores (usuários comuns), o escopo é estrito:
+    if (user.empresas_autorizadas && user.empresas_autorizadas !== '*') {
+      try {
+        const parsed = JSON.parse(user.empresas_autorizadas);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((e) => String(e).trim());
+        }
+      } catch {
+        const split = user.empresas_autorizadas
+          .split(',')
+          .map((e: string) => e.trim())
+          .filter(Boolean);
+        if (split.length > 0) return split;
+      }
+    }
+
+    // Usuário restrito à sua própria empresa
+    const empresaUsuario = user.empresa_id || EMPRESA_PADRAO_UUID;
+    return [empresaUsuario];
+  }
+
+  /**
+   * Valida se a empresa informada está autorizada para o usuário
+   */
+  validarAcessoEmpresa(empresaId: string, user?: any, mensagemCustomizada?: string): void {
+    const autorizadas = this.obterEmpresasAutorizadas(user);
+    if (!autorizadas) {
+      return; // Acesso global
+    }
+
+    if (!empresaId || !autorizadas.includes(empresaId)) {
+      throw new ForbiddenException({
+        sucesso: false,
+        mensagem:
+          mensagemCustomizada ||
+          'Acesso negado: empresa fora do escopo autorizado do usuário.',
+        codigo: 'EMPRESA_NAO_AUTORIZADA',
+      });
+    }
   }
 
   /**
@@ -89,6 +160,7 @@ export class ColaboradoresService {
 
   async listar(
     query: QueryColaboradorDto,
+    user?: any,
   ): Promise<{
     sucesso: boolean;
     total: number;
@@ -99,7 +171,33 @@ export class ColaboradoresService {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(query.limit) || 20));
 
-    const { colaboradores, total } = await this.repository.listarPaginado(query);
+    // Controle de escopo multiempresa (SPEC-03.1 Seção 3.1 & 3.2)
+    const autorizadas = this.obterEmpresasAutorizadas(user);
+    let empresaFiltro = query.empresaId;
+
+    if (autorizadas !== null) {
+      // Usuário com escopo restrito
+      if (empresaFiltro) {
+        // Se tentou passar empresaId por query, DEVE pertencer ao escopo autorizado
+        if (!autorizadas.includes(empresaFiltro)) {
+          throw new ForbiddenException({
+            sucesso: false,
+            mensagem: 'Acesso negado: empresa solicitada fora da sua abrangência autorizada.',
+            codigo: 'EMPRESA_NAO_AUTORIZADA',
+          });
+        }
+      } else {
+        // Se não especificou empresaId, aplica estritamente a empresa autorizada do usuário
+        empresaFiltro = autorizadas[0];
+      }
+    }
+
+    const querySegura: QueryColaboradorDto = {
+      ...query,
+      empresaId: empresaFiltro,
+    };
+
+    const { colaboradores, total } = await this.repository.listarPaginado(querySegura);
     const totalPages = Math.ceil(total / limit) || 0;
 
     const data = colaboradores.map((c) => ({
@@ -122,7 +220,7 @@ export class ColaboradoresService {
     };
   }
 
-  async obterPorId(id: number): Promise<any> {
+  async obterPorId(id: number, user?: any): Promise<any> {
     const colab = await this.repository.buscarPorId(id);
     if (!colab) {
       throw new NotFoundException({
@@ -130,6 +228,17 @@ export class ColaboradoresService {
         mensagem: `Colaborador #${id} não encontrado.`,
       });
     }
+
+    // Proteção contra IDOR (SPEC-03.1 Seção 3.3)
+    const autorizadas = this.obterEmpresasAutorizadas(user);
+    if (autorizadas !== null && !autorizadas.includes(colab.empresa_id)) {
+      // Retorna 404 para não vazar a existência de ID em outra empresa
+      throw new NotFoundException({
+        sucesso: false,
+        mensagem: `Colaborador #${id} não encontrado.`,
+      });
+    }
+
     return {
       ...colab,
       cpf_mascarado: this.mascararCpf(colab.cpf),
@@ -137,11 +246,35 @@ export class ColaboradoresService {
     };
   }
 
-  async criar(dados: CreateColaboradorDto, usuario = 'Sistema/Administrador'): Promise<any> {
+  async criar(
+    dados: CreateColaboradorDto,
+    usuario = 'Sistema/Administrador',
+    user?: any,
+  ): Promise<any> {
     this.validarCriacao(dados);
 
+    // Controle de escopo multiempresa no cadastro (SPEC-03.1 Seção 3.1 & 3.2)
+    const autorizadas = this.obterEmpresasAutorizadas(user);
+    let empresaId = dados.empresaId || dados.empresa_id;
+
+    if (autorizadas !== null) {
+      if (empresaId) {
+        if (!autorizadas.includes(empresaId)) {
+          throw new ForbiddenException({
+            sucesso: false,
+            mensagem:
+              'Acesso negado: não é permitido cadastrar colaborador para empresa fora do seu escopo autorizado.',
+            codigo: 'EMPRESA_NAO_AUTORIZADA',
+          });
+        }
+      } else {
+        empresaId = autorizadas[0];
+      }
+    } else {
+      empresaId = empresaId || EMPRESA_PADRAO_UUID;
+    }
+
     const cpfNormalizado = this.normalizarCpf(dados.cpf);
-    const empresaId = dados.empresaId || dados.empresa_id || EMPRESA_PADRAO_UUID;
     const matricula = dados.matricula.trim();
 
     // 1. Prevenção de duplicidade de CPF na mesma empresa (RF-07, Seção 4.3)
@@ -216,16 +349,33 @@ export class ColaboradoresService {
       agora,
     );
 
-    return this.obterPorId(novo.id);
+    return this.obterPorId(novo.id, user);
   }
 
   async atualizar(
     id: number,
     dados: UpdateColaboradorDto,
     usuario = 'Sistema/Administrador',
+    user?: any,
   ): Promise<any> {
-    const atual = await this.obterPorId(id);
-    const empresaId = dados.empresaId || dados.empresa_id || atual.empresa_id || EMPRESA_PADRAO_UUID;
+    // 1. Valida existência e IDOR através do escopo do usuário autenticado
+    const atual = await this.obterPorId(id, user);
+
+    // 2. Proteção contra alteração indevida de empresaId no payload (SPEC-03.1 Seção 3.1 & 3.3)
+    const payloadEmpresaId = dados.empresaId || dados.empresa_id;
+    if (payloadEmpresaId && payloadEmpresaId !== atual.empresa_id) {
+      const autorizadas = this.obterEmpresasAutorizadas(user);
+      if (autorizadas !== null) {
+        throw new ForbiddenException({
+          sucesso: false,
+          mensagem:
+            'Acesso negado: não é permitido alterar empresaId para empresa fora do escopo autorizado.',
+          codigo: 'EMPRESA_NAO_AUTORIZADA',
+        });
+      }
+    }
+
+    const empresaId = payloadEmpresaId || atual.empresa_id || EMPRESA_PADRAO_UUID;
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const camposParaAtualizar: Record<string, any> = {};
@@ -325,11 +475,12 @@ export class ColaboradoresService {
     camposParaAtualizar['atualizado_por'] = usuario;
     await this.repository.atualizar(id, camposParaAtualizar, agora);
 
-    return this.obterPorId(id);
+    return this.obterPorId(id, user);
   }
 
-  async inativar(id: number, motivo = '', usuario = 'Sistema/Administrador'): Promise<any> {
-    const atual = await this.obterPorId(id);
+  async inativar(id: number, motivo = '', usuario = 'Sistema/Administrador', user?: any): Promise<any> {
+    // 1. Valida existência e IDOR
+    const atual = await this.obterPorId(id, user);
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     await this.repository.inativar(id, usuario, agora);
@@ -344,11 +495,11 @@ export class ColaboradoresService {
       agora,
     );
 
-    return this.obterPorId(id);
+    return this.obterPorId(id, user);
   }
 
-  async reativar(id: number, usuario = 'Sistema/Administrador'): Promise<any> {
-    const atual = await this.obterPorId(id);
+  async reativar(id: number, usuario = 'Sistema/Administrador', user?: any): Promise<any> {
+    const atual = await this.obterPorId(id, user);
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     await this.repository.atualizar(id, { situacao: 'ativo', atualizado_por: usuario }, agora);
@@ -363,15 +514,17 @@ export class ColaboradoresService {
       agora,
     );
 
-    return this.obterPorId(id);
+    return this.obterPorId(id, user);
   }
 
-  async obterHistorico(id: number): Promise<any[]> {
-    await this.obterPorId(id);
+  async obterHistorico(id: number, user?: any): Promise<any[]> {
+    await this.obterPorId(id, user);
     return this.repository.buscarHistorico(id);
   }
 
-  async obterMetricas(): Promise<any> {
-    return this.repository.obterMetricas();
+  async obterMetricas(user?: any): Promise<any> {
+    const autorizadas = this.obterEmpresasAutorizadas(user);
+    const empresaId = autorizadas !== null ? autorizadas[0] : undefined;
+    return this.repository.obterMetricas(empresaId);
   }
 }
