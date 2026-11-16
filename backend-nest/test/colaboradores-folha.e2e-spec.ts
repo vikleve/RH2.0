@@ -238,8 +238,6 @@ describe('Colaboradores e Folha de Pagamento RH2.0 (NestJS E2E)', () => {
 
     expect(resCheck.body.dados.situacao).toBe('cancelada');
   });
-<<<<<<< HEAD
-=======
 
   it('11. Deve consultar o catálogo oficial de eventos da folha (GET /api/folha/eventos-catalogo)', async () => {
     const res = await request(app.getHttpServer())
@@ -306,6 +304,5 @@ describe('Colaboradores e Folha de Pagamento RH2.0 (NestJS E2E)', () => {
     // Total descontos deve incluir os 500 de adiantamento
     expect(res.body.dados.total_descontos).toBeGreaterThanOrEqual(500.0);
   });
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 });
 

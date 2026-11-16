@@ -17,10 +17,7 @@ import {
   arredondarMoeda,
   toDecimal,
 } from './folha-calculos.engine';
-<<<<<<< HEAD
-=======
 import { CATALOGO_EVENTOS_FOLHA } from './catalogo-eventos';
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -220,8 +217,6 @@ export class FolhaService {
             incide_irrf: 0,
             memoria_calculo: resAtraso.memoria,
           });
-<<<<<<< HEAD
-=======
         } else if (ev.tipo === 'provento') {
           const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
           if (vTotal.greaterThan(0)) {
@@ -310,7 +305,6 @@ export class FolhaService {
               memoria_calculo: ev.memoria_calculo || 'Lançamento avulso',
             });
           }
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         }
       }
     }
@@ -332,11 +326,6 @@ export class FolhaService {
       });
     }
 
-<<<<<<< HEAD
-    // Base legal para encargos
-    const baseInss = totalProventos;
-    const baseFgts = totalProventos;
-=======
     // Base legal para encargos (apenas proventos com incidência positiva)
     let baseInss = new Decimal('0.00');
     let baseFgts = new Decimal('0.00');
@@ -350,7 +339,6 @@ export class FolhaService {
         }
       }
     }
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
     // Cálculo INSS Progressivo
     const resInss = calcularInssProgressivo(baseInss);
@@ -490,7 +478,7 @@ export class FolhaService {
           typeof item.referencia_valor === 'number' ? item.referencia_valor : 0,
           String(item.referencia_valor || ''),
           item.valor_total,
-          'calculado',
+          item.origem ?? 'calculado',
           item.memoria_calculo,
           agora,
         ],

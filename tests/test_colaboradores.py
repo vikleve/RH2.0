@@ -159,17 +159,10 @@ class TestModuloColaboradores(unittest.TestCase):
         self.assertIn("matricula", ctx.exception.erros)
 
     # =========================================================================
-<<<<<<< HEAD
     # CA-04 / RF-002: CONSULTA E PESQUISA (NOME, MATRÍCULA, CPF, CARGO E SETOR)
     # =========================================================================
     def test_ca04_pesquisa_por_nome_cpf_matricula(self):
         """CA-04 / RF-002: Localiza colaboradores por nome, matrícula, CPF, cargo e setor."""
-=======
-    # CA-04: CONSULTA E PESQUISA
-    # =========================================================================
-    def test_ca04_pesquisa_por_nome_cpf_matricula(self):
-        """CA-04: Localiza colaboradores por nome, CPF e matrícula."""
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         self.service.cadastrar(self.dados_validos)
 
         c2_dados = dict(self.dados_validos)
@@ -181,7 +174,6 @@ class TestModuloColaboradores(unittest.TestCase):
         c2_dados["setor"] = "Tecnologia da Informação"
         c2 = self.service.cadastrar(c2_dados)
 
-<<<<<<< HEAD
         # 1. Pesquisa por Nome (termo livre e filtro específico)
         res_nome = self.service.listar(termo="Carlos")
         self.assertEqual(len(res_nome), 1)
@@ -217,22 +209,6 @@ class TestModuloColaboradores(unittest.TestCase):
         res_setor_filtro = self.service.listar(setor="Recursos Humanos")
         self.assertEqual(len(res_setor_filtro), 1)
         self.assertEqual(res_setor_filtro[0]["matricula"], "RH-1001")
-=======
-        # Pesquisa por Nome
-        res_nome = self.service.listar(termo="Carlos")
-        self.assertEqual(len(res_nome), 1)
-        self.assertEqual(res_nome[0]["matricula"], "TI-2002")
-
-        # Pesquisa por Matrícula
-        res_mat = self.service.listar(termo="RH-1001")
-        self.assertEqual(len(res_mat), 1)
-        self.assertEqual(res_mat[0]["nome_completo"], "Ana Clara Santos")
-
-        # Pesquisa por CPF limpo ou formatado
-        res_cpf = self.service.listar(termo="85328103068")
-        self.assertEqual(len(res_cpf), 1)
-        self.assertEqual(res_cpf[0]["id"], c2["id"])
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
 
     # =========================================================================
     # CA-05: EDIÇÃO DE DADOS

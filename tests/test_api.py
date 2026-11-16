@@ -133,17 +133,12 @@ class TestApiColaboradores(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(resp["total"] >= 1)
 
-<<<<<<< HEAD
         # 4. GET /api/colaboradores - Pesquisa autenticada por nome, matrícula, CPF, cargo e setor (RF-002)
-=======
-        # 4. GET /api/colaboradores?q=Mariana - Pesquisa autenticada
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=Mariana", token=token)
         self.assertEqual(status, 200)
         self.assertEqual(len(resp["dados"]), 1)
         self.assertEqual(resp["dados"][0]["id"], colab_id)
 
-<<<<<<< HEAD
         status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=RH-5001", token=token)
         self.assertEqual(status, 200)
         self.assertEqual(len(resp["dados"]), 1)
@@ -161,8 +156,6 @@ class TestApiColaboradores(unittest.TestCase):
         self.assertEqual(len(resp["dados"]), 1)
         self.assertEqual(resp["dados"][0]["id"], colab_id)
 
-=======
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
         # 5. PUT /api/colaboradores/<id> - Edição autenticada
         payload_edit = dict(payload)
         payload_edit["cargo"] = "Gerente de Departamento Pessoal"

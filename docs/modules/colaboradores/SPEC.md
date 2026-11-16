@@ -66,7 +66,6 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_id ON usuarios(empresa_id);
 
 ---
 
-<<<<<<< HEAD
 ## 4. Integração Frontend e Backend e Requisitos Detalhados
 
 ### 4.1 RF-002 — Pesquisa de Colaboradores (Módulo 01 — Gestão de Colaboradores)
@@ -83,9 +82,3 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_id ON usuarios(empresa_id);
 ### 4.2 Arquitetura das Camadas
 - **Frontend React + TypeScript & Frontend Vanilla JS**: Componentes tipados, barra de pesquisa unificada por nome, matrícula, CPF, cargo e setor, filtros dedicados por cargo e setor, modais segregados em 4 seções (Dados Pessoais, Contato & Endereço, Vínculo Contratual, Dependentes), máscara de CPF na interface e nas listagens, confirmação explícita de inativação lógica.
 - **Backend Python & Backend NestJS**: Camada controladora protegida por autenticação e CSRF, serviços de domínio e repositório parametrizado com proteção contra SQL Injection.
-=======
-## 4. Integração Frontend e Backend
-
-- **Frontend React + TypeScript**: Componentes tipados, modais segregados em 4 seções (Dados Pessoais, Contato & Endereço, Vínculo Contratual, Dependentes), máscara de CPF na interface e nas listagens, confirmação explícita de inativação lógica.
-- **Backend NestJS**: Camada controladora protegida por `SessionGuard`, `CsrfGuard` e `RolesGuard`, serviços de domínio com injeção de dependência e repositório parametrizado com proteção contra SQL Injection.
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8

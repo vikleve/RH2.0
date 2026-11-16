@@ -11,7 +11,6 @@ export const colaboradoresApi = {
     page?: number;
     limit?: number;
     search?: string;
-<<<<<<< HEAD
     nome?: string;
     matricula?: string;
     cpf?: string;
@@ -19,17 +18,12 @@ export const colaboradoresApi = {
     departamentoId?: string;
     setor?: string;
     cargo?: string;
-=======
-    situacao?: string;
-    departamentoId?: string;
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     filialId?: string;
   }): Promise<ColaboradoresListResponse> {
     const params = new URLSearchParams();
     if (filtros.page) params.append('page', String(filtros.page));
     if (filtros.limit) params.append('limit', String(filtros.limit));
     if (filtros.search) params.append('search', filtros.search);
-<<<<<<< HEAD
     if (filtros.nome) params.append('nome', filtros.nome);
     if (filtros.matricula) params.append('matricula', filtros.matricula);
     if (filtros.cpf) params.append('cpf', filtros.cpf);
@@ -37,10 +31,6 @@ export const colaboradoresApi = {
     if (filtros.departamentoId) params.append('departamentoId', filtros.departamentoId);
     if (filtros.setor) params.append('setor', filtros.setor);
     if (filtros.cargo) params.append('cargo', filtros.cargo);
-=======
-    if (filtros.situacao) params.append('situacao', filtros.situacao);
-    if (filtros.departamentoId) params.append('departamentoId', filtros.departamentoId);
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
     if (filtros.filialId) params.append('filialId', filtros.filialId);
 
     const res = await fetch(`${API_BASE}?${params.toString()}`, {

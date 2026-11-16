@@ -279,7 +279,6 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
-<<<<<<< HEAD
             termo = (query.get("q") or query.get("search") or [None])[0]
             situacao = query.get("situacao", [None])[0]
             setor = (query.get("setor") or query.get("departamentoId") or [None])[0]
@@ -296,12 +295,6 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 matricula=matricula,
                 cpf=cpf,
             )
-=======
-            termo = query.get("q", [None])[0]
-            situacao = query.get("situacao", [None])[0]
-            setor = query.get("setor", [None])[0]
-            colabs = self.service.listar(termo=termo, situacao=situacao, setor=setor)
->>>>>>> bb3d88436cf3fade853898912a2ca4504d021ed8
             return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
 
         # Rota protegida: Obter colaborador GET /api/colaboradores/<id>
