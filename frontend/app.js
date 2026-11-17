@@ -536,208 +536,7 @@ const DadosService = {
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao reativar colaborador');
       return data.dados;
     }
-<<<<<<< HEAD
     throw new Error(MSG_API_INDISPONIVEL);
-=======
-    return this._reativarLocal(id);
-  },
-
-  // Implementação Local Segura (Sem seed para visitantes anônimos)
-  _getStorage() {
-    const raw = localStorage.getItem('DP_COLABORADORES');
-    if (!raw) return [];
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  },
-
-  _saveStorage(lista) {
-    localStorage.setItem('DP_COLABORADORES', JSON.stringify(lista));
-  },
-
-  _listarLocal(filtros) {
-    let lista = this._getStorage();
-    if (filtros.situacao && filtros.situacao !== 'todos') {
-      lista = lista.filter(c => c.situacao === filtros.situacao);
-    }
-    if (filtros.nome) {
-      const nm = filtros.nome.toLowerCase().trim();
-      lista = lista.filter(c => (c.nome_completo || '').toLowerCase().includes(nm));
-    }
-    if (filtros.matricula) {
-      const mt = filtros.matricula.toLowerCase().trim();
-      lista = lista.filter(c => (c.matricula || '').toLowerCase().includes(mt));
-    }
-    if (filtros.cpf) {
-      const cpfRaw = filtros.cpf.trim();
-      const cpfDig = normalizarCpf(cpfRaw);
-      lista = lista.filter(c =>
-        (c.cpf || '').includes(cpfRaw) ||
-        (cpfDig && normalizarCpf(c.cpf).includes(cpfDig))
-      );
-    }
-    if (filtros.setor) {
-      const s = filtros.setor.toLowerCase().trim();
-      lista = lista.filter(c => (c.setor || '').toLowerCase().includes(s));
-    }
-    if (filtros.cargo) {
-      const cg = filtros.cargo.toLowerCase().trim();
-      lista = lista.filter(c => (c.cargo || '').toLowerCase().includes(cg));
-    }
-    if (filtros.termo) {
-      const t = filtros.termo.toLowerCase().trim();
-      const cpfLimpo = normalizarCpf(t);
-      lista = lista.filter(c =>
-        (c.nome_completo || '').toLowerCase().includes(t) ||
-        (c.matricula || '').toLowerCase().includes(t) ||
-        (c.cpf || '').includes(t) ||
-        (cpfLimpo && normalizarCpf(c.cpf).includes(cpfLimpo)) ||
-        (c.cargo || '').toLowerCase().includes(t) ||
-        (c.setor || '').toLowerCase().includes(t)
-      );
-    }
-    return lista;
-  },
-
-  _obterLocal(id) {
-    const item = this._getStorage().find(c => c.id === parseInt(id, 10));
-    if (!item) throw new Error('Colaborador não encontrado.');
-    return item;
-  },
-
-  _cadastrarLocal(dados) {
-    const lista = this._getStorage();
-    const novoId = lista.length > 0 ? Math.max(...lista.map(c => c.id)) + 1 : 1;
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    const novo = {
-      ...dados,
-      id: novoId,
-      total_dependentes: (dados.dependentes || []).length,
-      historico: [
-        {
-          id: 1,
-          data_hora: agora,
-          campo_alterado: 'Criação de Cadastro',
-          valor_anterior: null,
-          valor_novo: `Colaborador ${dados.nome_completo} cadastrado com matrícula ${dados.matricula}.`,
-          usuario_responsavel: 'Administrador (RH/GTI)'
-        }
-      ]
-    };
-    lista.push(novo);
-    this._saveStorage(lista);
-    return novo;
-  },
-
-  _atualizarLocal(id, dados) {
-    const lista = this._getStorage();
-    const idx = lista.findIndex(c => c.id === parseInt(id, 10));
-    if (idx === -1) throw new Error('Colaborador não encontrado');
-
-    const antigo = lista[idx];
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const historico = antigo.historico || [];
-    const justificativa = (dados.justificativa || '').trim();
-    const responsavel = justificativa
-      ? `Administrador (RH/GTI) (Justificativa: ${justificativa})`
-      : 'Administrador (RH/GTI)';
-
-    const camposMonitorados = [
-      ['nome_completo', 'Nome Completo'],
-      ['cpf', 'CPF'],
-      ['rg', 'RG'],
-      ['data_nascimento', 'Data de Nascimento'],
-      ['telefone', 'Telefone'],
-      ['email', 'E-mail'],
-      ['logradouro', 'Logradouro'],
-      ['numero', 'Numero'],
-      ['bairro', 'Bairro'],
-      ['cidade', 'Cidade'],
-      ['uf', 'UF'],
-      ['cep', 'CEP'],
-      ['matricula', 'Matricula'],
-      ['data_admissao', 'Data de Admissao'],
-      ['cargo', 'Cargo'],
-      ['setor', 'Setor'],
-      ['situacao', 'Situação do Vínculo']
-    ];
-
-    camposMonitorados.forEach(([chave, rotulo]) => {
-      if (dados[chave] !== undefined && String(antigo[chave] || '').trim() !== String(dados[chave] || '').trim()) {
-        historico.unshift({
-          id: historico.length + 1,
-          data_hora: agora,
-          campo_alterado: rotulo,
-          valor_anterior: String(antigo[chave] || ''),
-          valor_novo: String(dados[chave] || ''),
-          usuario_responsavel: responsavel
-        });
-      }
-    });
-
-    if (dados.salario_base !== undefined && antigo.salario_base !== dados.salario_base) {
-      historico.unshift({
-        id: historico.length + 1,
-        data_hora: agora,
-        campo_alterado: 'Salário-base',
-        valor_anterior: formatarMoeda(antigo.salario_base),
-        valor_novo: formatarMoeda(dados.salario_base),
-        usuario_responsavel: responsavel
-      });
-    }
-
-    const atualizado = {
-      ...antigo,
-      ...dados,
-      id: antigo.id,
-      total_dependentes: (dados.dependentes || []).length,
-      historico
-    };
-    lista[idx] = atualizado;
-    this._saveStorage(lista);
-    return atualizado;
-  },
-
-  _inativarLocal(id, motivo) {
-    const lista = this._getStorage();
-    const colab = lista.find(c => c.id === parseInt(id, 10));
-    if (!colab) throw new Error('Colaborador não encontrado');
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    colab.situacao = 'inativo';
-    colab.historico = colab.historico || [];
-    colab.historico.unshift({
-      id: colab.historico.length + 1,
-      data_hora: agora,
-      campo_alterado: 'Situação do Vínculo',
-      valor_anterior: 'ativo',
-      valor_novo: `inativo (Motivo: ${motivo || 'Não informado'})`,
-      usuario_responsavel: 'Administrador (RH/GTI)'
-    });
-    this._saveStorage(lista);
-    return colab;
-  },
-
-  _reativarLocal(id) {
-    const lista = this._getStorage();
-    const colab = lista.find(c => c.id === parseInt(id, 10));
-    if (!colab) throw new Error('Colaborador não encontrado');
-    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    colab.situacao = 'ativo';
-    colab.historico = colab.historico || [];
-    colab.historico.unshift({
-      id: colab.historico.length + 1,
-      data_hora: agora,
-      campo_alterado: 'Situação do Vínculo',
-      valor_anterior: 'inativo',
-      valor_novo: 'ativo',
-      usuario_responsavel: 'Administrador (RH/GTI)'
-    });
-    this._saveStorage(lista);
-    return colab;
->>>>>>> 0a88d5b (Atualizacoes do sistema RH2.0)
   }
 };
 
@@ -1399,14 +1198,36 @@ const FolhaManager = {
         credentials: 'include'
       });
       const json = await resp.json();
-      if (resp.ok && json.sucesso && Array.isArray(json.dados)) {
+      if (resp.ok && json.sucesso && Array.isArray(json.dados) && json.dados.length > 0) {
         this.catalogoEventos = json.dados;
-      } else {
-        exibirToast('Não foi possível carregar a lista de eventos da folha.', 'warning');
+        return;
       }
     } catch (e) {
-      console.error('Erro ao carregar catálogo de eventos:', e);
-      exibirToast('Não foi possível carregar a lista de eventos da folha.', 'warning');
+      console.warn('Erro ao carregar catálogo de eventos do backend:', e);
+    }
+
+    if (this.catalogoEventos.length === 0) {
+      this.catalogoEventos = [
+        { codigo: '0010', evento: 'Horas extras 50%', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0011', evento: 'Horas extras 100%', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0012', evento: 'DSR sobre horas extras', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0020', evento: 'Adicional noturno', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0030', evento: 'Adicional de insalubridade', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0031', evento: 'Adicional de periculosidade', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0040', evento: 'Gratificação de função / cargo de confiança', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0050', evento: 'Comissões', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0060', evento: 'Prêmios / bônus habituais', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1 },
+        { codigo: '0075', evento: 'Abono / benefício indenizatório', tipo: 'provento', categoria: 'Proventos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0510', evento: 'Vale-transporte (até 6% do salário base)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0511', evento: 'Vale-alimentação / refeição (coparticipação)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0512', evento: 'Plano de saúde (coparticipação / mensalidade)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0514', evento: 'Seguro de vida', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0520', evento: 'Adiantamento salarial', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0530', evento: 'Faltas injustificadas', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0532', evento: 'Atrasos / saídas antecipadas', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0540', evento: 'Pensão alimentícia (salário)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 },
+        { codigo: '0545', evento: 'Empréstimo consignado', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0 }
+      ];
     }
   },
 
@@ -1439,22 +1260,30 @@ const FolhaManager = {
       });
       if (resp.ok) {
         const json = await resp.json();
-        if (json.sucesso && json.dados) {
+        if (json.sucesso && Array.isArray(json.dados) && json.dados.length > 0) {
           this.colaboradoresElegiveis = json.dados;
-          const select = document.getElementById('folha-campo-colaborador');
-          if (select) {
-            select.innerHTML = '<option value="">Selecione um colaborador ativo...</option>';
-            this.colaboradoresElegiveis.forEach(c => {
-              const opt = document.createElement('option');
-              opt.value = c.id;
-              opt.textContent = `${c.matricula} — ${c.nome_completo} (${c.cargo})`;
-              select.appendChild(opt);
-            });
-          }
         }
       }
     } catch (e) {
       console.error('Erro ao carregar colaboradores elegíveis:', e);
+    }
+
+    if (!this.colaboradoresElegiveis || this.colaboradoresElegiveis.length === 0) {
+      const ativos = (Estado.colaboradores || []).filter(c => c.situacao === 'ativo');
+      if (ativos.length > 0) {
+        this.colaboradoresElegiveis = ativos;
+      }
+    }
+
+    const select = document.getElementById('folha-campo-colaborador');
+    if (select) {
+      select.innerHTML = '<option value="">Selecione um colaborador ativo...</option>';
+      (this.colaboradoresElegiveis || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.matricula} — ${c.nome_completo} (${c.cargo || 'Geral'})`;
+        select.appendChild(opt);
+      });
     }
   },
 
@@ -2145,6 +1974,14 @@ const FolhaManager = {
 
       exibirToast(folhaId ? 'Folha recalculada com sucesso!' : 'Folha de pagamento gerada com sucesso!', 'success');
       document.getElementById('modal-folha-form').classList.add('hidden');
+
+      // Sincroniza o filtro com a competência da folha salva para que ela apareça na tabela imediatamente
+      if (payload.competencia) {
+        this.filtros.competencia = payload.competencia;
+        const inputComp = document.getElementById('filtro-folha-competencia');
+        if (inputComp) inputComp.value = payload.competencia;
+      }
+
       await this.carregarFolhas();
       // Abre o demonstrativo detalhado imediatamente para conferência
       if (resJson.dados && resJson.dados.id) {

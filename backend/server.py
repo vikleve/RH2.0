@@ -330,6 +330,21 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except RecursoNaoEncontradoException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
+        # Rota protegida: Catálogo de eventos da folha GET /api/folha/eventos-catalogo
+        if path == "/api/folha/eventos-catalogo":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            try:
+                from .catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+            except ImportError:
+                from backend.catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+            return self._enviar_json(200, {
+                "sucesso": True,
+                "total": len(CATALOGO_EVENTOS_FOLHA),
+                "dados": CATALOGO_EVENTOS_FOLHA
+            })
+
         # Rota protegida: Parâmetros de cálculo GET /api/folha/parametros
         if path == "/api/folha/parametros":
             usuario = self._exigir_autenticacao()
