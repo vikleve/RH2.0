@@ -81,7 +81,8 @@ class handler(BaseHTTPRequestHandler):
             })
 
         try:
-            usuario, token = _get_auth().autenticar(identificador, senha)
+            ip_origem = (self.headers.get("X-Forwarded-For") or "127.0.0.1").split(",")[0].strip()
+            usuario, token = _get_auth().autenticar(identificador, senha, ip_origem=ip_origem)
             return self._enviar_json(200, {
                 "sucesso": True,
                 "mensagem": "Autenticacao realizada com sucesso.",

@@ -77,7 +77,8 @@ class handler(BaseHTTPRequestHandler):
         token = self._extrair_token()
         if token:
             try:
-                _get_auth().encerrar_sessao(token)
+                ip_origem = (self.headers.get("X-Forwarded-For") or "127.0.0.1").split(",")[0].strip()
+                _get_auth().encerrar_sessao(token, ip_origem=ip_origem)
             except Exception:
                 pass
         self._enviar_json(200, {
