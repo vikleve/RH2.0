@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from backend import database as db  # noqa: E402
 
-_VARS = ["DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "POSTGRES_URL_NON_POOLING",
+_VARS = ["DATABASE_URL", "NEON_DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "POSTGRES_URL_NON_POOLING",
          "PGHOST", "PGDATABASE", "VERCEL", "VERCEL_ENV", "APP_ENV", "ENVIRONMENT", "NODE_ENV", "ENV"]
 
 
@@ -98,6 +98,59 @@ class TestConfiguracaoBanco(unittest.TestCase):
             st = db.status_banco(caminho)
         self.assertEqual(st["banco"], "sqlite")
         self.assertTrue(st["conectado"])
+
+    def test_neon_database_url_reconhecida_com_provedor_e_pooling(self):
+        url_neon = "postgresql://neondb_owner:npg_secretPass123@ep-cool-fog-123456-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require"
+        with _env(VERCEL="1", DATABASE_URL=url_neon):
+            self.assertTrue(db._usar_postgres())
+            self.assertEqual(db.get_database_url(), url_neon)
+
+            fake_conn = mock.MagicMock()
+            fake_cursor = mock.MagicMock()
+            fake_cursor.fetchone.return_value = [1]
+            fake_conn.cursor.return_value = fake_cursor
+
+            fake = types.ModuleType("psycopg2")
+            fake.OperationalError = type("OperationalError", (Exception,), {})
+            fake.InterfaceError = type("InterfaceError", (Exception,), {})
+            fake.connect = lambda dsn: fake_conn
+
+            with mock.patch.dict(sys.modules, {"psycopg2": fake}):
+                st = db.status_banco()
+            self.assertEqual(st["banco"], "postgresql")
+            self.assertEqual(st["provedor"], "neon")
+            self.assertTrue(st["pooled"])
+            self.assertTrue(st["conectado"])
+            self.assertTrue(st["producao"])
+
+    def test_neon_database_url_variavel_alternativa(self):
+        url_neon = "postgresql://neondb_owner:pass@ep-shiny-dew-654321-pooler.us-east-1.aws.neon.tech/neondb"
+        with _env(VERCEL="1", NEON_DATABASE_URL=url_neon):
+            self.assertTrue(db._usar_postgres())
+            self.assertEqual(db.get_database_url(), url_neon)
+
+    def test_neon_falha_de_conexao_nao_vaza_credenciais_nem_host(self):
+        senha_neon = "SuperSecretNeonPass#2026"
+        host_neon = "ep-cool-fog-123456-pooler.us-east-2.aws.neon.tech"
+
+        class FakeOperationalError(Exception):
+            pass
+
+        fake = types.ModuleType("psycopg2")
+        fake.OperationalError = FakeOperationalError
+        fake.InterfaceError = type("InterfaceError", (Exception,), {})
+
+        def _connect(dsn):
+            raise FakeOperationalError(f"connection to server at '{host_neon}' failed: timeout with password {senha_neon}")
+
+        fake.connect = _connect
+        with _env(VERCEL="1", DATABASE_URL=f"postgresql://neondb_owner:{senha_neon}@{host_neon}/neondb?sslmode=require"):
+            with mock.patch.dict(sys.modules, {"psycopg2": fake}):
+                with self.assertRaises(db.DatabaseUnavailableError) as ctx:
+                    db.get_connection()
+        self.assertNotIn(senha_neon, str(ctx.exception))
+        self.assertNotIn("neon.tech", str(ctx.exception))
+        self.assertNotIn(host_neon, str(ctx.exception))
 
 
 if __name__ == "__main__":

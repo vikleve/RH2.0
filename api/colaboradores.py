@@ -198,7 +198,7 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -291,7 +291,7 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         # /api/colaboradores/<id>/inativar  ou  /api/colaboradores/<id>/reativar
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():

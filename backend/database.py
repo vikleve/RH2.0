@@ -83,6 +83,7 @@ def get_database_url() -> str:
     """
     url = (
         os.environ.get("DATABASE_URL")
+        or os.environ.get("NEON_DATABASE_URL")
         or os.environ.get("POSTGRES_URL")
         or os.environ.get("POSTGRES_PRISMA_URL")
         or os.environ.get("POSTGRES_URL_NON_POOLING")
@@ -142,7 +143,7 @@ def _get_pg_conn():
         dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
 
     if "connect_timeout=" not in dsn:
-        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "10")
+        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "15")
 
     try:
         return psycopg2.connect(dsn)
@@ -529,6 +530,31 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         except Exception:
             pass
 
+    # Colunas complementares idempotentes de schema para PostgreSQL (SPEC-03 e SPEC-03.1)
+    if pg:
+        colunas_extras = [
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS filial_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS departamento_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS cargo_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS sexo TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS estado_civil TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS celular TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS complemento TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS observacoes TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS criado_por TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS atualizado_por TEXT;",
+            "ALTER TABLE colaboradores ALTER COLUMN data_admissao DROP NOT NULL;",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS filial_id TEXT;",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresas_autorizadas TEXT;",
+        ]
+        for col_sql in colunas_extras:
+            try:
+                cursor.execute(col_sql)
+            except Exception:
+                pass
+
     # Provisiona parâmetro padrão de cálculo caso não exista
     try:
         p_mark = "%s" if pg else "?"
@@ -620,7 +646,22 @@ def status_banco(db_path: str = None) -> dict:
         cur.fetchone()
     finally:
         conn.close()
-    return {"banco": "postgresql" if pg else "sqlite", "conectado": True, "producao": em_producao()}
+
+    info = {
+        "banco": "postgresql" if pg else "sqlite",
+        "conectado": True,
+        "producao": em_producao(),
+    }
+    if pg:
+        url = get_database_url().lower()
+        if "neon.tech" in url:
+            info["provedor"] = "neon"
+        elif "supabase" in url:
+            info["provedor"] = "supabase"
+        else:
+            info["provedor"] = "postgresql"
+        info["pooled"] = "-pooler" in url or "pooler" in url or "6543" in url
+    return info
 
 
 def ph(db_path: str = None) -> str:

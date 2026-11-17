@@ -759,7 +759,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+                return self._enviar_json(*erro_http(e))
 
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
             usuario_auth = self._exigir_autenticacao()
