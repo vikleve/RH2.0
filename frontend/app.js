@@ -1603,7 +1603,7 @@ const FolhaManager = {
         else if (it.origem !== 'manual' && it.codigo_evento === '102') noturno = refNumerica(it);
         else if (it.origem !== 'manual' && it.codigo_evento === '201') faltas = refNumerica(it);
         else if (it.origem !== 'manual' && it.codigo_evento === '202') atrasos = refNumerica(it);
-        else if (it.origem === 'manual' && it.tipo !== 'informativo') {
+        else if (it.origem === 'manual') {
           this.rubricasManuais.push({
             tipo: it.tipo,
             codigo: this.catalogoEventos.some(c => c.codigo === it.codigo_evento) ? it.codigo_evento : '__outro',
@@ -1746,6 +1746,7 @@ const FolhaManager = {
           <select class="form-control select-control rub-tipo" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.25rem;">
             <option value="provento" ${rub.tipo === 'provento' ? 'selected' : ''}>Provento (+)</option>
             <option value="desconto" ${rub.tipo === 'desconto' ? 'selected' : ''}>Desconto (-)</option>
+            <option value="informativo" ${rub.tipo === 'informativo' ? 'selected' : ''}>Informativo (não altera o líquido)</option>
           </select>
         </td>
         <td>
@@ -1881,7 +1882,8 @@ const FolhaManager = {
 
     this.rubricasManuais.forEach(r => {
       if (r.tipo === 'provento') totProventos += Number(r.valor_total || 0);
-      else totDescontos += Number(r.valor_total || 0);
+      else if (r.tipo === 'desconto') totDescontos += Number(r.valor_total || 0);
+      // informativo: apenas registro (bases/encargos), não entra nos totais
     });
 
     // Estimativa de INSS básico para prévia rápida no cliente
