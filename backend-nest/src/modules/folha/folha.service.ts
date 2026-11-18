@@ -6,23 +6,76 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import {
-  calcularHorasExtras,
-  calcularAdicionalNoturno,
-  calcularDescontoFaltas,
-  calcularDescontoAtrasos,
-  calcularDsrSobreVariaveis,
-  calcularInssProgressivo,
-  calcularIrrfProgressivo,
-  calcularFgtsInformativo,
-  arredondarMoeda,
-  toDecimal,
+  processarCalculoCompletoFolha,
+  ResultadoCalculoFolha,
 } from './folha-calculos.engine';
-import { CATALOGO_EVENTOS_FOLHA } from './catalogo-eventos';
-import { Decimal } from 'decimal.js';
 
 @Injectable()
 export class FolhaService {
   constructor(private readonly db: DatabaseService) {}
+
+  private normalizarValoresFolha(folha: any): any {
+    if (!folha) return folha;
+    return {
+      ...folha,
+      dias_trabalhados: Number(folha.dias_trabalhados || 0),
+      dias_mes: Number(folha.dias_mes || 30),
+      horas_mensais_divisor: Number(folha.horas_mensais_divisor || 220),
+      salario_base_contratual: Number(folha.salario_base_contratual || 0),
+      salario_base_proporcional: Number(folha.salario_base_proporcional || 0),
+      total_proventos: Number(folha.total_proventos || 0),
+      total_descontos: Number(folha.total_descontos || 0),
+      salario_liquido: Number(folha.salario_liquido || 0),
+      base_inss: Number(folha.base_inss || 0),
+      base_fgts: Number(folha.base_fgts || 0),
+      valor_fgts_informativo: Number(folha.valor_fgts_informativo || 0),
+      base_irrf: Number(folha.base_irrf || 0),
+      itens: (folha.itens || []).map((it: any) => ({
+        ...it,
+        referencia: Number(it.referencia || 0),
+        valor_unitario: Number(it.valor_unitario || 0),
+        valor_total: Number(it.valor_total || 0),
+      })),
+    };
+  }
+
+  async simularFolha(dados: any): Promise<ResultadoCalculoFolha> {
+    if (!dados.colaborador_id) {
+      throw new BadRequestException({
+        sucesso: false,
+        mensagem: 'O colaborador é obrigatório para a simulação da folha.',
+      });
+    }
+
+    const colabRes = await this.db.query(
+      `SELECT * FROM colaboradores WHERE id = $1`,
+      [dados.colaborador_id],
+    );
+    if (colabRes.rows.length === 0) {
+      throw new NotFoundException({
+        sucesso: false,
+        mensagem: 'Colaborador não encontrado para simulação.',
+      });
+    }
+    const colab = colabRes.rows[0];
+
+    const depRes = await this.db.query(
+      `SELECT COUNT(*) as total FROM dependentes WHERE colaborador_id = $1`,
+      [dados.colaborador_id],
+    );
+    const numDependentes = parseInt(depRes.rows[0]?.total || '0', 10);
+
+    const resultado = processarCalculoCompletoFolha({
+      salario_base: dados.salario_base || colab.salario_base,
+      dias_trabalhados: dados.dias_trabalhados ?? 30,
+      dias_mes: dados.dias_mes ? parseInt(dados.dias_mes, 10) : 30,
+      horas_divisor: dados.horas_divisor ? parseFloat(dados.horas_divisor) : (colab.horas_divisor || 220),
+      numero_dependentes: numDependentes,
+      eventos: dados.eventos || [],
+    });
+
+    return resultado;
+  }
 
   async listarFolhas(filtros: {
     competencia?: string;
@@ -30,47 +83,50 @@ export class FolhaService {
     situacao?: string;
     setor?: string;
     termo?: string;
-  }): Promise<any[]> {
+  } = {}): Promise<any[]> {
     let sql = `
-      SELECT f.*, c.nome_completo as colaborador_nome, c.matricula as colaborador_matricula, c.cargo as colaborador_cargo, c.setor as colaborador_setor
+      SELECT f.*, c.nome_completo as colaborador_nome, c.cpf as colaborador_cpf,
+             c.matricula as colaborador_matricula, c.cargo as colaborador_cargo,
+             c.setor as colaborador_setor
       FROM folhas_pagamento f
       JOIN colaboradores c ON c.id = f.colaborador_id
       WHERE 1=1
     `;
     const params: any[] = [];
+    let idx = 1;
 
     if (filtros.competencia) {
+      sql += ` AND f.competencia = $${idx++}`;
       params.push(filtros.competencia);
-      sql += ` AND f.competencia = $${params.length}`;
     }
     if (filtros.colaboradorId) {
+      sql += ` AND f.colaborador_id = $${idx++}`;
       params.push(filtros.colaboradorId);
-      sql += ` AND f.colaborador_id = $${params.length}`;
     }
-    if (filtros.situacao && filtros.situacao !== 'todas') {
+    if (filtros.situacao && filtros.situacao !== 'todos') {
+      sql += ` AND f.situacao = $${idx++}`;
       params.push(filtros.situacao);
-      sql += ` AND f.situacao = $${params.length}`;
     }
     if (filtros.setor) {
+      sql += ` AND c.setor = $${idx++}`;
       params.push(filtros.setor);
-      sql += ` AND c.setor = $${params.length}`;
     }
     if (filtros.termo) {
+      sql += ` AND (c.nome_completo ILIKE $${idx} OR c.cpf ILIKE $${idx} OR c.matricula ILIKE $${idx})`;
       params.push(`%${filtros.termo}%`);
-      const p = `$${params.length}`;
-      sql += ` AND (LOWER(c.nome_completo) LIKE LOWER(${p}) OR LOWER(c.matricula) LIKE LOWER(${p}))`;
+      idx++;
     }
 
-    sql += ` ORDER BY f.id DESC`;
+    sql += ` ORDER BY f.competencia DESC, c.nome_completo ASC`;
     const res = await this.db.query(sql, params);
-    return res.rows;
+    return res.rows.map((r) => this.normalizarValoresFolha(r));
   }
 
   async obterFolhaPorId(id: number): Promise<any> {
     const res = await this.db.query(
       `SELECT f.*, c.nome_completo as colaborador_nome, c.cpf as colaborador_cpf,
               c.matricula as colaborador_matricula, c.cargo as colaborador_cargo,
-              c.setor as colaborador_setor, c.data_admissao as colaborador_admissao
+              c.setor as colaborador_setor, c.data_admissao as colaborador_data_admissao
        FROM folhas_pagamento f
        JOIN colaboradores c ON c.id = f.colaborador_id
        WHERE f.id = $1`,
@@ -97,7 +153,7 @@ export class FolhaService {
     );
     folha.historico = histRes.rows;
 
-    return folha;
+    return this.normalizarValoresFolha(folha);
   }
 
   async criarOuAtualizarFolha(dados: any, usuario = 'Sistema/Administrador'): Promise<any> {
@@ -114,378 +170,189 @@ export class FolhaService {
       `SELECT COUNT(*) as total FROM dependentes WHERE colaborador_id = $1`,
       [dados.colaborador_id],
     );
-    const numDependentes = parseInt(depRes.rows[0]?.total || 0, 10);
+    const numDependentes = parseInt(depRes.rows[0]?.total || '0', 10);
 
-    const salarioContratual = toDecimal(dados.salario_base || colab.salario_base);
-    const diasTrabalhados = toDecimal(dados.dias_trabalhados ?? 30);
-    const diasMes = parseInt(dados.dias_mes ?? 30, 10);
-    const horasDivisor = parseFloat(dados.horas_divisor ?? colab.horas_divisor ?? 220);
-
-    // Salário base proporcional
-    const salarioProporcional = arredondarMoeda(
-      salarioContratual.dividedBy(diasMes).times(diasTrabalhados),
-    );
-
-    let totalProventos = new Decimal(salarioProporcional);
-    let totalDescontos = new Decimal('0.00');
-    const itensCalculados: any[] = [];
-
-    // Item 1: Salário Base
-    itensCalculados.push({
-      codigo_rubrica: '001',
-      descricao_rubrica: 'Salário Base (Proporcional)',
-      tipo_rubrica: 'provento',
-      referencia_valor: `${diasTrabalhados} dias`,
-      valor_unitario: salarioContratual.toNumber(),
-      valor_total: salarioProporcional.toNumber(),
-      incide_inss: 1,
-      incide_fgts: 1,
-      incide_irrf: 1,
-      memoria_calculo: `(${salarioContratual} / ${diasMes}) * ${diasTrabalhados}`,
+    const calc = processarCalculoCompletoFolha({
+      salario_base: dados.salario_base || colab.salario_base,
+      dias_trabalhados: dados.dias_trabalhados ?? 30,
+      dias_mes: dados.dias_mes ? parseInt(dados.dias_mes, 10) : 30,
+      horas_divisor: dados.horas_divisor ? parseFloat(dados.horas_divisor) : (colab.horas_divisor || 220),
+      numero_dependentes: numDependentes,
+      eventos: dados.eventos || [],
     });
-
-    // Processa eventos adicionais
-    let totalVariaveis = new Decimal('0.00');
-    if (Array.isArray(dados.eventos)) {
-      for (const ev of dados.eventos) {
-        if (ev.tipo === 'hora_extra') {
-          const resHe = calcularHorasExtras(
-            salarioContratual,
-            horasDivisor,
-            ev.quantidade,
-            ev.percentual || 50,
-          );
-          totalProventos = totalProventos.plus(resHe.valor);
-          totalVariaveis = totalVariaveis.plus(resHe.valor);
-          itensCalculados.push({
-            codigo_rubrica: '101',
-            descricao_rubrica: `Horas Extras (${ev.percentual || 50}%)`,
-            tipo_rubrica: 'provento',
-            referencia_valor: `${ev.quantidade}h`,
-            valor_total: resHe.valor.toNumber(),
-            incide_inss: 1,
-            incide_fgts: 1,
-            incide_irrf: 1,
-            memoria_calculo: resHe.memoria,
-          });
-        } else if (ev.tipo === 'adicional_noturno') {
-          const resNot = calcularAdicionalNoturno(
-            salarioContratual,
-            horasDivisor,
-            ev.quantidade,
-            ev.percentual || 20,
-            ev.reducao_ficta || false,
-          );
-          totalProventos = totalProventos.plus(resNot.valor);
-          totalVariaveis = totalVariaveis.plus(resNot.valor);
-          itensCalculados.push({
-            codigo_rubrica: '102',
-            descricao_rubrica: 'Adicional Noturno',
-            tipo_rubrica: 'provento',
-            referencia_valor: `${ev.quantidade}h`,
-            valor_total: resNot.valor.toNumber(),
-            incide_inss: 1,
-            incide_fgts: 1,
-            incide_irrf: 1,
-            memoria_calculo: resNot.memoria,
-          });
-        } else if (ev.tipo === 'falta') {
-          const resFalta = calcularDescontoFaltas(salarioContratual, ev.quantidade, diasMes);
-          totalDescontos = totalDescontos.plus(resFalta.valor);
-          itensCalculados.push({
-            codigo_rubrica: '201',
-            descricao_rubrica: 'Faltas Integrais',
-            tipo_rubrica: 'desconto',
-            referencia_valor: `${ev.quantidade}d`,
-            valor_total: resFalta.valor.toNumber(),
-            incide_inss: 0,
-            incide_fgts: 0,
-            incide_irrf: 0,
-            memoria_calculo: resFalta.memoria,
-          });
-        } else if (ev.tipo === 'atraso') {
-          const resAtraso = calcularDescontoAtrasos(salarioContratual, horasDivisor, ev.quantidade);
-          totalDescontos = totalDescontos.plus(resAtraso.valor);
-          itensCalculados.push({
-            codigo_rubrica: '202',
-            descricao_rubrica: 'Horas de Atraso',
-            tipo_rubrica: 'desconto',
-            referencia_valor: `${ev.quantidade}h`,
-            valor_total: resAtraso.valor.toNumber(),
-            incide_inss: 0,
-            incide_fgts: 0,
-            incide_irrf: 0,
-            memoria_calculo: resAtraso.memoria,
-          });
-        } else if (ev.tipo === 'provento') {
-          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
-          if (vTotal.greaterThan(0)) {
-            totalProventos = totalProventos.plus(vTotal);
-            const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
-            itensCalculados.push({
-              codigo_rubrica: String(ev.codigo || '0075'),
-              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Provento Avulso'),
-              tipo_rubrica: 'provento',
-              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
-              valor_total: vTotal.toNumber(),
-              origem: 'manual',
-              incide_inss: ev.incide_inss ?? (evCat ? evCat.inss : 1),
-              incide_fgts: ev.incide_fgts ?? (evCat ? evCat.fgts : 1),
-              incide_irrf: ev.incide_irrf ?? (evCat ? evCat.irrf : 1),
-              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso / manual',
-            });
-          }
-        } else if (ev.tipo === 'desconto') {
-          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
-          if (vTotal.greaterThan(0)) {
-            totalDescontos = totalDescontos.plus(vTotal);
-            const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
-            itensCalculados.push({
-              codigo_rubrica: String(ev.codigo || '0520'),
-              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Desconto Avulso'),
-              tipo_rubrica: 'desconto',
-              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
-              valor_total: vTotal.toNumber(),
-              origem: 'manual',
-              incide_inss: 0,
-              incide_fgts: 0,
-              incide_irrf: 0,
-              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso / manual',
-            });
-          }
-        } else if (ev.tipo === 'informativo') {
-          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
-          const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
-          itensCalculados.push({
-            codigo_rubrica: String(ev.codigo || '0901'),
-            descricao_rubrica: String(ev.descricao || evCat?.evento || 'Informativo'),
-            tipo_rubrica: 'informativo',
-            referencia_valor: ev.referencia ? String(ev.referencia) : '',
-            valor_total: vTotal.toNumber(),
-            origem: 'manual',
-            incide_inss: 0,
-            incide_fgts: 0,
-            incide_irrf: 0,
-            memoria_calculo: ev.memoria_calculo || 'Evento informativo',
-          });
-        } else if (ev.codigo) {
-          const evCat = CATALOGO_EVENTOS_FOLHA.find((c) => c.codigo === ev.codigo);
-          const vTotal = arredondarMoeda(toDecimal(ev.valor_total ?? ev.valor ?? 0));
-          const tipoDeterminado = evCat
-            ? evCat.tipo
-            : ev.codigo.startsWith('05')
-              ? 'desconto'
-              : 'provento';
-          if (tipoDeterminado === 'provento' && vTotal.greaterThan(0)) {
-            totalProventos = totalProventos.plus(vTotal);
-            itensCalculados.push({
-              codigo_rubrica: String(ev.codigo),
-              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Provento Avulso'),
-              tipo_rubrica: 'provento',
-              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
-              valor_total: vTotal.toNumber(),
-              origem: 'manual',
-              incide_inss: evCat ? evCat.inss : 1,
-              incide_fgts: evCat ? evCat.fgts : 1,
-              incide_irrf: evCat ? evCat.irrf : 1,
-              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso',
-            });
-          } else if (tipoDeterminado === 'desconto' && vTotal.greaterThan(0)) {
-            totalDescontos = totalDescontos.plus(vTotal);
-            itensCalculados.push({
-              codigo_rubrica: String(ev.codigo),
-              descricao_rubrica: String(ev.descricao || evCat?.evento || 'Desconto Avulso'),
-              tipo_rubrica: 'desconto',
-              referencia_valor: ev.referencia ? String(ev.referencia) : '1',
-              valor_total: vTotal.toNumber(),
-              origem: 'manual',
-              incide_inss: 0,
-              incide_fgts: 0,
-              incide_irrf: 0,
-              memoria_calculo: ev.memoria_calculo || 'Lançamento avulso',
-            });
-          }
-        }
-      }
-    }
-
-    // DSR sobre variáveis se houver horas extras ou adicional noturno
-    if (totalVariaveis.greaterThan(0)) {
-      const resDsr = calcularDsrSobreVariaveis(totalVariaveis);
-      totalProventos = totalProventos.plus(resDsr.valor);
-      itensCalculados.push({
-        codigo_rubrica: '103',
-        descricao_rubrica: 'DSR sobre Horas Extras / Noturno',
-        tipo_rubrica: 'provento',
-        referencia_valor: 'DSR',
-        valor_total: resDsr.valor.toNumber(),
-        incide_inss: 1,
-        incide_fgts: 1,
-        incide_irrf: 1,
-        memoria_calculo: resDsr.memoria,
-      });
-    }
-
-    // Base legal para encargos (apenas proventos com incidência positiva)
-    let baseInss = new Decimal('0.00');
-    let baseFgts = new Decimal('0.00');
-    for (const it of itensCalculados) {
-      if (it.tipo_rubrica === 'provento') {
-        if (it.incide_inss !== 0) {
-          baseInss = baseInss.plus(toDecimal(it.valor_total));
-        }
-        if (it.incide_fgts !== 0) {
-          baseFgts = baseFgts.plus(toDecimal(it.valor_total));
-        }
-      }
-    }
-
-    // Cálculo INSS Progressivo
-    const resInss = calcularInssProgressivo(baseInss);
-    totalDescontos = totalDescontos.plus(resInss.valor);
-    itensCalculados.push({
-      codigo_rubrica: '501',
-      descricao_rubrica: 'INSS (Faixas Progressivas)',
-      tipo_rubrica: 'desconto',
-      referencia_valor: 'INSS',
-      valor_total: resInss.valor.toNumber(),
-      incide_inss: 0,
-      incide_fgts: 0,
-      incide_irrf: 0,
-      memoria_calculo: resInss.memoria,
-    });
-
-    // Cálculo IRRF
-    const resIrrf = calcularIrrfProgressivo(baseInss, resInss.valor, numDependentes);
-    if (resIrrf.valor.greaterThan(0)) {
-      totalDescontos = totalDescontos.plus(resIrrf.valor);
-      itensCalculados.push({
-        codigo_rubrica: '502',
-        descricao_rubrica: 'IRRF (Retenção na Fonte)',
-        tipo_rubrica: 'desconto',
-        referencia_valor: 'IRRF',
-        valor_total: resIrrf.valor.toNumber(),
-        incide_inss: 0,
-        incide_fgts: 0,
-        incide_irrf: 0,
-        memoria_calculo: resIrrf.memoria,
-      });
-    }
-
-    // FGTS Informativo
-    const fgtsInformativo = calcularFgtsInformativo(baseFgts);
-
-    // Salário Líquido
-    const salarioLiquido = arredondarMoeda(totalProventos.minus(totalDescontos));
 
     const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-    // Verifica se já existe folha para o colaborador e competência
+    // Verifica unicidade de folha para o mesmo colaborador na mesma competência
     const folhaExistente = await this.db.query(
       `SELECT * FROM folhas_pagamento WHERE colaborador_id = $1 AND competencia = $2`,
       [dados.colaborador_id, dados.competencia],
     );
 
     let folhaId: number;
+    const client = await this.db.getClient();
 
-    if (folhaExistente.rows.length > 0) {
-      const f = folhaExistente.rows[0];
-      if (f.situacao === 'fechada') {
-        throw new ForbiddenException({
-          sucesso: false,
-          mensagem: `A folha #${f.id} está fechada e não permite recálculos sem reabertura formal.`,
-        });
+    try {
+      await client.query('BEGIN');
+
+      if (folhaExistente.rows.length > 0) {
+        const f = folhaExistente.rows[0];
+        if (f.situacao === 'fechada') {
+          throw new ForbiddenException({
+            sucesso: false,
+            mensagem: `A folha #${f.id} está fechada e não permite edições sem reabertura formal.`,
+          });
+        }
+        folhaId = f.id;
+
+        await client.query(
+          `UPDATE folhas_pagamento SET
+            dias_trabalhados = $1, dias_mes = $2, horas_mensais_divisor = $3,
+            salario_base_contratual = $4, salario_base_proporcional = $5,
+            total_proventos = $6, total_descontos = $7, salario_liquido = $8,
+            base_inss = $9, base_fgts = $10, valor_fgts_informativo = $11,
+            base_irrf = $12, situacao = 'calculada', observacoes = $13,
+            atualizado_por = $14, atualizado_em = $15
+           WHERE id = $16`,
+          [
+            calc.dias_trabalhados,
+            calc.dias_mes,
+            calc.horas_mensais_divisor,
+            calc.salario_base_contratual,
+            calc.salario_base_proporcional,
+            calc.total_proventos,
+            calc.total_descontos,
+            calc.salario_liquido,
+            calc.base_inss,
+            calc.base_fgts,
+            calc.valor_fgts_informativo,
+            calc.base_irrf,
+            dados.observacoes || f.observacoes || '',
+            usuario,
+            agora,
+            folhaId,
+          ],
+        );
+
+        // Limpa itens antigos para reinserção atômica
+        await client.query(`DELETE FROM folha_itens WHERE folha_id = $1`, [folhaId]);
+
+        await client.query(
+          `INSERT INTO folha_historico (folha_id, data_hora, acao, descricao, usuario_responsavel)
+           VALUES ($1, $2, 'ATUALIZACAO', 'Folha recalculada e atualizada com sucesso', $3)`,
+          [folhaId, agora, usuario],
+        );
+      } else {
+        const insRes = await client.query(
+          `INSERT INTO folhas_pagamento (
+            colaborador_id, competencia, periodo_inicio, periodo_fim, data_pagamento,
+            dias_trabalhados, dias_mes, horas_mensais_divisor, salario_base_contratual,
+            salario_base_proporcional, total_proventos, total_descontos, salario_liquido,
+            base_inss, base_fgts, valor_fgts_informativo, base_irrf, situacao,
+            observacoes, criado_por, criado_em, atualizado_por, atualizado_em
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+            'calculada', $18, $19, $20, $19, $20
+          ) RETURNING id`,
+          [
+            dados.colaborador_id,
+            dados.competencia,
+            dados.periodo_inicio || `${dados.competencia}-01`,
+            dados.periodo_fim || `${dados.competencia}-30`,
+            dados.data_pagamento || null,
+            calc.dias_trabalhados,
+            calc.dias_mes,
+            calc.horas_mensais_divisor,
+            calc.salario_base_contratual,
+            calc.salario_base_proporcional,
+            calc.total_proventos,
+            calc.total_descontos,
+            calc.salario_liquido,
+            calc.base_inss,
+            calc.base_fgts,
+            calc.valor_fgts_informativo,
+            calc.base_irrf,
+            dados.observacoes || null,
+            usuario,
+            agora,
+          ],
+        );
+        folhaId = insRes.rows[0].id;
+
+        await client.query(
+          `INSERT INTO folha_historico (folha_id, data_hora, acao, descricao, usuario_responsavel)
+           VALUES ($1, $2, 'CRIACAO', 'Folha criada e calculada pelo motor oficial', $3)`,
+          [folhaId, agora, usuario],
+        );
       }
-      folhaId = f.id;
 
-      await this.db.query(
-        `UPDATE folhas_pagamento SET
-          total_proventos = $1, total_descontos = $2, salario_liquido = $3,
-          base_inss = $4, base_fgts = $5, valor_fgts_informativo = $6,
-          base_irrf = $7, situacao = 'calculada', atualizado_por = $8, atualizado_em = $9
-         WHERE id = $10`,
-        [
-          totalProventos.toNumber(),
-          totalDescontos.toNumber(),
-          salarioLiquido.toNumber(),
-          baseInss.toNumber(),
-          baseFgts.toNumber(),
-          fgtsInformativo.toNumber(),
-          baseInss.toNumber(),
-          usuario,
-          agora,
-          folhaId,
-        ],
-      );
+      // Insere os itens oficiais calculados pelo motor
+      for (const item of calc.itens) {
+        await client.query(
+          `INSERT INTO folha_itens (
+            folha_id, codigo_evento, descricao, tipo, referencia,
+            unidade_referencia, valor_unitario, valor_total, origem, memoria_calculo, criado_em
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            folhaId,
+            item.codigo_evento,
+            item.descricao,
+            item.tipo,
+            item.referencia,
+            item.unidade_referencia,
+            item.valor_unitario,
+            item.valor_total,
+            item.origem,
+            item.memoria_calculo,
+            agora,
+          ],
+        );
+      }
 
-      // Limpa itens antigos para reinserção atualizada
-      await this.db.query(`DELETE FROM folha_itens WHERE folha_id = $1`, [folhaId]);
-    } else {
-      const insRes = await this.db.query(
-        `INSERT INTO folhas_pagamento (
-          colaborador_id, competencia, periodo_inicio, periodo_fim, data_pagamento,
-          dias_trabalhados, dias_mes, horas_mensais_divisor, salario_base_contratual,
-          salario_base_proporcional, total_proventos, total_descontos, salario_liquido,
-          base_inss, base_fgts, valor_fgts_informativo, base_irrf, situacao,
-          criado_por, criado_em, atualizado_por, atualizado_em
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-          'calculada', $18, $19, $18, $19
-        ) RETURNING id`,
-        [
-          dados.colaborador_id,
-          dados.competencia,
-          dados.periodo_inicio || `${dados.competencia}-01`,
-          dados.periodo_fim || `${dados.competencia}-30`,
-          dados.data_pagamento || null,
-          diasTrabalhados.toNumber(),
-          diasMes,
-          horasDivisor,
-          salarioContratual.toNumber(),
-          salarioProporcional.toNumber(),
-          totalProventos.toNumber(),
-          totalDescontos.toNumber(),
-          salarioLiquido.toNumber(),
-          baseInss.toNumber(),
-          baseFgts.toNumber(),
-          fgtsInformativo.toNumber(),
-          baseInss.toNumber(),
-          usuario,
-          agora,
-        ],
-      );
-      folhaId = insRes.rows[0].id;
-
-      await this.db.query(
-        `INSERT INTO folha_historico (folha_id, data_hora, acao, descricao, usuario_responsavel)
-         VALUES ($1, $2, 'CRIACAO', 'Folha criada e calculada pelo sistema', $3)`,
-        [folhaId, agora, usuario],
-      );
-    }
-
-    // Insere itens calculados
-    for (const item of itensCalculados) {
-      await this.db.query(
-        `INSERT INTO folha_itens (
-          folha_id, codigo_evento, descricao, tipo, referencia,
-          unidade_referencia, valor_total, origem, memoria_calculo, criado_em
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          folhaId,
-          item.codigo_rubrica,
-          item.descricao_rubrica,
-          item.tipo_rubrica,
-          typeof item.referencia_valor === 'number' ? item.referencia_valor : 0,
-          String(item.referencia_valor || ''),
-          item.valor_total,
-          'calculado',
-          item.memoria_calculo,
-          agora,
-        ],
-      );
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
     }
 
     return this.obterFolhaPorId(folhaId);
+  }
+
+  async recalcularFolha(id: number, dados: any = {}, usuario = 'Sistema/Administrador'): Promise<any> {
+    const folhaExistente = await this.obterFolhaPorId(id);
+    if (folhaExistente.situacao === 'fechada') {
+      throw new ForbiddenException({
+        sucesso: false,
+        mensagem: `A folha #${id} está fechada e não permite recálculo sem procedimento formal de reabertura.`,
+      });
+    }
+
+    const payload = {
+      ...dados,
+      colaborador_id: folhaExistente.colaborador_id,
+      competencia: folhaExistente.competencia,
+      periodo_inicio: dados.periodo_inicio || folhaExistente.periodo_inicio,
+      periodo_fim: dados.periodo_fim || folhaExistente.periodo_fim,
+      data_pagamento: dados.data_pagamento || folhaExistente.data_pagamento,
+      dias_trabalhados: dados.dias_trabalhados ?? folhaExistente.dias_trabalhados,
+      dias_mes: dados.dias_mes ?? folhaExistente.dias_mes,
+      horas_divisor: dados.horas_divisor ?? folhaExistente.horas_mensais_divisor,
+      eventos: dados.eventos || [],
+      observacoes: dados.observacoes || folhaExistente.observacoes,
+    };
+
+    const atualizada = await this.criarOuAtualizarFolha(payload, usuario);
+
+    const agora = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    await this.db.query(
+      `INSERT INTO folha_historico (folha_id, data_hora, acao, descricao, usuario_responsavel)
+       VALUES ($1, $2, 'RECALCULO', 'Recálculo oficial executado e persistido com sucesso', $3)`,
+      [id, agora, usuario],
+    );
+
+    return atualizada;
   }
 
   async fecharFolha(id: number, usuario = 'Sistema/Administrador'): Promise<any> {
@@ -539,4 +406,3 @@ export class FolhaService {
     return this.obterFolhaPorId(id);
   }
 }
-

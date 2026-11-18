@@ -961,7 +961,7 @@
                       <th>Descrição do Evento</th>
                       <th style="width: 90px;">Ref / Qtd</th>
                       <th style="width: 130px;">Valor Total (R$)</th>
-                      <th style="width: 48px;" title="Excluir linha">🗑️</th>
+                      <th style="width: 80px; text-align: center;">Ações</th>
                     </tr>
                   </thead>
                   <tbody id="corpo-rubricas-manuais">
@@ -986,7 +986,7 @@
             </div>
             <div class="folha-preview-item">
               <span class="folha-preview-label">Total Proventos</span>
-              <span class="folha-preview-value text-green" id="preview-total-proventos">R$ 0,00</span>
+              <span class="folha-preview-value" id="preview-total-proventos">R$ 0,00</span>
             </div>
             <div class="folha-preview-item">
               <span class="folha-preview-label">Total Descontos</span>
@@ -994,7 +994,7 @@
             </div>
             <div class="folha-preview-item">
               <span class="folha-preview-label">Salário Líquido</span>
-              <span class="folha-preview-value" style="color: #6ee7b7;" id="preview-salario-liquido">R$ 0,00</span>
+              <span class="folha-preview-value" id="preview-salario-liquido">R$ 0,00</span>
             </div>
           </div>
         </div>
@@ -1026,6 +1026,12 @@
       </div>
 
       <div class="modal-body modal-scroll">
+        <!-- Banner de Confirmação de Salvamento da Folha -->
+        <div id="holerite-alerta-sucesso" class="alert alert-success hidden" style="margin-bottom: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;">
+          <span style="font-size: 1.25rem; line-height: 1;">✓</span>
+          <span>Folha de pagamento calculada e salva com sucesso no banco de dados!</span>
+        </div>
+
         <!-- Documento de Contracheque Oficial (Pronto para Visualização e Impressão) -->
         <div class="holerite-container" id="holerite-documento-imprimivel">
           <!-- Cabeçalho da Empresa -->

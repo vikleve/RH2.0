@@ -1201,9 +1201,96 @@ function configurarEventos() {
   });
 }
 
+﻿// ============================================================================
 // ============================================================================
-// MÓDULO 2: FOLHA DE PAGAMENTO (GERENCIADOR DO CLIENTE)
+// CATÁLOGO OFICIAL DE RUBRICAS E EVENTOS DA FOLHA (CLT / eSocial)
 // ============================================================================
+const CATALOGO_EVENTOS_FOLHA = [
+  { codigo: '0001', evento: 'Salário mensal', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'salario_proporcional', situacao: 'HOMOLOGADO', observacao: 'Salário contratual integral ou proporcional aos dias trabalhados (art. 457 CLT). Unifica com o item base.' },
+  { codigo: '0002', evento: 'Salário horista', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'hora_normal', situacao: 'HOMOLOGADO', observacao: 'Horas trabalhadas multiplicadas pelo valor da hora.' },
+  { codigo: '0003', evento: 'Saldo de salário (rescisão)', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'salario_proporcional', situacao: 'HOMOLOGADO', observacao: 'Verba rescisória no mês de desligamento.' },
+  { codigo: '0010', evento: 'Horas extras 50%', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'hora_extra_50', situacao: 'HOMOLOGADO', observacao: 'Hora normal acrescida de no mínimo 50% (art. 59 § 1º CLT).' },
+  { codigo: '0011', evento: 'Horas extras 100%', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'hora_extra_100', situacao: 'HOMOLOGADO', observacao: 'Hora normal acrescida de 100% para domingos e feriados (Lei 605/49).' },
+  { codigo: '0012', evento: 'DSR sobre horas extras', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'dsr', situacao: 'HOMOLOGADO', observacao: 'Reflexo no descanso semanal remunerado.' },
+  { codigo: '0015', evento: 'Banco de horas pago', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'hora_extra_50', situacao: 'PENDENTE_VALIDACAO', observacao: 'Pagamento de saldo não compensado. Requer previsão em CCT/ACT.' },
+  { codigo: '0020', evento: 'Adicional noturno', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'adicional_noturno', situacao: 'HOMOLOGADO', observacao: 'Adicional legal de 20% sobre a hora diurna no perímetro urbano (art. 73 CLT).' },
+  { codigo: '0021', evento: 'DSR sobre adicional noturno', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'dsr', situacao: 'HOMOLOGADO', observacao: 'Reflexo no DSR.' },
+  { codigo: '0030', evento: 'Adicional de insalubridade', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: '10%, 20% ou 40% sobre o salário mínimo. Requer laudo LTCAT.' },
+  { codigo: '0031', evento: 'Adicional de periculosidade', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'periculosidade_sb', situacao: 'PENDENTE_VALIDACAO', observacao: '30% sobre o salário-base sem acréscimos (art. 193 § 1º CLT).' },
+  { codigo: '0032', evento: 'Adicional de transferência', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Mínimo de 25% do salário enquanto durar a transferência.' },
+  { codigo: '0033', evento: 'Adicional por tempo de serviço (anuênio/quinquênio)', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Conforme previsão em CCT.' },
+  { codigo: '0040', evento: 'Gratificação de função / cargo de confiança', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Art. 62, II e art. 224 § 2º CLT.' },
+  { codigo: '0041', evento: 'Quebra de caixa', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Súmula 247 TST.' },
+  { codigo: '0042', evento: 'Gratificação ajustada', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: '' },
+  { codigo: '0050', evento: 'Comissões', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Integra a remuneração para todos os efeitos (art. 457 § 1º CLT).' },
+  { codigo: '0051', evento: 'DSR sobre comissões', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'dsr', situacao: 'HOMOLOGADO', observacao: 'Súmula 27 TST.' },
+  { codigo: '0060', evento: 'Prêmios / bônus habituais', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: '' },
+  { codigo: '0061', evento: 'PLR (tributação exclusiva)', tipo: 'provento', categoria: 'Proventos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Lei 10.101/2000. Isento de encargos; IRRF exclusivo.' },
+  { codigo: '0070', evento: 'Gorjetas', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Art. 457 § 3º CLT.' },
+  { codigo: '0071', evento: 'Diferenças salariais / retroativos', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: '' },
+  { codigo: '0072', evento: 'Diárias de viagem (acima de 50% do salário)', tipo: 'provento', categoria: 'Proventos', inss: 1, irrf: 1, fgts: 1, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Integra apenas no valor que exceder 50%.' },
+  { codigo: '0073', evento: 'Ajuda de custo (indenizatória)', tipo: 'provento', categoria: 'Proventos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Natureza indenizatória (art. 457 § 2º CLT).' },
+  { codigo: '0074', evento: 'Reembolsos / ressarcimentos', tipo: 'provento', categoria: 'Proventos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Reembolso mediante comprovação.' },
+  { codigo: '0075', evento: 'Abono / benefício indenizatório', tipo: 'provento', categoria: 'Proventos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Não integra remuneração nem encargos.' },
+  { codigo: '0100', evento: 'Férias gozadas', tipo: 'provento', categoria: 'Férias e 13º salário', inss: 1, irrf: 1, fgts: 1, metodo: 'ferias_dias', situacao: 'HOMOLOGADO', observacao: 'Proporcional aos dias de gozo no mês.' },
+  { codigo: '0101', evento: '1/3 constitucional de férias', tipo: 'provento', categoria: 'Férias e 13º salário', inss: 1, irrf: 1, fgts: 1, metodo: 'terco_ferias', situacao: 'HOMOLOGADO', observacao: 'Art. 7º, XVII da Constituição Federal.' },
+  { codigo: '0102', evento: 'Abono pecuniário (venda de 1/3)', tipo: 'provento', categoria: 'Férias e 13º salário', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Art. 143 da CLT. Sem encargos.' },
+  { codigo: '0110', evento: '13º salário – 1ª parcela (adiantamento)', tipo: 'provento', categoria: 'Férias e 13º salário', inss: 0, irrf: 0, fgts: 1, metodo: 'adiantamento_13', situacao: 'HOMOLOGADO', observacao: '50% do salário sem descontos de INSS/IRRF (apenas FGTS devido).' },
+  { codigo: '0111', evento: '13º salário – 2ª parcela', tipo: 'provento', categoria: 'Férias e 13º salário', inss: 1, irrf: 1, fgts: 1, metodo: 'segunda_parcela_13', situacao: 'HOMOLOGADO', observacao: 'Competência de dezembro com apuração integral.' },
+  { codigo: '0501', evento: 'INSS', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'inss_progressivo', situacao: 'HOMOLOGADO', observacao: 'Tabela progressiva com faixas de 7,5%, 9%, 12% e 14% e teto R$ 8.157,41. Unifica com item de sistema.' },
+  { codigo: '0505', evento: 'IRRF', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'irrf_progressivo', situacao: 'HOMOLOGADO', observacao: 'Tabela progressiva da Receita Federal com dedução por dependente de R$ 189,59.' },
+  { codigo: '0510', evento: 'Vale-transporte (até 6% do salário base)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'vale_transporte', situacao: 'HOMOLOGADO', observacao: 'Limitado a 6% do salário-base conforme art. 4º da Lei 7.418/1985.' },
+  { codigo: '0511', evento: 'Vale-alimentação / refeição (coparticipação)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Conforme política de benefícios da empresa / PAT.' },
+  { codigo: '0512', evento: 'Plano de saúde (coparticipação / mensalidade)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Mediante autorização prévia e expressa do empregado (Súmula 342 TST).' },
+  { codigo: '0513', evento: 'Plano odontológico', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: '' },
+  { codigo: '0514', evento: 'Seguro de vida', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: '' },
+  { codigo: '0515', evento: 'Previdência privada', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: '' },
+  { codigo: '0520', evento: 'Adiantamento salarial', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'adiantamento_salarial', situacao: 'HOMOLOGADO', observacao: 'Compensação de adiantamento (padrão 40% do salário-base).' },
+  { codigo: '0521', evento: 'Adiantamento de 13º (compensação)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Compensado na 2ª parcela.' },
+  { codigo: '0530', evento: 'Faltas injustificadas', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'faltas_dias', situacao: 'HOMOLOGADO', observacao: 'Desconto à razão de 1/30 do salário por dia de falta integral injustificada.' },
+  { codigo: '0531', evento: 'DSR sobre faltas', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'dsr_faltas', situacao: 'HOMOLOGADO', observacao: 'Perda do repouso semanal na semana da falta (art. 6º Lei 605/49).' },
+  { codigo: '0532', evento: 'Atrasos / saídas antecipadas', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'atrasos_horas', situacao: 'HOMOLOGADO', observacao: 'Desconto apurado com base no valor da hora normal.' },
+  { codigo: '0535', evento: 'Mensalidade sindical', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Somente com autorização prévia e expressa do empregado.' },
+  { codigo: '0540', evento: 'Pensão alimentícia (salário)', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Conforme ofício judicial.' },
+  { codigo: '0545', evento: 'Empréstimo consignado', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'HOMOLOGADO', observacao: 'Respeitada margem consignável (Lei 10.820/2003).' },
+  { codigo: '0550', evento: 'Desconto por danos / avarias', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'manual_valor', situacao: 'PENDENTE_VALIDACAO', observacao: 'Somente se acordado em contrato ou em dolo (art. 462 § 1º CLT).' },
+  { codigo: '0551', evento: 'Aviso prévio não cumprido pelo empregado', tipo: 'desconto', categoria: 'Descontos', inss: 0, irrf: 0, fgts: 0, metodo: 'salario_proporcional', situacao: 'HOMOLOGADO', observacao: 'Desconto rescisório correspondente a um mês de salário.' },
+  { codigo: '0901', evento: 'Base de cálculo do INSS', tipo: 'informativo', categoria: 'Eventos informativos (bases e encargos)', inss: 0, irrf: 0, fgts: 0, metodo: 'base', situacao: 'HOMOLOGADO', observacao: 'Soma dos proventos com incidência de INSS menos faltas.' },
+  { codigo: '0902', evento: 'Base de cálculo do IRRF', tipo: 'informativo', categoria: 'Eventos informativos (bases e encargos)', inss: 0, irrf: 0, fgts: 0, metodo: 'base', situacao: 'HOMOLOGADO', observacao: 'Base do INSS deduzida do próprio INSS retido e dependentes.' },
+  { codigo: '0903', evento: 'Base de cálculo do FGTS', tipo: 'informativo', categoria: 'Eventos informativos (bases e encargos)', inss: 0, irrf: 0, fgts: 0, metodo: 'base', situacao: 'HOMOLOGADO', observacao: 'Soma dos proventos que compõem remuneração do FGTS.' },
+  { codigo: '0904', evento: 'FGTS do mês (8%)', tipo: 'informativo', categoria: 'Eventos informativos (bases e encargos)', inss: 0, irrf: 0, fgts: 0, metodo: 'fgts_8', situacao: 'HOMOLOGADO', observacao: 'Depósito patronal de 8% (sem desconto do colaborador).' }
+];
+
+function gerarOpcoesEventos(codigoSelecionado, tipoAtual, isCustom) {
+  const categoriasOrdem = tipoAtual === 'desconto'
+    ? ['Descontos', 'Proventos', 'Férias e 13º salário', 'Eventos informativos (bases e encargos)']
+    : (tipoAtual === 'informativo'
+      ? ['Eventos informativos (bases e encargos)', 'Proventos', 'Descontos', 'Férias e 13º salário']
+      : ['Proventos', 'Descontos', 'Férias e 13º salário', 'Eventos informativos (bases e encargos)']);
+
+  let html = '<option value="" disabled ' + (!codigoSelecionado && !isCustom ? 'selected' : '') + '>-- Selecione um evento da lista --</option>';
+
+  categoriasOrdem.forEach(cat => {
+    const eventosCat = CATALOGO_EVENTOS_FOLHA.filter(e => e.categoria === cat);
+    if (eventosCat.length > 0) {
+      html += '<optgroup label="' + cat + '">';
+      eventosCat.forEach(ev => {
+        const sel = (!isCustom && ev.codigo === codigoSelecionado) ? 'selected' : '';
+        const badgeValidacao = ev.situacao === 'PENDENTE_VALIDACAO' ? ' [⚠️ Pendente CCT]' : '';
+        html += '<option value="' + ev.codigo + '" data-tipo="' + ev.tipo + '" ' + sel + '>' + ev.codigo + ' — ' + ev.evento + badgeValidacao + '</option>';
+      });
+      html += '</optgroup>';
+    }
+  });
+
+  html += '<optgroup label="Personalizado">';
+  html += '<option value="__OUTRO__" ' + (isCustom ? 'selected' : '') + '>✏️ Outro evento personalizado (digitar descrição)...</option>';
+  html += '</optgroup>';
+
+  return html;
+}
+
+
 const FolhaManager = {
   folhas: [],
   colaboradoresElegiveis: [],
@@ -1542,7 +1629,10 @@ const FolhaManager = {
 
   async abrirModalNovaFolha() {
     this.folhaEmEdicao = null;
-    this.rubricasManuais = [];
+    this.rubricasManuais = [
+      { tipo: 'provento', codigo: '0010', descricao: 'Horas extras 50%', referencia: 1, valor_total: 100, isCustom: false },
+      { tipo: 'desconto', codigo: '0520', descricao: 'Adiantamento salarial', referencia: 1, valor_total: 100, isCustom: false }
+    ];
     document.getElementById('modal-folha-title').textContent = 'Lançar & Calcular Nova Folha de Pagamento';
     document.getElementById('folha-id-edicao').value = '';
     document.getElementById('form-folha-pagamento').reset();
@@ -1659,10 +1749,11 @@ const FolhaManager = {
       btnAddRubrica.addEventListener('click', () => {
         this.rubricasManuais.push({
           tipo: 'provento',
-          codigo: '',
-          descricao: '',
+          codigo: '0075',
+          descricao: 'Abono / benefício indenizatório',
           referencia: 1,
-          valor_total: 0
+          valor_total: 100,
+          isCustom: false
         });
         this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
@@ -1676,7 +1767,14 @@ const FolhaManager = {
     });
 
     if (btnSimular) {
-      btnSimular.addEventListener('click', () => this.atualizarPreviaCalculo());
+      btnSimular.addEventListener('click', () => {
+        const folhaId = document.getElementById('folha-id-edicao').value;
+        if (folhaId) {
+          this.recalcularFolhaNoBackend(folhaId);
+        } else {
+          this.simularFolhaNoBackend(true);
+        }
+      });
     }
 
     if (formFolha) {
@@ -1705,6 +1803,51 @@ const FolhaManager = {
     }
   },
 
+  calcularValorAutomaticoEvento(cod, ref, tipo) {
+    const colabId = document.getElementById('folha-campo-colaborador').value;
+    const dias = Number(document.getElementById('folha-campo-dias').value || 30);
+    const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
+    const c = this.colaboradoresElegiveis.find(item => String(item.id) === String(colabId));
+    const sb = c ? Number(c.salario_base || 0) : 0;
+    const vh = divisor > 0 ? (sb / divisor) : 0;
+    const r = Number(ref || 1);
+
+    if (cod === '0001') {
+      return Number(((sb / 30) * Math.min(30, dias)).toFixed(2));
+    } else if (cod === '0002') {
+      return Number((vh * r).toFixed(2));
+    } else if (cod === '0010') {
+      return Number((vh * 1.5 * r).toFixed(2));
+    } else if (cod === '0011') {
+      return Number((vh * 2.0 * r).toFixed(2));
+    } else if (cod === '0020') {
+      return Number((vh * 0.20 * r).toFixed(2));
+    } else if (cod === '0031') {
+      return Number((sb * 0.30).toFixed(2)); // Periculosidade 30%
+    } else if (cod === '0100') {
+      return Number(((sb / 30) * r).toFixed(2));
+    } else if (cod === '0101') {
+      return Number((((sb / 30) * r) / 3).toFixed(2));
+    } else if (cod === '0110') {
+      return Number((sb * 0.5).toFixed(2)); // 1ª parcela 13º
+    } else if (cod === '0501') {
+      // INSS progressivo sobre salário
+      if (sb <= 1518.00) return Number((sb * 0.075).toFixed(2));
+      if (sb <= 2793.88) return Number((113.85 + (sb - 1518.00) * 0.09).toFixed(2));
+      if (sb <= 4190.83) return Number((113.85 + 114.83 + (sb - 2793.88) * 0.12).toFixed(2));
+      return Number(Math.min(908.85, 113.85 + 114.83 + 167.63 + (sb - 4190.83) * 0.14).toFixed(2));
+    } else if (cod === '0510') {
+      return Number((sb * 0.06).toFixed(2)); // Vale-transporte limite 6%
+    } else if (cod === '0520') {
+      return Number((sb * 0.40).toFixed(2)); // Adiantamento salarial padrão 40%
+    } else if (cod === '0530') {
+      return Number(((sb / 30) * r).toFixed(2)); // Faltas
+    } else if (cod === '0532') {
+      return Number((vh * r).toFixed(2)); // Atrasos
+    }
+    return 0;
+  },
+
   renderizarRubricasManuais() {
     const wrapper = document.getElementById('wrapper-rubricas-manuais');
     const corpo = document.getElementById('corpo-rubricas-manuais');
@@ -1721,24 +1864,45 @@ const FolhaManager = {
 
     this.rubricasManuais.forEach((rub, idx) => {
       const tr = document.createElement('tr');
+      const evCat = CATALOGO_EVENTOS_FOLHA.find(item => item.codigo === rub.codigo);
+      const isPendente = evCat && evCat.situacao === 'PENDENTE_VALIDACAO';
+
       tr.innerHTML = `
         <td>
-          <select class="form-control select-control rub-tipo" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.25rem;">
+          <select class="form-control select-control rub-tipo" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.35rem 0.5rem; font-weight: 600;">
             <option value="provento" ${rub.tipo === 'provento' ? 'selected' : ''}>Provento (+)</option>
             <option value="desconto" ${rub.tipo === 'desconto' ? 'selected' : ''}>Desconto (-)</option>
           </select>
         </td>
         <td>
-          <input type="text" class="form-control rub-desc" data-idx="${idx}" value="${rub.descricao}" placeholder="Ex: Gratificação..." style="font-size: 0.8rem; padding: 0.25rem;">
+          <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+            <select class="form-control select-control rub-evento" data-idx="${idx}" style="font-size: 0.82rem; padding: 0.35rem 0.5rem;">
+              ${gerarOpcoesEventos(rub.codigo, rub.tipo, rub.isCustom)}
+            </select>
+            ${isPendente ? `
+              <span style="font-size: 0.72rem; color: #b45309; background: #fef3c7; border: 1px solid #fde68a; padding: 2px 6px; border-radius: 4px; display: inline-block;">
+                ⚠️ Regra pendente de homologação formal CCT/DP
+              </span>
+            ` : ''}
+            ${rub.isCustom ? `
+              <input type="text" class="form-control rub-desc" data-idx="${idx}" value="${rub.descricao || ''}" placeholder="Digite o nome do evento avulso..." style="font-size: 0.8rem; padding: 0.3rem 0.5rem;">
+            ` : ''}
+          </div>
         </td>
         <td>
-          <input type="number" class="form-control rub-ref" data-idx="${idx}" value="${rub.referencia}" min="1" step="0.5" style="font-size: 0.8rem; padding: 0.25rem;">
+          <input type="number" class="form-control rub-ref" data-idx="${idx}" value="${rub.referencia ?? 1}" min="0" step="0.5" style="font-size: 0.82rem; padding: 0.35rem; text-align: center;">
         </td>
         <td>
-          <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total}" min="0.01" step="0.01" style="font-size: 0.8rem; padding: 0.25rem;">
+          <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total ?? 0}" min="0" step="0.01" style="font-size: 0.82rem; padding: 0.35rem; font-weight: 600;">
         </td>
-        <td>
-          <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">✕</button>
+        <td style="text-align: center;">
+          <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events: none;">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span style="pointer-events: none;">Excluir</span>
+          </button>
         </td>
       `;
       corpo.appendChild(tr);
@@ -1746,34 +1910,91 @@ const FolhaManager = {
 
     corpo.querySelectorAll('.rub-tipo').forEach(el => {
       el.addEventListener('change', (e) => {
-        this.rubricasManuais[e.target.dataset.idx].tipo = e.target.value;
+        const idx = Number(e.target.dataset.idx);
+        const novoTipo = e.target.value;
+        this.rubricasManuais[idx].tipo = novoTipo;
+        if (!this.rubricasManuais[idx].isCustom) {
+          if (novoTipo === 'desconto') {
+            this.rubricasManuais[idx].codigo = '0520';
+            this.rubricasManuais[idx].descricao = 'Adiantamento salarial';
+          } else {
+            this.rubricasManuais[idx].codigo = '0010';
+            this.rubricasManuais[idx].descricao = 'Horas extras 50%';
+          }
+          const vAuto = this.calcularValorAutomaticoEvento(this.rubricasManuais[idx].codigo, this.rubricasManuais[idx].referencia, novoTipo);
+          if (vAuto > 0) this.rubricasManuais[idx].valor_total = vAuto;
+        }
+        this.renderizarRubricasManuais();
+        this.atualizarPreviaCalculo();
+      });
+    });
+
+    corpo.querySelectorAll('.rub-evento').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const idx = Number(e.target.dataset.idx);
+        const val = e.target.value;
+        if (val === '__OUTRO__') {
+          this.rubricasManuais[idx].isCustom = true;
+          this.rubricasManuais[idx].codigo = '';
+          this.renderizarRubricasManuais();
+        } else {
+          this.rubricasManuais[idx].isCustom = false;
+          const ev = CATALOGO_EVENTOS_FOLHA.find(item => item.codigo === val);
+          if (ev) {
+            this.rubricasManuais[idx].codigo = ev.codigo;
+            this.rubricasManuais[idx].descricao = ev.evento;
+            if (ev.tipo === 'provento' || ev.tipo === 'desconto') {
+              this.rubricasManuais[idx].tipo = ev.tipo;
+            }
+            // Auto-preenche o valor do evento conforme sua regra e parametrização
+            const vAuto = this.calcularValorAutomaticoEvento(ev.codigo, this.rubricasManuais[idx].referencia, ev.tipo);
+            if (vAuto > 0 || (this.rubricasManuais[idx].valor_total === 0 || this.rubricasManuais[idx].valor_total === 100)) {
+              this.rubricasManuais[idx].valor_total = vAuto;
+            }
+          }
+          this.renderizarRubricasManuais();
+        }
         this.atualizarPreviaCalculo();
       });
     });
 
     corpo.querySelectorAll('.rub-desc').forEach(el => {
       el.addEventListener('input', (e) => {
-        this.rubricasManuais[e.target.dataset.idx].descricao = e.target.value;
+        const idx = Number(e.target.dataset.idx);
+        this.rubricasManuais[idx].descricao = e.target.value;
       });
     });
 
     corpo.querySelectorAll('.rub-ref').forEach(el => {
       el.addEventListener('input', (e) => {
-        this.rubricasManuais[e.target.dataset.idx].referencia = Number(e.target.value || 0);
+        const idx = Number(e.target.dataset.idx);
+        const novaRef = Number(e.target.value || 0);
+        this.rubricasManuais[idx].referencia = novaRef;
+        const cod = this.rubricasManuais[idx].codigo;
+        if (cod) {
+          const vAuto = this.calcularValorAutomaticoEvento(cod, novaRef, this.rubricasManuais[idx].tipo);
+          if (vAuto > 0) {
+            this.rubricasManuais[idx].valor_total = vAuto;
+            const inputVal = corpo.querySelector(`.rub-val[data-idx="${idx}"]`);
+            if (inputVal) inputVal.value = vAuto;
+          }
+        }
         this.atualizarPreviaCalculo();
       });
     });
 
     corpo.querySelectorAll('.rub-val').forEach(el => {
       el.addEventListener('input', (e) => {
-        this.rubricasManuais[e.target.dataset.idx].valor_total = Number(e.target.value || 0);
+        const idx = Number(e.target.dataset.idx);
+        this.rubricasManuais[idx].valor_total = Number(e.target.value || 0);
         this.atualizarPreviaCalculo();
       });
     });
 
     corpo.querySelectorAll('.rub-remover').forEach(el => {
       el.addEventListener('click', (e) => {
-        this.rubricasManuais.splice(Number(e.target.dataset.idx), 1);
+        const idx = Number(e.target.dataset.idx);
+        this.rubricasManuais.splice(idx, 1);
         this.renderizarRubricasManuais();
         this.atualizarPreviaCalculo();
       });
@@ -1788,16 +2009,16 @@ const FolhaManager = {
     const faltas = Number(document.getElementById('folha-campo-faltas').value || 0);
     const atrasos = Number(document.getElementById('folha-campo-atrasos').value || 0);
 
-    if (he50 > 0) eventos.push({ codigo: 'HE50', quantidade: he50, percentual: 50.0 });
-    if (he100 > 0) eventos.push({ codigo: 'HE100', quantidade: he100, percentual: 100.0 });
-    if (noturno > 0) eventos.push({ codigo: 'NOTURNO', quantidade: noturno, percentual: 20.0 });
-    if (faltas > 0) eventos.push({ codigo: 'FALTA', quantidade: faltas });
-    if (atrasos > 0) eventos.push({ codigo: 'ATRASO', quantidade: atrasos });
+    if (he50 > 0) eventos.push({ codigo: '0010', quantidade: he50, percentual: 50.0 });
+    if (he100 > 0) eventos.push({ codigo: '0011', quantidade: he100, percentual: 100.0 });
+    if (noturno > 0) eventos.push({ codigo: '0020', quantidade: noturno, percentual: 20.0 });
+    if (faltas > 0) eventos.push({ codigo: '0530', quantidade: faltas });
+    if (atrasos > 0) eventos.push({ codigo: '0532', quantidade: atrasos });
 
     this.rubricasManuais.forEach((r, i) => {
-      if (r.valor_total > 0 && r.descricao) {
+      if (r.valor_total > 0 && (r.descricao || r.codigo)) {
         eventos.push({
-          codigo: `MANUAL_${i+1}`,
+          codigo: r.codigo || `MANUAL_${i+1}`,
           descricao: r.descricao,
           tipo: r.tipo,
           referencia: r.referencia,
@@ -1809,7 +2030,106 @@ const FolhaManager = {
     return eventos;
   },
 
-  atualizarPreviaCalculo() {
+  async simularFolhaNoBackend(exibirAviso = false) {
+    const colabId = document.getElementById('folha-campo-colaborador').value;
+    const competencia = document.getElementById('folha-campo-competencia').value;
+    const dias = Number(document.getElementById('folha-campo-dias').value || 30);
+    const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
+
+    if (!colabId) {
+      this.atualizarPreviaCalculoLocal();
+      return;
+    }
+
+    const payload = {
+      colaborador_id: Number(colabId),
+      competencia: (competencia || '2026-10').trim(),
+      dias_trabalhados: dias,
+      dias_mes: 30,
+      horas_divisor: divisor,
+      eventos: this.coletarEventosDoFormulario()
+    };
+
+    try {
+      const resp = await fetch(`${API_BASE}/folha/simular`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        const d = json.dados;
+        document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_proporcional);
+        document.getElementById('preview-total-proventos').textContent = formatarMoeda(d.total_proventos);
+        document.getElementById('preview-total-descontos').textContent = formatarMoeda(d.total_descontos);
+        document.getElementById('preview-salario-liquido').textContent = formatarMoeda(d.salario_liquido);
+        if (exibirAviso) {
+          exibirToast('Simulação executada com sucesso pelo motor oficial do backend!', 'success');
+        }
+        return;
+      }
+    } catch (e) {
+      console.warn('Simulação backend indisponível, usando estimativa local:', e);
+    }
+
+    this.atualizarPreviaCalculoLocal();
+  },
+
+  async recalcularFolhaNoBackend(folhaId) {
+    const alerta = document.getElementById('folha-form-alerta');
+    alerta.classList.add('hidden');
+    const colabId = document.getElementById('folha-campo-colaborador').value;
+    const competencia = document.getElementById('folha-campo-competencia').value;
+    const inicio = document.getElementById('folha-campo-inicio').value;
+    const fim = document.getElementById('folha-campo-fim').value;
+    const pagto = document.getElementById('folha-campo-pagamento').value;
+    const dias = Number(document.getElementById('folha-campo-dias').value || 30);
+    const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
+    const observacoes = document.getElementById('folha-campo-observacoes').value;
+
+    const payload = {
+      colaborador_id: Number(colabId),
+      competencia: competencia.trim(),
+      periodo_inicio: inicio,
+      periodo_fim: fim,
+      data_pagamento: pagto || null,
+      dias_trabalhados: dias,
+      dias_mes: 30,
+      horas_divisor: divisor,
+      eventos: this.coletarEventosDoFormulario(),
+      observacoes: observacoes
+    };
+
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}/recalcular`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const resJson = await resp.json();
+      if (!resp.ok) {
+        alerta.textContent = resJson.mensagem || 'Falha ao recalcular folha.';
+        alerta.classList.remove('hidden');
+        return;
+      }
+
+      exibirToast(`Folha #${folhaId} recalculada e persistida com sucesso no banco de dados!`, 'success');
+      const d = resJson.dados;
+      document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_proporcional);
+      document.getElementById('preview-total-proventos').textContent = formatarMoeda(d.total_proventos);
+      document.getElementById('preview-total-descontos').textContent = formatarMoeda(d.total_descontos);
+      document.getElementById('preview-salario-liquido').textContent = formatarMoeda(d.salario_liquido);
+      await this.carregarFolhas();
+    } catch (e) {
+      console.error('Erro ao recalcular folha:', e);
+      alerta.textContent = 'Erro de comunicação ao recalcular.';
+      alerta.classList.remove('hidden');
+    }
+  },
+
+  atualizarPreviaCalculoLocal() {
     const colabId = document.getElementById('folha-campo-colaborador').value;
     const dias = Number(document.getElementById('folha-campo-dias').value || 30);
     const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
@@ -1840,7 +2160,6 @@ const FolhaManager = {
       else totDescontos += Number(r.valor_total || 0);
     });
 
-    // Estimativa de INSS básico para prévia rápida no cliente
     let estInss = 0;
     if (totProventos > 0) {
       if (totProventos <= 1518.00) estInss = totProventos * 0.075;
@@ -1856,6 +2175,10 @@ const FolhaManager = {
     document.getElementById('preview-total-proventos').textContent = formatarMoeda(totProventos);
     document.getElementById('preview-total-descontos').textContent = formatarMoeda(totDescontos);
     document.getElementById('preview-salario-liquido').textContent = formatarMoeda(liquido);
+  },
+
+  atualizarPreviaCalculo() {
+    this.simularFolhaNoBackend(false);
   },
 
   async salvarFolha() {
@@ -1905,7 +2228,7 @@ const FolhaManager = {
         method: metodo,
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: json.stringify ? JSON.stringify(payload) : null
+        body: JSON.stringify(payload)
       });
 
       const resJson = await resp.json();
@@ -1920,12 +2243,12 @@ const FolhaManager = {
         return;
       }
 
-      exibirToast(folhaId ? 'Folha recalculada com sucesso!' : 'Folha de pagamento gerada com sucesso!', 'success');
+      const msgSucesso = folhaId ? 'Folha recalculada e salva com sucesso!' : 'Folha de pagamento gerada e salva com sucesso no banco de dados!';
+      exibirToast(msgSucesso, 'success');
       document.getElementById('modal-folha-form').classList.add('hidden');
       await this.carregarFolhas();
-      // Abre o demonstrativo detalhado imediatamente para conferência
       if (resJson.dados && resJson.dados.id) {
-        this.abrirModalHolerite(resJson.dados.id);
+        this.abrirModalHolerite(resJson.dados.id, true);
       }
     } catch (e) {
       console.error('Falha ao salvar folha:', e);
@@ -1934,7 +2257,7 @@ const FolhaManager = {
     }
   },
 
-  async abrirModalHolerite(folhaId) {
+  async abrirModalHolerite(folhaId, acabouDeSalvar = false) {
     try {
       const resp = await fetch(`${API_BASE}/folha/${folhaId}`, {
         headers: getAuthHeaders(),
@@ -1948,6 +2271,15 @@ const FolhaManager = {
       const json = await resp.json();
       const f = json.dados;
       this.folhaParaFecharOuReabrir = f;
+
+      const bannerSucesso = document.getElementById('holerite-alerta-sucesso');
+      if (bannerSucesso) {
+        if (acabouDeSalvar) {
+          bannerSucesso.classList.remove('hidden');
+        } else {
+          bannerSucesso.classList.add('hidden');
+        }
+      }
 
       // Preencher Contracheque
       document.getElementById('h-competencia').textContent = f.competencia;
