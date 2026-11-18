@@ -159,8 +159,17 @@ class ColaboradorService:
         conn.close()
         return self.obter_por_id(colaborador_id)
 
-    def listar(self, termo: str = None, situacao: str = None, setor: str = None) -> list:
-        """Lista colaboradores com filtros opcionais."""
+    def listar(
+        self,
+        termo: str = None,
+        situacao: str = None,
+        setor: str = None,
+        cargo: str = None,
+        nome: str = None,
+        matricula: str = None,
+        cpf: str = None,
+    ) -> list:
+        """Lista colaboradores com pesquisa e filtros por nome, matrícula, CPF, cargo e setor (RF-002)."""
         P = self._ph()
         pg = self._pg()
 
@@ -180,11 +189,47 @@ class ColaboradorService:
             params.append(situacao.lower())
 
         if setor and setor.strip():
+            padrao_setor = f"%{setor.strip()}%"
             if pg:
                 sql += f" AND c.setor ILIKE {P}"
             else:
-                sql += f" AND LOWER(c.setor) = LOWER({P})"
-            params.append(setor.strip())
+                sql += f" AND LOWER(c.setor) LIKE LOWER({P})"
+            params.append(padrao_setor)
+
+        if cargo and cargo.strip():
+            padrao_cargo = f"%{cargo.strip()}%"
+            if pg:
+                sql += f" AND c.cargo ILIKE {P}"
+            else:
+                sql += f" AND LOWER(c.cargo) LIKE LOWER({P})"
+            params.append(padrao_cargo)
+
+        if nome and nome.strip():
+            padrao_nome = f"%{nome.strip()}%"
+            if pg:
+                sql += f" AND c.nome_completo ILIKE {P}"
+            else:
+                sql += f" AND LOWER(c.nome_completo) LIKE LOWER({P})"
+            params.append(padrao_nome)
+
+        if matricula and matricula.strip():
+            padrao_mat = f"%{matricula.strip()}%"
+            if pg:
+                sql += f" AND c.matricula ILIKE {P}"
+            else:
+                sql += f" AND LOWER(c.matricula) LIKE LOWER({P})"
+            params.append(padrao_mat)
+
+        if cpf and cpf.strip():
+            cpf_limpo = cpf.strip()
+            cpf_dig = normalizar_cpf(cpf_limpo)
+            padrao_cpf_raw = f"%{cpf_limpo}%"
+            padrao_cpf_dig = f"%{cpf_dig}%" if cpf_dig else ""
+            if pg:
+                sql += f" AND (c.cpf ILIKE {P} OR ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') ILIKE {P}))"
+            else:
+                sql += f" AND (c.cpf LIKE {P} OR ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P}))"
+            params.extend([padrao_cpf_raw, cpf_dig, padrao_cpf_dig])
 
         if termo and termo.strip():
             termo_limpo = termo.strip()
@@ -197,16 +242,20 @@ class ColaboradorService:
                     c.nome_completo ILIKE {P} OR
                     c.matricula     ILIKE {P} OR
                     c.cpf           ILIKE {P} OR
-                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') ILIKE {P})
+                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') ILIKE {P}) OR
+                    c.cargo         ILIKE {P} OR
+                    c.setor         ILIKE {P}
                 )"""
             else:
                 sql += f""" AND (
                     LOWER(c.nome_completo) LIKE LOWER({P}) OR
-                    c.matricula LIKE {P} OR
+                    LOWER(c.matricula) LIKE LOWER({P}) OR
                     c.cpf LIKE {P} OR
-                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P})
+                    ({P} != '' AND REPLACE(REPLACE(c.cpf, '.', ''), '-', '') LIKE {P}) OR
+                    LOWER(c.cargo) LIKE LOWER({P}) OR
+                    LOWER(c.setor) LIKE LOWER({P})
                 )"""
-            params.extend([padrao, padrao, padrao, cpf_digitos, padrao_cpf])
+            params.extend([padrao, padrao, padrao, cpf_digitos, padrao_cpf, padrao, padrao])
 
         sql += " GROUP BY c.id ORDER BY c.nome_completo ASC"
 
@@ -251,12 +300,32 @@ class ColaboradorService:
             colab["salario_base"] = float(colab["salario_base"])
         return colab
 
-    def atualizar(self, colaborador_id: int, dados: dict, usuario: str = "Sistema/Administrador") -> dict:
-        """Atualiza dados do colaborador preservando o ID e auditando alteracoes."""
+    def obter_historico(self, colaborador_id: int) -> list:
+        """Retorna a trilha auditada de alteracoes cadastrais do colaborador (RF-003)."""
+        colab = self.obter_por_id(colaborador_id)
+        return colab.get("historico", [])
+
+    def atualizar(
+        self,
+        colaborador_id: int,
+        dados: dict,
+        usuario: str = "Sistema/Administrador",
+        justificativa: str = None,
+    ) -> dict:
+        """Controla e audita alteracoes cadastrais do colaborador preservando o ID (RF-003)."""
         atual = self.obter_por_id(colaborador_id)
-        is_valido, erros, sanitizado = validar_formulario_colaborador(dados, is_edicao=True)
+        payload_mesclado = {**atual, **(dados or {})}
+        is_valido, erros, sanitizado = validar_formulario_colaborador(payload_mesclado, is_edicao=True)
         if not is_valido:
             raise ValidacaoException(erros)
+
+        motivo_alt = (
+            justificativa
+            or (dados or {}).get("justificativa")
+            or (dados or {}).get("motivo_alteracao")
+            or ""
+        ).strip()
+        responsavel_auditado = f"{usuario} (Justificativa: {motivo_alt})" if motivo_alt else usuario
 
         P = self._ph()
         conn = self._conn()
@@ -338,7 +407,7 @@ class ColaboradorService:
                     colaborador_id, data_hora, campo_alterado,
                     valor_anterior, valor_novo, usuario_responsavel
                 ) VALUES ({P},{P},{P},{P},{P},{P})
-            """, (colaborador_id, agora, campo, antigo, novo, usuario))
+            """, (colaborador_id, agora, campo, antigo, novo, responsavel_auditado))
 
         conn.commit()
         conn.close()

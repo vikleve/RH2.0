@@ -159,10 +159,10 @@ class TestModuloColaboradores(unittest.TestCase):
         self.assertIn("matricula", ctx.exception.erros)
 
     # =========================================================================
-    # CA-04: CONSULTA E PESQUISA
+    # CA-04 / RF-002: CONSULTA E PESQUISA (NOME, MATRÍCULA, CPF, CARGO E SETOR)
     # =========================================================================
     def test_ca04_pesquisa_por_nome_cpf_matricula(self):
-        """CA-04: Localiza colaboradores por nome, CPF e matrícula."""
+        """CA-04 / RF-002: Localiza colaboradores por nome, matrícula, CPF, cargo e setor."""
         self.service.cadastrar(self.dados_validos)
 
         c2_dados = dict(self.dados_validos)
@@ -174,41 +174,72 @@ class TestModuloColaboradores(unittest.TestCase):
         c2_dados["setor"] = "Tecnologia da Informação"
         c2 = self.service.cadastrar(c2_dados)
 
-        # Pesquisa por Nome
+        # 1. Pesquisa por Nome (termo livre e filtro específico)
         res_nome = self.service.listar(termo="Carlos")
         self.assertEqual(len(res_nome), 1)
         self.assertEqual(res_nome[0]["matricula"], "TI-2002")
+        self.assertEqual(len(self.service.listar(nome="Ana Clara")), 1)
 
-        # Pesquisa por Matrícula
+        # 2. Pesquisa por Matrícula (termo livre e filtro específico)
         res_mat = self.service.listar(termo="RH-1001")
         self.assertEqual(len(res_mat), 1)
         self.assertEqual(res_mat[0]["nome_completo"], "Ana Clara Santos")
+        self.assertEqual(len(self.service.listar(matricula="TI-2002")), 1)
 
-        # Pesquisa por CPF limpo ou formatado
+        # 3. Pesquisa por CPF limpo ou formatado (termo livre e filtro específico)
         res_cpf = self.service.listar(termo="85328103068")
         self.assertEqual(len(res_cpf), 1)
         self.assertEqual(res_cpf[0]["id"], c2["id"])
+        self.assertEqual(len(self.service.listar(cpf="529.982.247-25")), 1)
+
+        # 4. Pesquisa por Cargo (termo livre e filtro específico — RF-002)
+        res_cargo_termo = self.service.listar(termo="Desenvolvedor")
+        self.assertEqual(len(res_cargo_termo), 1)
+        self.assertEqual(res_cargo_termo[0]["id"], c2["id"])
+
+        res_cargo_filtro = self.service.listar(cargo="Analista de Recursos Humanos")
+        self.assertEqual(len(res_cargo_filtro), 1)
+        self.assertEqual(res_cargo_filtro[0]["matricula"], "RH-1001")
+
+        # 5. Pesquisa por Setor (termo livre e filtro específico — RF-002)
+        res_setor_termo = self.service.listar(termo="Tecnologia da Informação")
+        self.assertEqual(len(res_setor_termo), 1)
+        self.assertEqual(res_setor_termo[0]["id"], c2["id"])
+
+        res_setor_filtro = self.service.listar(setor="Recursos Humanos")
+        self.assertEqual(len(res_setor_filtro), 1)
+        self.assertEqual(res_setor_filtro[0]["matricula"], "RH-1001")
 
     # =========================================================================
-    # CA-05: EDIÇÃO DE DADOS
+    # CA-05 & CA-06 / RF-003: CONTROLE DE ALTERAÇÕES CADASTRAIS E AUDITORIA
     # =========================================================================
     def test_ca05_edicao_preservando_identificador(self):
-        """CA-05: Edita dados de um colaborador sem criar registro duplicado."""
+        """CA-05 / RF-003: Controla alterações cadastrais (completas ou parciais) preservando o identificador."""
         criado = self.service.cadastrar(self.dados_validos)
         cid = criado["id"]
 
-        dados_atualizados = dict(self.dados_validos)
-        dados_atualizados["cargo"] = "Coordenadora de RH"
-        dados_atualizados["salario_base"] = 6500.00
-
-        atualizado = self.service.atualizar(cid, dados_atualizados)
+        # Atualização parcial (estilo PATCH) enviando apenas os campos alterados e justificativa
+        atualizado = self.service.atualizar(
+            cid,
+            {"cargo": "Coordenadora de RH", "salario_base": 6500.00},
+            usuario="Admin RH",
+            justificativa="Promoção de cargo homologada",
+        )
 
         self.assertEqual(atualizado["id"], cid)
         self.assertEqual(atualizado["cargo"], "Coordenadora de RH")
         self.assertEqual(atualizado["salario_base"], 6500.00)
+        # Campos não enviados permanecem preservados
+        self.assertEqual(atualizado["nome_completo"], "Ana Clara Santos")
+        self.assertEqual(atualizado["matricula"], "RH-1001")
 
         # Garante que continua existindo apenas 1 registro no banco
         self.assertEqual(len(self.service.listar()), 1)
+
+        # Verifica consulta direta da trilha de alterações (RF-003)
+        historico = self.service.obter_historico(cid)
+        self.assertTrue(len(historico) >= 3)
+        self.assertTrue(any("Promoção de cargo homologada" in h["usuario_responsavel"] for h in historico))
 
     # =========================================================================
     # CA-06: HISTÓRICO DE ALTERAÇÕES (AUDITORIA)

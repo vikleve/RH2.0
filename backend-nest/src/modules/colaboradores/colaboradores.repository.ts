@@ -75,22 +75,76 @@ export class ColaboradoresRepository {
 
     // Filtro por Departamento / Setor
     const dept = query.departamentoId || query.setor;
-    if (dept) {
-      params.push(dept);
-      whereClausula += ` AND (departamento_id = $${params.length} OR setor = $${params.length})`;
+    if (dept && dept.trim()) {
+      params.push(dept.trim());
+      const pExact = `$${params.length}`;
+      params.push(`%${dept.trim()}%`);
+      const pLike = `$${params.length}`;
+      whereClausula += ` AND (departamento_id = ${pExact} OR LOWER(setor) = LOWER(${pExact}) OR LOWER(setor) LIKE LOWER(${pLike}))`;
     }
 
-    // Pesquisa textual (RF-02: Nome, CPF, Matrícula)
+    // Filtro por Cargo
+    const cargoFiltro = query.cargo || query.cargoId;
+    if (cargoFiltro && cargoFiltro.trim()) {
+      params.push(cargoFiltro.trim());
+      const pExact = `$${params.length}`;
+      params.push(`%${cargoFiltro.trim()}%`);
+      const pLike = `$${params.length}`;
+      whereClausula += ` AND (cargo_id = ${pExact} OR LOWER(cargo) = LOWER(${pExact}) OR LOWER(cargo) LIKE LOWER(${pLike}))`;
+    }
+
+    // Filtros específicos por campo (RF-002: nome, matrícula, CPF)
+    if (query.nome && query.nome.trim()) {
+      params.push(`%${query.nome.trim()}%`);
+      whereClausula += ` AND LOWER(nome_completo) LIKE LOWER($${params.length})`;
+    }
+
+    if (query.matricula && query.matricula.trim()) {
+      params.push(`%${query.matricula.trim()}%`);
+      whereClausula += ` AND LOWER(matricula) LIKE LOWER($${params.length})`;
+    }
+
+    if (query.cpf && query.cpf.trim()) {
+      const cpfRaw = `%${query.cpf.trim()}%`;
+      const cpfDigits = query.cpf.replace(/\D/g, '');
+      params.push(cpfRaw);
+      const pCpfRaw = `$${params.length}`;
+      if (cpfDigits.length > 0) {
+        params.push(`%${cpfDigits}%`);
+        const pCpfDig = `$${params.length}`;
+        whereClausula += ` AND (LOWER(cpf) LIKE LOWER(${pCpfRaw}) OR REPLACE(REPLACE(cpf, '.', ''), '-', '') LIKE ${pCpfDig})`;
+      } else {
+        whereClausula += ` AND LOWER(cpf) LIKE LOWER(${pCpfRaw})`;
+      }
+    }
+
+    // Pesquisa textual unificada (RF-002: Nome, Matrícula, CPF, Cargo e Setor)
     const termo = query.search || query.q;
     if (termo && termo.trim()) {
       const tLimpo = `%${termo.trim()}%`;
       params.push(tLimpo);
       const p = `$${params.length}`;
-      whereClausula += ` AND (
-        LOWER(nome_completo) LIKE LOWER(${p}) OR
-        LOWER(cpf) LIKE LOWER(${p}) OR
-        LOWER(matricula) LIKE LOWER(${p})
-      )`;
+      const cpfDigitos = termo.replace(/\D/g, '');
+      if (cpfDigitos.length > 0) {
+        params.push(`%${cpfDigitos}%`);
+        const pCpf = `$${params.length}`;
+        whereClausula += ` AND (
+          LOWER(nome_completo) LIKE LOWER(${p}) OR
+          LOWER(cpf) LIKE LOWER(${p}) OR
+          REPLACE(REPLACE(cpf, '.', ''), '-', '') LIKE ${pCpf} OR
+          LOWER(matricula) LIKE LOWER(${p}) OR
+          LOWER(cargo) LIKE LOWER(${p}) OR
+          LOWER(setor) LIKE LOWER(${p})
+        )`;
+      } else {
+        whereClausula += ` AND (
+          LOWER(nome_completo) LIKE LOWER(${p}) OR
+          LOWER(cpf) LIKE LOWER(${p}) OR
+          LOWER(matricula) LIKE LOWER(${p}) OR
+          LOWER(cargo) LIKE LOWER(${p}) OR
+          LOWER(setor) LIKE LOWER(${p})
+        )`;
+      }
     }
 
     // Contagem total

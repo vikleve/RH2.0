@@ -36,10 +36,11 @@
 
 ---
 
-## 2. Listar Colaboradores (Paginado & Multiempresa)
+## 2. Listar Colaboradores (Paginado & Multiempresa — RF-002)
 - **Rota:** `GET /api/colaboradores`
 - **Perfis Autorizados:** `administrador`, `analista_rh`, `operador_dp`
-- **Query Parameters:** `page`, `limit`, `search`, `situacao`, `departamentoId`, `filialId`, `empresaId`
+- **Query Parameters:** `page`, `limit`, `search` (ou `q`), `nome`, `matricula`, `cpf`, `cargo`, `cargoId`, `setor`, `departamentoId`, `situacao`, `filialId`, `empresaId`
+- **Requisito Atendido (RF-002 — Obrigatório para Go-Live V1):** Permite pesquisa unificada (`search` / `q`) ou filtrada individualmente por **nome, matrícula, CPF, cargo e setor** (Origem: SRS, Volume 3 — Requisitos Funcionais Detalhados).
 - **Regra de Segurança Multiempresa:**
   * Se o usuário possui escopo restrito a uma empresa, a consulta é **automaticamente restrita** àquela empresa.
   * Se o usuário tentar passar `?empresaId=` de uma organização que não lhe pertence, o backend retorna `HTTP 403 Forbidden` (`EMPRESA_NAO_AUTORIZADA`).
@@ -80,14 +81,16 @@
 
 ---
 
-## 4. Atualizar Colaborador (PATCH)
-- **Rota:** `PATCH /api/colaboradores/:id`
-- **Perfis Autorizados:** `administrador`, `analista_rh`
+## 4. Atualizar Colaborador e Controlar Alterações Cadastrais (PUT / PATCH — RF-003)
+- **Rotas:** `PATCH /api/colaboradores/:id`, `PUT /api/colaboradores/:id` e `GET /api/colaboradores/:id/historico`
+- **Perfis Autorizados:** `administrador`, `analista_rh` (`operador_dp` autorizado para leitura do histórico)
+- **Requisito Atendido (RF-003 — Obrigatório para Go-Live V1):** Controlar alterações cadastrais (Origem: SRS, Volume 3 — Requisitos Funcionais Detalhados).
 - **Regras:**
   * Valida permissão sobre o ID (retorna 404 caso seja de outra organização).
   * Impede alteração ou transferência de `empresaId` para outra organização fora do escopo (retorna 403 Forbidden).
-  * Preserva todos os campos omitidos na requisição.
-  * Registra evento na tabela `historico_alteracoes`.
+  * Impede duplicidade de CPF ou matrícula com outros registros existentes.
+  * Preserva todos os campos omitidos na requisição (`PATCH`).
+  * Registra cada campo modificado (`campo_alterado`, `valor_anterior`, `valor_novo`, `data_hora`, `usuario_responsavel` e justificativa opcional) na tabela `historico_alteracoes`.
 - **Código de Sucesso:** `200 OK`
 
 ---

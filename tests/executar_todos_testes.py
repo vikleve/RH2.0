@@ -23,13 +23,15 @@ from tests.test_folha_api import TestFolhaApi
 from tests.test_folha_calculos import TestFolhaCalculos
 from tests.test_folha_service import TestFolhaService
 from tests.test_rate_limit_csrf import TestAutenticacaoRH20
+from tests.test_rn_oficiais_2026 import TestRegrasNegocioOficiais2026
+from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhista
 
 
 def executar():
     print("=" * 80)
-    print(" SUÍTE DE TESTES AUTOMATIZADOS — PORTAL DP & RH")
-    print(" Módulo 1 (Colaboradores), Segurança (Autenticação) & Módulo Folha de Pagamento")
-    print(" Projeto Interdisciplinar RH & GTI — Departamento Pessoal")
+    print(" SUÍTE DE TESTES AUTOMATIZADOS — PLATAFORMA INTEGRADA DO CICLO TRABALHISTA")
+    print(" Módulos 01 a 20 (RF-001 a RF-200), RT-01 a RT-13 e RN-001 a RN-083 (2026)")
+    print(" Projeto Interdisciplinar RH & GTI — Departamento Pessoal & GTI")
     print(" Modo: Execução 100% em código (headless / sem abrir navegador)")
     print("=" * 80)
     print()
@@ -43,10 +45,16 @@ def executar():
     # 2. Testes de Cálculos da Folha de Pagamento (Módulo 2: Cálculos e Proporcionalidades)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaCalculos))
 
-    # 3. Testes de Serviço e Persistência da Folha (Módulo 2: Ciclo de Vida e Auditoria)
+    # 3. Testes Oficiais de Cálculos 2026 (INSS, IRRF Lei 15.270/25, Salário Família, Casos Seção 5)
+    suite.addTests(carregador.loadTestsFromTestCase(TestRegrasNegocioOficiais2026))
+
+    # 4. Testes da Plataforma Completa do Ciclo Trabalhista (Módulos 01 a 20)
+    suite.addTests(carregador.loadTestsFromTestCase(TestPlataformaCicloTrabalhista))
+
+    # 5. Testes de Serviço e Persistência da Folha (Ciclo de Vida e Auditoria)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))
 
-    # 4. Testes de API In-Memory da Folha (Endpoints REST protegidos)
+    # 6. Testes de API In-Memory da Folha (Endpoints REST protegidos)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaApi))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)

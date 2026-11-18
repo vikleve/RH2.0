@@ -28,6 +28,7 @@ except ImportError:
 
 from http.server import BaseHTTPRequestHandler
 
+from backend.database import erro_http
 from backend.auth import AuthService
 from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
 
@@ -100,7 +101,7 @@ class handler(BaseHTTPRequestHandler):
         try:
             usuario = _get_auth().validar_sessao(token)
         except Exception as e:
-            self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+            self._enviar_json(*erro_http(e))
             return None
         if not usuario:
             self._enviar_json(401, {
@@ -158,14 +159,26 @@ class handler(BaseHTTPRequestHandler):
         partes = [p for p in path.split("/") if p]
         # /api/colaboradores
         if len(partes) == 2 and partes[1] == "colaboradores":
-            termo    = (query.get("q",        [None])[0])
-            situacao = (query.get("situacao", [None])[0])
-            setor    = (query.get("setor",    [None])[0])
+            termo     = (query.get("q") or query.get("search") or [None])[0]
+            situacao  = (query.get("situacao", [None])[0])
+            setor     = (query.get("setor") or query.get("departamentoId") or [None])[0]
+            cargo     = (query.get("cargo") or query.get("cargoId") or [None])[0]
+            nome      = (query.get("nome", [None])[0])
+            matricula = (query.get("matricula", [None])[0])
+            cpf       = (query.get("cpf", [None])[0])
             try:
-                colabs = _get_service().listar(termo=termo, situacao=situacao, setor=setor)
+                colabs = _get_service().listar(
+                    termo=termo,
+                    situacao=situacao,
+                    setor=setor,
+                    cargo=cargo,
+                    nome=nome,
+                    matricula=matricula,
+                    cpf=cpf,
+                )
                 return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         # /api/colaboradores/<id>
         if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
@@ -175,7 +188,17 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
+
+        # /api/colaboradores/<id>/historico (RF-003)
+        if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit() and partes[3] == "historico":
+            try:
+                historico = _get_service().obter_historico(int(partes[2]))
+                return self._enviar_json(200, {"sucesso": True, "total": len(historico), "dados": historico})
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -205,7 +228,7 @@ class handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -236,7 +259,7 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})
 
@@ -247,6 +270,29 @@ class handler(BaseHTTPRequestHandler):
             return
 
         partes = [p for p in path.split("/") if p]
+        # PATCH /api/colaboradores/<id> — Controle de Alterações Cadastrais (RF-003)
+        if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
+            colab_id = int(partes[2])
+            try:
+                dados = self._ler_json_body()
+                nome_resp = f"{usuario['nome_completo']} ({usuario['perfil']})"
+                atualizado = _get_service().atualizar(colab_id, dados, usuario=nome_resp)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Colaborador atualizado com sucesso!",
+                    "dados": atualizado
+                })
+            except ValidacaoException as e:
+                return self._enviar_json(400, {
+                    "sucesso": False,
+                    "mensagem": "Existem inconsistencias nos dados informados.",
+                    "erros": e.erros
+                })
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         # /api/colaboradores/<id>/inativar  ou  /api/colaboradores/<id>/reativar
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
             colab_id = int(partes[2])
@@ -274,6 +320,6 @@ class handler(BaseHTTPRequestHandler):
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
-                return self._enviar_json(500, {"sucesso": False, "mensagem": str(e)})
+                return self._enviar_json(*erro_http(e))
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota nao encontrada: {path}"})

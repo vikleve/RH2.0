@@ -133,19 +133,50 @@ class TestApiColaboradores(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(resp["total"] >= 1)
 
-        # 4. GET /api/colaboradores?q=Mariana - Pesquisa autenticada
+        # 4. GET /api/colaboradores - Pesquisa autenticada por nome, matrícula, CPF, cargo e setor (RF-002)
         status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=Mariana", token=token)
         self.assertEqual(status, 200)
         self.assertEqual(len(resp["dados"]), 1)
         self.assertEqual(resp["dados"][0]["id"], colab_id)
 
-        # 5. PUT /api/colaboradores/<id> - Edição autenticada
+        status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=RH-5001", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(resp["dados"]), 1)
+
+        status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=52998224725", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(resp["dados"]), 1)
+
+        status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?q=Supervisora", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(resp["dados"]), 1)
+
+        status, resp, _ = self._fazer_requisicao("GET", "/api/colaboradores?cargo=Supervisora%20de%20DP&setor=Departamento%20Pessoal", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(resp["dados"]), 1)
+        self.assertEqual(resp["dados"][0]["id"], colab_id)
+
+        # 5. PUT e PATCH /api/colaboradores/<id> - Controle de alterações cadastrais (RF-003)
         payload_edit = dict(payload)
         payload_edit["cargo"] = "Gerente de Departamento Pessoal"
         payload_edit["salario_base"] = 8200.00
         status, resp, _ = self._fazer_requisicao("PUT", f"/api/colaboradores/{colab_id}", payload_edit, token=token)
         self.assertEqual(status, 200)
         self.assertEqual(resp["dados"]["cargo"], "Gerente de Departamento Pessoal")
+
+        status, resp, _ = self._fazer_requisicao("PATCH", f"/api/colaboradores/{colab_id}", {
+            "setor": "Recursos Humanos",
+            "justificativa": "Transferência interna de setor"
+        }, token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(resp["dados"]["setor"], "Recursos Humanos")
+        self.assertEqual(resp["dados"]["cargo"], "Gerente de Departamento Pessoal")
+
+        # Consulta direta da rota de histórico de alterações cadastrais GET /api/colaboradores/<id>/historico
+        status, resp_hist, _ = self._fazer_requisicao("GET", f"/api/colaboradores/{colab_id}/historico", token=token)
+        self.assertEqual(status, 200)
+        self.assertTrue(resp_hist["sucesso"])
+        self.assertTrue(resp_hist["total"] >= 3)
 
         # 6. PATCH /api/colaboradores/<id>/inativar - Inativação lógica autenticada
         status, resp, _ = self._fazer_requisicao("PATCH", f"/api/colaboradores/{colab_id}/inativar", {

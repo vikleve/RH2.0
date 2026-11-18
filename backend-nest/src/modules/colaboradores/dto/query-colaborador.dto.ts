@@ -32,6 +32,26 @@ export class QueryColaboradorDto {
 
   @IsOptional()
   @IsString()
+  cargo?: string;
+
+  @IsOptional()
+  @IsString()
+  cargoId?: string;
+
+  @IsOptional()
+  @IsString()
+  nome?: string;
+
+  @IsOptional()
+  @IsString()
+  matricula?: string;
+
+  @IsOptional()
+  @IsString()
+  cpf?: string;
+
+  @IsOptional()
+  @IsString()
   filialId?: string;
 
   @IsOptional()

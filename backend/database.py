@@ -3,9 +3,10 @@ Modulo de Banco de Dados — Dual-mode: PostgreSQL (producao) + SQLite (local/te
 Camada de persistencia relacional com integridade referencial.
 Atende a RF-01 a RF-09, CA-07, CA-08.
 
-Em producao (Vercel): define DATABASE_URL como variavel de ambiente apontando para
-  PostgreSQL externo (Supabase, Neon, Railway, etc).
-Em desenvolvimento local: usa SQLite automaticamente se DATABASE_URL nao estiver definida.
+Em producao (Vercel): DATABASE_URL e OBRIGATORIA (PostgreSQL: Supabase, Neon, etc).
+  Sem ela a aplicacao falha de forma explicita (DatabaseConfigError) — NAO ha fallback
+  silencioso para SQLite, cujo arquivo em /tmp nao persiste entre execucoes serverless.
+Em desenvolvimento local: usa SQLite se DATABASE_URL nao estiver definida.
 Os testes passam db_path explicito => sempre SQLite isolado.
 """
 import os
@@ -24,6 +25,48 @@ try:
 except ImportError:
     pass
 
+class DatabaseConfigError(RuntimeError):
+    """Configuracao de banco ausente/invalida (ex.: DATABASE_URL ausente em producao)."""
+
+
+class DatabaseUnavailableError(RuntimeError):
+    """Banco indisponivel. A mensagem NUNCA contem a URL/credenciais de conexao."""
+
+
+def em_producao() -> bool:
+    """True quando rodando na Vercel ou com ambiente marcado como producao."""
+    if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"):
+        return True
+    for nome in ("APP_ENV", "ENVIRONMENT", "NODE_ENV", "ENV"):
+        if (os.environ.get(nome) or "").strip().lower() in ("production", "prod", "producao"):
+            return True
+    return False
+
+
+def erro_http(exc: Exception):
+    """
+    Converte uma excecao em (status, corpo_json) para respostas da API.
+    Falhas de banco => 503 com mensagem clara e sem detalhes sensiveis.
+    """
+    if isinstance(exc, (DatabaseConfigError, DatabaseUnavailableError)):
+        return 503, {
+            "sucesso": False,
+            "codigo": "BANCO_INDISPONIVEL",
+            "mensagem": str(exc),
+        }
+    try:
+        import psycopg2
+        if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+            return 503, {
+                "sucesso": False,
+                "codigo": "BANCO_INDISPONIVEL",
+                "mensagem": "Banco de dados indisponivel no momento. A operacao nao foi realizada.",
+            }
+    except ImportError:
+        pass
+    return 500, {"sucesso": False, "mensagem": f"Erro interno: {exc}"}
+
+
 _SQLITE_PATH = os.environ.get(
     "DB_PATH",
     os.path.join(tempfile.gettempdir(), "colaboradores.db") if os.environ.get("VERCEL")
@@ -40,6 +83,7 @@ def get_database_url() -> str:
     """
     url = (
         os.environ.get("DATABASE_URL")
+        or os.environ.get("NEON_DATABASE_URL")
         or os.environ.get("POSTGRES_URL")
         or os.environ.get("POSTGRES_PRISMA_URL")
         or os.environ.get("POSTGRES_URL_NON_POOLING")
@@ -67,7 +111,14 @@ def _usar_postgres(db_path: str = None) -> bool:
     """
     if db_path:
         return False
-    return bool(get_database_url())
+    if get_database_url():
+        return True
+    if em_producao():
+        raise DatabaseConfigError(
+            "DATABASE_URL nao configurada: o PostgreSQL e obrigatorio em producao. "
+            "Cadastre a variavel como segredo no ambiente Production da Vercel."
+        )
+    return False  # desenvolvimento local: SQLite
 
 
 def _get_pg_conn():
@@ -79,6 +130,8 @@ def _get_pg_conn():
             "psycopg2-binary nao encontrado. Execute: pip install psycopg2-binary"
         )
     url = get_database_url()
+    if not url:
+        raise DatabaseConfigError("DATABASE_URL nao configurada: o PostgreSQL e obrigatorio.")
     dsn = url.replace("postgres://", "postgresql://", 1)
 
     # Se for servico em nuvem (Neon, Supabase, Railway, Render) e nao especificar sslmode, garante sslmode=require
@@ -89,7 +142,16 @@ def _get_pg_conn():
     ):
         dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
 
-    return psycopg2.connect(dsn)
+    if "connect_timeout=" not in dsn:
+        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "15")
+
+    try:
+        return psycopg2.connect(dsn)
+    except psycopg2.OperationalError:
+        # Nao propaga a mensagem original: ela pode revelar host/usuario do banco.
+        raise DatabaseUnavailableError(
+            "Banco de dados indisponivel no momento. A operacao nao foi realizada e nenhum dado foi salvo."
+        ) from None
 
 
 def _get_sqlite_conn(db_path: str = None) -> sqlite3.Connection:
@@ -416,6 +478,544 @@ _DDL_AUDITORIA_AUTENTICACAO_SQLITE = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DDL — Plataforma de Gestão do Ciclo Trabalhista (Módulos 01 a 20)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DDL_EMPRESAS = """
+    CREATE TABLE IF NOT EXISTS empresas (
+        id                  TEXT PRIMARY KEY,
+        cnpj                TEXT UNIQUE NOT NULL,
+        razao_social        TEXT NOT NULL,
+        nome_fantasia       TEXT,
+        regime_tributario   TEXT NOT NULL DEFAULT 'lucro_real',
+        responsavel_nome    TEXT,
+        responsavel_cpf     TEXT,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_FILIAIS = """
+    CREATE TABLE IF NOT EXISTS filiais (
+        id                  TEXT PRIMARY KEY,
+        empresa_id          TEXT NOT NULL,
+        codigo_filial       TEXT NOT NULL,
+        nome                TEXT NOT NULL,
+        cnpj                TEXT NOT NULL,
+        cidade              TEXT NOT NULL,
+        uf                  TEXT NOT NULL,
+        feriados_locais     TEXT,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_CENTROS_CUSTO = """
+    CREATE TABLE IF NOT EXISTS centros_custo (
+        id                  TEXT PRIMARY KEY,
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSOES = """
+    CREATE TABLE IF NOT EXISTS admissoes (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        filial_id           TEXT,
+        candidato_nome      TEXT NOT NULL,
+        candidato_cpf       TEXT NOT NULL,
+        candidato_email     TEXT NOT NULL,
+        cargo               TEXT NOT NULL,
+        setor               TEXT NOT NULL,
+        salario_proposto    REAL NOT NULL,
+        tipo_contrato       TEXT NOT NULL DEFAULT 'experiencia',
+        prazo_experiencia_dias INTEGER DEFAULT 45,
+        prorrogacao_experiencia_dias INTEGER DEFAULT 45,
+        data_prevista_admissao TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'em_andamento',
+        motivo_reprovacao   TEXT,
+        aprovado_por        TEXT,
+        aprovado_em         TEXT,
+        colaborador_id      INTEGER,
+        aso_admissional_status TEXT DEFAULT 'pendente',
+        contrato_gerado     INTEGER DEFAULT 0,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_CHECKLIST_ADMISSONAL = """
+    CREATE TABLE IF NOT EXISTS checklist_admissional (
+        id                  {pk},
+        admissao_id         INTEGER NOT NULL,
+        item_descricao      TEXT NOT NULL,
+        obrigatorio         INTEGER NOT NULL DEFAULT 1,
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        justificativa_dispensa TEXT,
+        arquivo_url         TEXT,
+        validado_por        TEXT,
+        validado_em         TEXT
+    );
+"""
+
+_DDL_ESCALAS_JORNADA = """
+    CREATE TABLE IF NOT EXISTS escalas_jornada (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        carga_semanal_horas REAL NOT NULL DEFAULT 44.00,
+        divisor_mensal      REAL NOT NULL DEFAULT 220.00,
+        tipo_regime         TEXT NOT NULL DEFAULT '5x2',
+        entrada_padrao      TEXT NOT NULL DEFAULT '08:00',
+        saida_padrao        TEXT NOT NULL DEFAULT '17:48',
+        intervalo_minutos   INTEGER NOT NULL DEFAULT 60,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_MARCACOES_PONTO = """
+    CREATE TABLE IF NOT EXISTS marcacoes_ponto (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        data                TEXT NOT NULL,
+        hora                TEXT NOT NULL,
+        tipo_registro       TEXT NOT NULL DEFAULT 'automatico',
+        id_coletor          TEXT,
+        arquivo_origem      TEXT,
+        inconsistente       INTEGER DEFAULT 0,
+        motivo_inconsistencia TEXT,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_OCORRENCIAS_PONTO = """
+    CREATE TABLE IF NOT EXISTS ocorrencias_ponto (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        data_inicio         TEXT NOT NULL,
+        data_fim            TEXT NOT NULL,
+        tipo_ocorrencia     TEXT NOT NULL,
+        minutos_ausencia    INTEGER DEFAULT 0,
+        justificativa       TEXT NOT NULL,
+        comprovante_anexo   TEXT,
+        desconta_dsr        INTEGER DEFAULT 0,
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        aprovado_por        TEXT,
+        aprovado_em         TEXT,
+        motivo_reprovacao   TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_AJUSTES_PONTO = """
+    CREATE TABLE IF NOT EXISTS ajustes_ponto (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        data                TEXT NOT NULL,
+        hora_original       TEXT,
+        hora_ajustada       TEXT NOT NULL,
+        tipo_marcacao       TEXT NOT NULL,
+        motivo              TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        aprovado_por        TEXT,
+        aprovado_em         TEXT,
+        motivo_reprovacao   TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FECHAMENTOS_PONTO = """
+    CREATE TABLE IF NOT EXISTS fechamentos_ponto (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        filial_id           TEXT,
+        competencia         TEXT NOT NULL,
+        fechado_em          TEXT NOT NULL,
+        fechado_por         TEXT NOT NULL,
+        situacao            TEXT NOT NULL DEFAULT 'fechado',
+        justificativa_reabertura TEXT,
+        reaberto_por        TEXT,
+        reaberto_em         TEXT
+    );
+"""
+
+_DDL_PERIODOS_AQUISITIVOS = """
+    CREATE TABLE IF NOT EXISTS periodos_aquisitivos (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        inicio_aquisitivo   TEXT NOT NULL,
+        fim_aquisitivo      TEXT NOT NULL,
+        limite_concessivo   TEXT NOT NULL,
+        faltas_injustificadas INTEGER NOT NULL DEFAULT 0,
+        dias_direito        INTEGER NOT NULL DEFAULT 30,
+        dias_gozados        INTEGER NOT NULL DEFAULT 0,
+        saldo_dias          INTEGER NOT NULL DEFAULT 30,
+        situacao            TEXT NOT NULL DEFAULT 'adquirido',
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_FERIAS_PROGRAMADAS = """
+    CREATE TABLE IF NOT EXISTS ferias_programadas (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        periodo_aquisitivo_id INTEGER,
+        data_inicio         TEXT NOT NULL,
+        data_fim            TEXT NOT NULL,
+        dias_gozo           INTEGER NOT NULL,
+        abono_pecuniario    INTEGER NOT NULL DEFAULT 0,
+        dias_abono          INTEGER NOT NULL DEFAULT 0,
+        adiantar_decimo     INTEGER NOT NULL DEFAULT 0,
+        aviso_ferias_emitido TEXT,
+        data_pagamento_limite TEXT,
+        valor_ferias        REAL DEFAULT 0.00,
+        valor_terco         REAL DEFAULT 0.00,
+        valor_abono         REAL DEFAULT 0.00,
+        valor_terco_abono   REAL DEFAULT 0.00,
+        desconto_inss       REAL DEFAULT 0.00,
+        desconto_irrf       REAL DEFAULT 0.00,
+        valor_liquido       REAL DEFAULT 0.00,
+        em_dobro            INTEGER NOT NULL DEFAULT 0,
+        status              TEXT NOT NULL DEFAULT 'solicitada',
+        aprovado_por        TEXT,
+        aprovado_em         TEXT,
+        motivo_reprovacao   TEXT,
+        competencia_folha   TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_AFASTAMENTOS = """
+    CREATE TABLE IF NOT EXISTS afastamentos (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        tipo                TEXT NOT NULL,
+        motivo_esocial      TEXT NOT NULL DEFAULT '01',
+        data_inicio         TEXT NOT NULL,
+        data_fim_prevista   TEXT NOT NULL,
+        data_retorno_efetivo TEXT,
+        cid                 TEXT,
+        estabilidade_fim    TEXT,
+        dias_empresa        INTEGER DEFAULT 15,
+        dias_inss           INTEGER DEFAULT 0,
+        exige_aso_retorno   INTEGER DEFAULT 0,
+        aso_retorno_realizado INTEGER DEFAULT 0,
+        status_esocial      TEXT DEFAULT 'pendente',
+        recibo_esocial      TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_BENEFICIOS_CATALOGO = """
+    CREATE TABLE IF NOT EXISTS beneficios_catalogo (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        nome                TEXT NOT NULL,
+        tipo                TEXT NOT NULL,
+        coparticipacao_tipo TEXT NOT NULL DEFAULT 'percentual',
+        coparticipacao_valor REAL DEFAULT 0.00,
+        teto_legal_percentual REAL DEFAULT 6.00,
+        regra_elegibilidade TEXT,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_BENEFICIOS_COLABORADOR = """
+    CREATE TABLE IF NOT EXISTS beneficios_colaborador (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        beneficio_id        INTEGER NOT NULL,
+        optante             INTEGER NOT NULL DEFAULT 1,
+        valor_diario        REAL DEFAULT 0.00,
+        dias_uteis_mes      INTEGER DEFAULT 22,
+        custo_total_mes     REAL DEFAULT 0.00,
+        desconto_colaborador REAL DEFAULT 0.00,
+        custo_empresa       REAL DEFAULT 0.00,
+        vigencia_inicio     TEXT NOT NULL,
+        vigencia_fim        TEXT,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_DECIMO_TERCEIRO = """
+    CREATE TABLE IF NOT EXISTS decimo_terceiro (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        ano_base            INTEGER NOT NULL,
+        parcela             INTEGER NOT NULL,
+        meses_trabalhados   INTEGER NOT NULL DEFAULT 12,
+        salario_base        REAL NOT NULL,
+        media_variaveis     REAL NOT NULL DEFAULT 0.00,
+        remuneracao_total   REAL NOT NULL,
+        valor_bruto         REAL NOT NULL,
+        desconto_primeira_parcela REAL DEFAULT 0.00,
+        desconto_inss       REAL DEFAULT 0.00,
+        desconto_irrf       REAL DEFAULT 0.00,
+        valor_liquido       REAL NOT NULL,
+        fgts_informativo    REAL DEFAULT 0.00,
+        data_pagamento      TEXT NOT NULL,
+        situacao            TEXT NOT NULL DEFAULT 'calculado',
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_RESCISOES = """
+    CREATE TABLE IF NOT EXISTS rescisoes (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        tipo_rescisao       TEXT NOT NULL,
+        data_comunicacao    TEXT NOT NULL,
+        data_afastamento    TEXT NOT NULL,
+        tipo_aviso_previo   TEXT NOT NULL DEFAULT 'indenizado',
+        dias_aviso_previo   INTEGER NOT NULL DEFAULT 30,
+        saldo_salario_dias  INTEGER NOT NULL DEFAULT 0,
+        saldo_salario_valor REAL DEFAULT 0.00,
+        aviso_indenizado_valor REAL DEFAULT 0.00,
+        ferias_vencidas_valor REAL DEFAULT 0.00,
+        terco_ferias_vencidas REAL DEFAULT 0.00,
+        ferias_prop_dias    INTEGER DEFAULT 0,
+        ferias_prop_valor   REAL DEFAULT 0.00,
+        terco_ferias_prop   REAL DEFAULT 0.00,
+        decimo_prop_avos    INTEGER DEFAULT 0,
+        decimo_prop_valor   REAL DEFAULT 0.00,
+        multa_fgts_percentual REAL DEFAULT 40.00,
+        multa_fgts_valor    REAL DEFAULT 0.00,
+        outros_proventos    REAL DEFAULT 0.00,
+        total_proventos     REAL NOT NULL DEFAULT 0.00,
+        desconto_inss       REAL DEFAULT 0.00,
+        desconto_irrf       REAL DEFAULT 0.00,
+        desconto_aviso_previo REAL DEFAULT 0.00,
+        outros_descontos    REAL DEFAULT 0.00,
+        total_descontos     REAL NOT NULL DEFAULT 0.00,
+        valor_liquido       REAL NOT NULL DEFAULT 0.00,
+        data_limite_pagamento TEXT NOT NULL,
+        data_pagamento_realizada TEXT,
+        multa_art_477_aplicada INTEGER DEFAULT 0,
+        seguro_desemprego_gerado INTEGER DEFAULT 0,
+        trct_gerado         INTEGER DEFAULT 0,
+        status              TEXT NOT NULL DEFAULT 'aberta',
+        recibo_esocial_s2299 TEXT,
+        motivo_legal        TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_EXAMES = """
+    CREATE TABLE IF NOT EXISTS sst_exames (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        tipo                TEXT NOT NULL DEFAULT 'periodico',
+        periodicidade_meses INTEGER NOT NULL DEFAULT 12,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_ASOS = """
+    CREATE TABLE IF NOT EXISTS sst_asos (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        exame_id            INTEGER,
+        tipo_aso            TEXT NOT NULL,
+        data_emissao        TEXT NOT NULL,
+        data_validade       TEXT NOT NULL,
+        resultado           TEXT NOT NULL,
+        medico_nome         TEXT NOT NULL,
+        medico_crm          TEXT NOT NULL,
+        medico_uf           TEXT NOT NULL,
+        arquivo_url         TEXT,
+        recibo_esocial_s2220 TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_EPIS = """
+    CREATE TABLE IF NOT EXISTS sst_epis (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        ca_numero           TEXT NOT NULL,
+        ca_validade         TEXT NOT NULL,
+        vida_util_dias      INTEGER NOT NULL DEFAULT 180,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_ENTREGAS_EPI = """
+    CREATE TABLE IF NOT EXISTS sst_entregas_epi (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        epi_id              INTEGER NOT NULL,
+        data_entrega        TEXT NOT NULL,
+        quantidade          INTEGER NOT NULL DEFAULT 1,
+        data_prevista_troca TEXT,
+        ciencia_colaborador INTEGER NOT NULL DEFAULT 1,
+        status              TEXT NOT NULL DEFAULT 'ativo',
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_TREINAMENTOS = """
+    CREATE TABLE IF NOT EXISTS sst_treinamentos (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        codigo              TEXT NOT NULL,
+        nome                TEXT NOT NULL,
+        nr_norma            TEXT NOT NULL,
+        carga_horaria       INTEGER NOT NULL,
+        validade_meses      INTEGER NOT NULL DEFAULT 24,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_TREINAMENTOS_PARTICIPACOES = """
+    CREATE TABLE IF NOT EXISTS sst_treinamentos_participacoes (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        treinamento_id      INTEGER NOT NULL,
+        data_conclusao      TEXT NOT NULL,
+        data_expiracao      TEXT NOT NULL,
+        certificado_url     TEXT,
+        instrutor_nome      TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_CATS = """
+    CREATE TABLE IF NOT EXISTS sst_cats (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL,
+        tipo_acidente       TEXT NOT NULL,
+        data_hora_acidente  TEXT NOT NULL,
+        houve_afastamento   INTEGER NOT NULL DEFAULT 1,
+        houve_obito         INTEGER NOT NULL DEFAULT 0,
+        local_acidente      TEXT NOT NULL,
+        descricao_detalhada TEXT NOT NULL,
+        numero_cat          TEXT,
+        recibo_esocial_s2210 TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_ESOCIAL_EVENTOS = """
+    CREATE TABLE IF NOT EXISTS esocial_eventos (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        tipo_evento         TEXT NOT NULL,
+        identificador_origem TEXT,
+        ambiente            TEXT NOT NULL DEFAULT 'homologacao',
+        status              TEXT NOT NULL DEFAULT 'gerado',
+        xml_conteudo        TEXT NOT NULL,
+        xml_assinado        TEXT,
+        protocolo_envio     TEXT,
+        numero_recibo       TEXT,
+        codigo_resposta     TEXT,
+        mensagem_resposta   TEXT,
+        evento_retificador_de TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL,
+        enviado_em          TEXT,
+        processado_em       TEXT
+    );
+"""
+
+_DDL_PENDENCIAS_OPERACIONAIS = """
+    CREATE TABLE IF NOT EXISTS pendencias_operacionais (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        modulo              TEXT NOT NULL,
+        tipo_pendencia      TEXT NOT NULL,
+        titulo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        severidade          TEXT NOT NULL DEFAULT 'media',
+        colaborador_id      INTEGER,
+        prazo_limite        TEXT NOT NULL,
+        responsavel         TEXT NOT NULL DEFAULT 'Departamento Pessoal',
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        resolvida_por       TEXT,
+        resolvida_em        TEXT,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_APROVACOES_WORKFLOW = """
+    CREATE TABLE IF NOT EXISTS aprovacoes_workflow (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        modulo              TEXT NOT NULL,
+        processo_tipo       TEXT NOT NULL,
+        processo_id         INTEGER NOT NULL,
+        solicitante         TEXT NOT NULL,
+        aprovador           TEXT,
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        justificativa       TEXT,
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_AUDITORIA_OPERACOES = """
+    CREATE TABLE IF NOT EXISTS auditoria_operacoes (
+        id                  {pk},
+        empresa_id          TEXT,
+        modulo              TEXT NOT NULL,
+        operacao            TEXT NOT NULL,
+        registro_tipo       TEXT NOT NULL,
+        registro_id         TEXT NOT NULL,
+        campo_alterado      TEXT,
+        valor_anterior      TEXT,
+        valor_novo          TEXT,
+        usuario_responsavel TEXT NOT NULL,
+        ip_origem           TEXT,
+        detalhes            TEXT,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_ARQUIVOS_BANCARIOS_CNAB = """
+    CREATE TABLE IF NOT EXISTS arquivos_bancarios_cnab (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        competencia         TEXT NOT NULL,
+        tipo_folha          TEXT NOT NULL DEFAULT 'mensal',
+        banco_codigo        TEXT NOT NULL DEFAULT '001',
+        layout_cnab         TEXT NOT NULL DEFAULT 'CNAB240',
+        total_registros     INTEGER NOT NULL,
+        valor_total_liquido REAL NOT NULL,
+        conteudo_arquivo    TEXT NOT NULL,
+        gerado_por          TEXT NOT NULL,
+        gerado_em           TEXT NOT NULL
+    );
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Inicializacao
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -429,6 +1029,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     cursor = conn.cursor()
 
     serial = "SERIAL" if pg else "INTEGER"
+    pk = "SERIAL PRIMARY KEY" if pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
 
     cursor.execute(_DDL_COLABORADORES_PG if pg else _DDL_COLABORADORES_SQLITE)
     cursor.execute(_DDL_DEPENDENTES.format(serial=serial))
@@ -440,6 +1041,44 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     cursor.execute(_DDL_FOLHA_ITENS.format(serial=serial))
     cursor.execute(_DDL_FOLHA_HISTORICO.format(serial=serial))
     cursor.execute(_DDL_AUDITORIA_AUTENTICACAO_PG if pg else _DDL_AUDITORIA_AUTENTICACAO_SQLITE)
+
+    # Execução das tabelas dos Módulos 01 a 20 da Plataforma
+    tabelas_plataforma = [
+        _DDL_EMPRESAS,
+        _DDL_FILIAIS,
+        _DDL_CENTROS_CUSTO,
+        _DDL_ADMISSOES.format(pk=pk),
+        _DDL_CHECKLIST_ADMISSONAL.format(pk=pk),
+        _DDL_ESCALAS_JORNADA.format(pk=pk),
+        _DDL_MARCACOES_PONTO.format(pk=pk),
+        _DDL_OCORRENCIAS_PONTO.format(pk=pk),
+        _DDL_AJUSTES_PONTO.format(pk=pk),
+        _DDL_FECHAMENTOS_PONTO.format(pk=pk),
+        _DDL_PERIODOS_AQUISITIVOS.format(pk=pk),
+        _DDL_FERIAS_PROGRAMADAS.format(pk=pk),
+        _DDL_AFASTAMENTOS.format(pk=pk),
+        _DDL_BENEFICIOS_CATALOGO.format(pk=pk),
+        _DDL_BENEFICIOS_COLABORADOR.format(pk=pk),
+        _DDL_DECIMO_TERCEIRO.format(pk=pk),
+        _DDL_RESCISOES.format(pk=pk),
+        _DDL_SST_EXAMES.format(pk=pk),
+        _DDL_SST_ASOS.format(pk=pk),
+        _DDL_SST_EPIS.format(pk=pk),
+        _DDL_SST_ENTREGAS_EPI.format(pk=pk),
+        _DDL_SST_TREINAMENTOS.format(pk=pk),
+        _DDL_SST_TREINAMENTOS_PARTICIPACOES.format(pk=pk),
+        _DDL_SST_CATS.format(pk=pk),
+        _DDL_ESOCIAL_EVENTOS.format(pk=pk),
+        _DDL_PENDENCIAS_OPERACIONAIS.format(pk=pk),
+        _DDL_APROVACOES_WORKFLOW.format(pk=pk),
+        _DDL_AUDITORIA_OPERACOES.format(pk=pk),
+        _DDL_ARQUIVOS_BANCARIOS_CNAB.format(pk=pk),
+    ]
+    for ddl_sql in tabelas_plataforma:
+        try:
+            cursor.execute(ddl_sql)
+        except Exception:
+            pass
 
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_colab_matricula ON colaboradores(matricula);",
@@ -461,12 +1100,45 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_audit_auth_evento ON auditoria_autenticacao(evento);",
         "CREATE INDEX IF NOT EXISTS idx_audit_auth_data   ON auditoria_autenticacao(criado_em);",
         "CREATE INDEX IF NOT EXISTS idx_audit_auth_ip     ON auditoria_autenticacao(ip_origem);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_status        ON admissoes(status);",
+        "CREATE INDEX IF NOT EXISTS idx_ponto_colab_data  ON marcacoes_ponto(colaborador_id, data);",
+        "CREATE INDEX IF NOT EXISTS idx_ocorrencia_colab  ON ocorrencias_ponto(colaborador_id, data_inicio);",
+        "CREATE INDEX IF NOT EXISTS idx_ferias_colab      ON ferias_programadas(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_afast_colab       ON afastamentos(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_rescisao_colab    ON rescisoes(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_pendencias_status ON pendencias_operacionais(status, prazo_limite);",
+        "CREATE INDEX IF NOT EXISTS idx_audit_modulo_data ON auditoria_operacoes(modulo, criado_em);",
     ]
     for idx_sql in indices:
         try:
             cursor.execute(idx_sql)
         except Exception:
             pass
+
+    # Colunas complementares idempotentes de schema para PostgreSQL (SPEC-03 e SPEC-03.1)
+    if pg:
+        colunas_extras = [
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS filial_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS departamento_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS cargo_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS sexo TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS estado_civil TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS celular TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS complemento TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS observacoes TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS criado_por TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS atualizado_por TEXT;",
+            "ALTER TABLE colaboradores ALTER COLUMN data_admissao DROP NOT NULL;",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS filial_id TEXT;",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresas_autorizadas TEXT;",
+        ]
+        for col_sql in colunas_extras:
+            try:
+                cursor.execute(col_sql)
+            except Exception:
+                pass
 
     # Provisiona parâmetro padrão de cálculo caso não exista
     try:
@@ -488,9 +1160,125 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                 "PADRAO_CLT_2026", "Parâmetros Gerais CLT 220h / Vigência 2026 (Padrão)",
                 "2026-01-01", None,
                 220.0, 30, 50.0, 100.0, 20.0, 0, 1.142857,
-                1, 1, 8.0, 8157.41, 189.59, 1, 1,
+                1, 1, 8.0, 8475.55, 189.59, 1, 1,
                 agora, agora
             ))
+    except Exception:
+        pass
+
+    # Provisiona empresa e filiais padrão caso não existam
+    try:
+        p_mark = "%s" if pg else "?"
+        cursor.execute(f"SELECT COUNT(*) FROM empresas WHERE id = {p_mark};", ("a0000000-0000-0000-0000-000000000001",))
+        if cursor.fetchone()[0] == 0:
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute(f"""
+                INSERT INTO empresas (id, cnpj, razao_social, nome_fantasia, regime_tributario, responsavel_nome, responsavel_cpf, ativo, criado_em, atualizado_em)
+                VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark}, {p_mark});
+            """, (
+                "a0000000-0000-0000-0000-000000000001", "12.345.678/0001-90",
+                "ForçaVerde Usina de Energia e Biocombustíveis S.A.", "ForçaVerde Usina",
+                "lucro_real", "Carlos Eduardo Mendes", "123.456.789-00", agora, agora
+            ))
+            cursor.execute(f"""
+                INSERT INTO filiais (id, empresa_id, codigo_filial, nome, cnpj, cidade, uf, feriados_locais, ativo, criado_em)
+                VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+            """, (
+                "b0000000-0000-0000-0000-000000000001", "a0000000-0000-0000-0000-000000000001",
+                "0001", "Matriz — Usina Central", "12.345.678/0001-90",
+                "Ribeirão Preto", "SP", "[]", agora
+            ))
+            cursor.execute(f"""
+                INSERT INTO filiais (id, empresa_id, codigo_filial, nome, cnpj, cidade, uf, feriados_locais, ativo, criado_em)
+                VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+            """, (
+                "b0000000-0000-0000-0000-000000000002", "a0000000-0000-0000-0000-000000000001",
+                "0002", "Filial 02 — Destilaria Norte", "12.345.678/0002-71",
+                "Sertãozinho", "SP", "[]", agora
+            ))
+
+            # Centros de Custo
+            ccs = [
+                ("CC-001", "Operações Agrícolas & Colheita"),
+                ("CC-002", "Manutenção Industrial & Moenda"),
+                ("CC-003", "Departamento Pessoal & RH"),
+                ("CC-004", "Saúde e Segurança do Trabalho (SST)"),
+                ("CC-005", "Administrativo & Financeiro"),
+            ]
+            for cod, desc in ccs:
+                cursor.execute(f"""
+                    INSERT INTO centros_custo (id, empresa_id, codigo, descricao, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, (f"cc-{cod.lower()}", "a0000000-0000-0000-0000-000000000001", cod, desc, agora))
+
+            # Escalas de Jornada
+            escalas = [
+                ("ESC-5X2", "Escala 5x2 Comercial (44h)", 44.0, 220.0, "5x2", "08:00", "17:48", 60),
+                ("ESC-6X1", "Escala 6x1 Operacional (44h)", 44.0, 220.0, "6x1", "07:00", "15:20", 60),
+                ("ESC-12X36", "Escala 12x36 Turno Revezamento", 36.0, 180.0, "12x36", "06:00", "18:00", 60),
+            ]
+            for cod, desc, ch, div, reg, ent, sai, inter in escalas:
+                cursor.execute(f"""
+                    INSERT INTO escalas_jornada (empresa_id, codigo, descricao, carga_semanal_horas, divisor_mensal, tipo_regime, entrada_padrao, saida_padrao, intervalo_minutos, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, desc, ch, div, reg, ent, sai, inter, agora))
+
+            # Catálogo de Benefícios
+            benefs = [
+                ("VT01", "Vale-Transporte Urbano / Intermunicipal", "vale_transporte", "percentual", 6.0, 6.0),
+                ("VA01", "Vale-Alimentação Cesta Mensal", "vale_alimentacao", "fixo", 0.0, 0.0),
+                ("VR01", "Vale-Refeição Restaurante Usina", "vale_refeicao", "fixo", 5.0, 20.0),
+                ("PS01", "Plano de Saúde Unimed Integral", "plano_saude", "percentual", 15.0, 30.0),
+                ("SV01", "Seguro de Vida em Grupo MetLife", "seguro_vida", "fixo", 0.0, 0.0),
+                ("FAR01", "Convênio Farmácia DrogaVitta", "farmacia", "fixo", 0.0, 0.0),
+            ]
+            for cod, nome, tipo, c_tipo, c_val, teto in benefs:
+                cursor.execute(f"""
+                    INSERT INTO beneficios_catalogo (empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor, teto_legal_percentual, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, nome, tipo, c_tipo, c_val, teto, agora))
+
+            # Catálogo de Exames SST
+            exames = [
+                ("EX-ADM", "Exame Médico Clínico Admissional", "admissional", 12),
+                ("EX-PER", "Exame Médico Periódico NR-7", "periodico", 12),
+                ("EX-DEM", "Exame Médico Demissional", "demissional", 12),
+                ("EX-RET", "Exame de Retorno ao Trabalho (>= 30d)", "retorno_trabalho", 12),
+                ("EX-RISCO", "Exame de Mudança de Riscos Ocupacionais", "mudanca_risco", 12),
+            ]
+            for cod, desc, tipo, period in exames:
+                cursor.execute(f"""
+                    INSERT INTO sst_exames (empresa_id, codigo, descricao, tipo, periodicidade_meses, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, desc, tipo, period, agora))
+
+            # Catálogo de EPIs
+            epis = [
+                ("EPI-CAP", "Capacete de Segurança Classe B com Jugular", "31469", "2028-12-31", 365),
+                ("EPI-BOT", "Botina de Couro com Bico de Composite e Palmilha de Aço", "43290", "2027-10-15", 180),
+                ("EPI-LUV", "Luva de Vaqueta Mista para Manutenção Pesada", "27814", "2027-06-30", 90),
+                ("EPI-OCU", "Óculos de Proteção Antirrisco e Antiembaçante", "18828", "2028-05-20", 180),
+                ("EPI-AUR", "Protetor Auditivo Tipo Concha 24dB NRRsf", "14235", "2028-08-10", 365),
+            ]
+            for cod, desc, ca, val, vida in epis:
+                cursor.execute(f"""
+                    INSERT INTO sst_epis (empresa_id, codigo, descricao, ca_numero, ca_validade, vida_util_dias, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, desc, ca, val, vida, agora))
+
+            # Catálogo de Treinamentos
+            treinamentos = [
+                ("TR-NR06", "Treinamento de Uso e Conservação de EPIs", "NR-06", 4, 24),
+                ("TR-NR10", "Segurança em Instalações e Serviços em Eletricidade", "NR-10", 40, 24),
+                ("TR-NR12", "Segurança no Trabalho em Máquinas e Equipamentos", "NR-12", 16, 24),
+                ("TR-NR33", "Trabalho e Resgate em Espaços Confinados", "NR-33", 16, 12),
+                ("TR-NR35", "Trabalho em Altura e Prevenção de Quedas", "NR-35", 8, 24),
+            ]
+            for cod, nome, nr, ch, val in treinamentos:
+                cursor.execute(f"""
+                    INSERT INTO sst_treinamentos (empresa_id, codigo, nome, nr_norma, carga_horaria, validade_meses, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, nome, nr, ch, val, agora))
     except Exception:
         pass
 
@@ -544,6 +1332,37 @@ def insert_returning_id(
         return cursor.fetchone()[0]
     cursor.execute(sql_sqlite, params)
     return cursor.lastrowid
+
+
+def status_banco(db_path: str = None) -> dict:
+    """
+    Verifica de fato o banco ativo (SELECT 1). Nao expoe URL nem credenciais.
+    Usado pelo endpoint /api/health para confirmar que o PostgreSQL esta em uso.
+    """
+    pg = _usar_postgres(db_path)
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+    finally:
+        conn.close()
+
+    info = {
+        "banco": "postgresql" if pg else "sqlite",
+        "conectado": True,
+        "producao": em_producao(),
+    }
+    if pg:
+        url = get_database_url().lower()
+        if "neon.tech" in url:
+            info["provedor"] = "neon"
+        elif "supabase" in url:
+            info["provedor"] = "supabase"
+        else:
+            info["provedor"] = "postgresql"
+        info["pooled"] = "-pooler" in url or "pooler" in url or "6543" in url
+    return info
 
 
 def ph(db_path: str = None) -> str:

@@ -12,10 +12,14 @@ export const ColaboradoresPage: React.FC = () => {
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  // Filtros
+  // Filtros (RF-002: Nome, Matrícula, CPF, Cargo e Setor)
   const [search, setSearch] = useState('');
+  const [nome, setNome] = useState('');
+  const [matricula, setMatricula] = useState('');
+  const [cpf, setCpf] = useState('');
   const [situacao, setSituacao] = useState('');
   const [departamento, setDepartamento] = useState('');
+  const [cargo, setCargo] = useState('');
   const [page, setPage] = useState(1);
 
   // Modais
@@ -36,8 +40,12 @@ export const ColaboradoresPage: React.FC = () => {
         page,
         limit: 10,
         search: search.trim() || undefined,
+        nome: nome.trim() || undefined,
+        matricula: matricula.trim() || undefined,
+        cpf: cpf.trim() || undefined,
         situacao: situacao || undefined,
-        departamentoId: departamento || undefined,
+        departamentoId: departamento.trim() || undefined,
+        cargo: cargo.trim() || undefined,
       });
       setColaboradores(res.data);
       setMeta(res.meta);
@@ -46,7 +54,7 @@ export const ColaboradoresPage: React.FC = () => {
     } finally {
       setCarregando(false);
     }
-  }, [page, search, situacao, departamento]);
+  }, [page, search, nome, matricula, cpf, situacao, departamento, cargo]);
 
   useEffect(() => {
     carregarColaboradores();
@@ -115,37 +123,79 @@ export const ColaboradoresPage: React.FC = () => {
         </div>
       )}
 
-      {/* Barra de Pesquisa e Filtros (RF-02, RF-03) */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
-        <div style={{ flex: '2', minWidth: '240px' }}>
+      {/* Barra de Pesquisa e Filtros (RF-002: Nome, Matrícula, CPF, Cargo e Setor) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ flex: '2', minWidth: '240px' }}>
+            <input
+              type="text"
+              placeholder="Pesquisa unificada por nome, matrícula, CPF, cargo ou setor..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div style={{ flex: '1', minWidth: '150px' }}>
+            <select
+              value={situacao}
+              onChange={(e) => {
+                setSituacao(e.target.value);
+                setPage(1);
+              }}
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff' }}
+            >
+              <option value="">Todas as Situações</option>
+              <option value="ATIVO">Ativos</option>
+              <option value="INATIVO">Inativos</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
           <input
             type="text"
-            placeholder="Pesquisar por nome, CPF ou matrícula..."
-            value={search}
+            placeholder="Filtrar por nome..."
+            value={nome}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setNome(e.target.value);
               setPage(1);
             }}
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
           />
-        </div>
-
-        <div style={{ flex: '1', minWidth: '150px' }}>
-          <select
-            value={situacao}
+          <input
+            type="text"
+            placeholder="Filtrar por matrícula..."
+            value={matricula}
             onChange={(e) => {
-              setSituacao(e.target.value);
+              setMatricula(e.target.value);
               setPage(1);
             }}
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff' }}
-          >
-            <option value="">Todas as Situações</option>
-            <option value="ATIVO">Ativos</option>
-            <option value="INATIVO">Inativos</option>
-          </select>
-        </div>
-
-        <div style={{ flex: '1', minWidth: '180px' }}>
+            style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+          />
+          <input
+            type="text"
+            placeholder="Filtrar por CPF..."
+            value={cpf}
+            onChange={(e) => {
+              setCpf(e.target.value);
+              setPage(1);
+            }}
+            style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+          />
+          <input
+            type="text"
+            placeholder="Filtrar por cargo..."
+            value={cargo}
+            onChange={(e) => {
+              setCargo(e.target.value);
+              setPage(1);
+            }}
+            style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+          />
           <input
             type="text"
             placeholder="Filtrar por setor..."
@@ -154,7 +204,7 @@ export const ColaboradoresPage: React.FC = () => {
               setDepartamento(e.target.value);
               setPage(1);
             }}
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '9px 12px', border: '1px solid #ccc', borderRadius: '6px', boxSizing: 'border-box' }}
           />
         </div>
       </div>

@@ -225,6 +225,305 @@ class TestFolhaCalculos(unittest.TestCase):
             )
         self.assertIn("Evento duplicado", str(ctx.exception))
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo A — Remuneração e Adicionais
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_a_insalubridade_graus(self):
+        """Testa Adicional de Insalubridade (0030) nos três graus: 10%, 20% e 40% sobre Salário Mínimo R$ 1.518,00."""
+        # Grau mínimo 10% = R$ 151,80
+        res10 = processar_calculo_folha(salario_base=3000.00, eventos_informados=[{"codigo": "0030", "referencia": 10}])
+        item10 = next(it for it in res10["itens"] if it["codigo_catalogo"] == "0030")
+        self.assertEqual(Decimal(str(item10["valor_total"])), Decimal("151.80"))
+
+        # Grau médio 20% (padrão) = R$ 303,60
+        res20 = processar_calculo_folha(salario_base=3000.00, eventos_informados=[{"codigo": "0030", "referencia": 20}])
+        item20 = next(it for it in res20["itens"] if it["codigo_catalogo"] == "0030")
+        self.assertEqual(Decimal(str(item20["valor_total"])), Decimal("303.60"))
+
+        # Grau máximo 40% = R$ 607,20
+        res40 = processar_calculo_folha(salario_base=3000.00, eventos_informados=[{"codigo": "0030", "referencia": 40}])
+        item40 = next(it for it in res40["itens"] if it["codigo_catalogo"] == "0030")
+        self.assertEqual(Decimal(str(item40["valor_total"])), Decimal("607.20"))
+
+    def test_grupo_a_periculosidade_e_transferencia(self):
+        """Testa Periculosidade 30% (0031) e Transferência 25% (0032) sobre salário-base."""
+        res = processar_calculo_folha(
+            salario_base=4000.00,
+            eventos_informados=[
+                {"codigo": "0031"},  # 30% de 4000 = 1200.00
+                {"codigo": "0032"}   # 25% de 4000 = 1000.00
+            ]
+        )
+        it_peric = next(it for it in res["itens"] if it["codigo_catalogo"] == "0031")
+        it_transf = next(it for it in res["itens"] if it["codigo_catalogo"] == "0032")
+        self.assertEqual(Decimal(str(it_peric["valor_total"])), Decimal("1200.00"))
+        self.assertEqual(Decimal(str(it_transf["valor_total"])), Decimal("1000.00"))
+
+    def test_grupo_a_gratificacao_funcao_e_quebra_caixa(self):
+        """Testa Gratificação de Função 40% (0040) e Quebra de Caixa 10% (0041)."""
+        res = processar_calculo_folha(
+            salario_base=5000.00,
+            eventos_informados=[
+                {"codigo": "0040"},  # 40% CLT art. 62 = 2000.00
+                {"codigo": "0041"}   # 10% = 500.00
+            ]
+        )
+        it_grat = next(it for it in res["itens"] if it["codigo_catalogo"] == "0040")
+        it_qc = next(it for it in res["itens"] if it["codigo_catalogo"] == "0041")
+        self.assertEqual(Decimal(str(it_grat["valor_total"])), Decimal("2000.00"))
+        self.assertEqual(Decimal(str(it_qc["valor_total"])), Decimal("500.00"))
+
+    def test_grupo_a_plr_isencao_previdenciaria_e_fgts(self):
+        """PLR (0061) tem tributação exclusiva e não incide em INSS nem FGTS."""
+        res = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0061", "valor_total": 5000.00}]
+        )
+        # Base de INSS deve ser apenas o salário-base R$ 3000.00, sem o PLR
+        self.assertEqual(Decimal(str(res["resumo"]["base_inss"])), Decimal("3000.00"))
+        self.assertEqual(Decimal(str(res["resumo"]["base_fgts"])), Decimal("3000.00"))
+        # Proventos deve somar salário (3000) + PLR (5000) = 8000
+        self.assertEqual(Decimal(str(res["resumo"]["total_proventos"])), Decimal("8000.00"))
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo B — Férias e 13º Salário
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_b_ferias_gozadas_e_terco(self):
+        """Testa férias gozadas 30 dias (0100) e 1/3 constitucional (0101)."""
+        res = processar_calculo_folha(
+            salario_base=3600.00,
+            eventos_informados=[
+                {"codigo": "0100", "referencia": 30},
+                {"codigo": "0101"}
+            ]
+        )
+        it_f = next(it for it in res["itens"] if it["codigo_catalogo"] == "0100")
+        it_t = next(it for it in res["itens"] if it["codigo_catalogo"] == "0101")
+        self.assertEqual(Decimal(str(it_f["valor_total"])), Decimal("3600.00"))
+        self.assertEqual(Decimal(str(it_t["valor_total"])), Decimal("1200.00"))  # 3600 / 3
+
+    def test_grupo_b_abono_pecuniario_e_terco_sem_inss(self):
+        """Abono pecuniário (0102) e 1/3 (0103) não integram base de INSS/FGTS."""
+        res = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[
+                {"codigo": "0102", "referencia": 10},  # 10 dias abono = 1000.00
+                {"codigo": "0103"}                      # 1/3 abono = 333.33
+            ]
+        )
+        it_ab = next(it for it in res["itens"] if it["codigo_catalogo"] == "0102")
+        it_tab = next(it for it in res["itens"] if it["codigo_catalogo"] == "0103")
+        self.assertEqual(Decimal(str(it_ab["valor_total"])), Decimal("1000.00"))
+        self.assertEqual(Decimal(str(it_tab["valor_total"])), Decimal("333.33"))
+        # Base de INSS deve permanecer 3000.00
+        self.assertEqual(Decimal(str(res["resumo"]["base_inss"])), Decimal("3000.00"))
+
+    def test_grupo_b_decimo_terceiro_adiantamento(self):
+        """13º salário 1ª parcela (0110) corresponde a 50% e não sofre desconto de INSS nem IRRF."""
+        res = processar_calculo_folha(
+            salario_base=6000.00,
+            eventos_informados=[{"codigo": "0110", "referencia": 12}]
+        )
+        it_13 = next(it for it in res["itens"] if it["codigo_catalogo"] == "0110")
+        self.assertEqual(Decimal(str(it_13["valor_total"])), Decimal("3000.00"))  # 50% de 6000
+        # 0110 incide FGTS, mas não incide INSS
+        self.assertEqual(Decimal(str(res["resumo"]["base_inss"])), Decimal("6000.00"))  # salário base normal
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo C — Afastamentos e Benefícios
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_c_salario_familia_elegivel_e_inelegivel(self):
+        """Salário-Família (0202) é devido apenas para remuneração até o teto (R$ 1.906,00)."""
+        # Colaborador elegível: Salário R$ 1.500,00 com 2 filhos (2 x R$ 65,00 = R$ 130,00)
+        res_elegivel = processar_calculo_folha(
+            salario_base=1500.00,
+            numero_dependentes=2,
+            eventos_informados=[{"codigo": "0202", "referencia": 2}]
+        )
+        it_sf = next(it for it in res_elegivel["itens"] if it["codigo_catalogo"] == "0202")
+        self.assertEqual(Decimal(str(it_sf["valor_total"])), Decimal("130.00"))
+
+        # Colaborador com salário acima do teto: Salário R$ 3.000,00 -> R$ 0,00 com memória explicativa
+        res_acima_teto = processar_calculo_folha(
+            salario_base=3000.00,
+            numero_dependentes=2,
+            eventos_informados=[{"codigo": "0202", "referencia": 2}]
+        )
+        it_sf2 = next(it for it in res_acima_teto["itens"] if it["codigo_catalogo"] == "0202")
+        self.assertEqual(Decimal(str(it_sf2["valor_total"])), Decimal("0.00"))
+        self.assertIn("excede teto legal", it_sf2["memoria_calculo"])
+
+    def test_grupo_c_auxilio_doenca_primeiros_15_dias(self):
+        """Auxílio-doença primeiros 15 dias empresa (0200): limitado a 15 dias."""
+        # Informado 20 dias -> empresa paga apenas os primeiros 15 dias
+        res = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0200", "referencia": 20}]
+        )
+        it_aux = next(it for it in res["itens"] if it["codigo_catalogo"] == "0200")
+        # 3000 / 30 * 15 = 1500.00
+        self.assertEqual(Decimal(str(it_aux["valor_total"])), Decimal("1500.00"))
+        self.assertIn("15", it_aux["memoria_calculo"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo D — Verbas Rescisórias
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_d_aviso_previo_proporcional_lei_12506(self):
+        """Aviso Prévio (0300): 30 dias + 3 dias por ano de serviço, limitado a 90 dias."""
+        # 5 anos de serviço: 30 + 5*3 = 45 dias
+        res = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0300", "referencia": 5}]
+        )
+        it_ap = next(it for it in res["itens"] if it["codigo_catalogo"] == "0300")
+        # (3000 / 30) * 45 = 4500.00
+        self.assertEqual(Decimal(str(it_ap["valor_total"])), Decimal("4500.00"))
+        self.assertEqual(it_ap["referencia"], 45.0)
+
+        # 25 anos de serviço: 30 + 75 = 105 -> limitado a 90 dias
+        res_teto = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0300", "referencia": 25}]
+        )
+        it_ap_teto = next(it for it in res_teto["itens"] if it["codigo_catalogo"] == "0300")
+        # (3000 / 30) * 90 = 9000.00
+        self.assertEqual(Decimal(str(it_ap_teto["valor_total"])), Decimal("9000.00"))
+        self.assertEqual(it_ap_teto["referencia"], 90.0)
+
+    def test_grupo_d_multa_art_477_e_479_clt(self):
+        """Multa art. 477 (1 salário mensal) e Multa art. 479 (50% dos dias faltantes)."""
+        res = processar_calculo_folha(
+            salario_base=4000.00,
+            eventos_informados=[
+                {"codigo": "0302"},                     # Multa art. 477: 4000.00
+                {"codigo": "0303", "referencia": 20}   # Multa art. 479: 50% de 20 dias = (4000/30)*20*0.5 = 1333.33
+            ]
+        )
+        it_477 = next(it for it in res["itens"] if it["codigo_catalogo"] == "0302")
+        it_479 = next(it for it in res["itens"] if it["codigo_catalogo"] == "0303")
+        self.assertEqual(Decimal(str(it_477["valor_total"])), Decimal("4000.00"))
+        self.assertEqual(Decimal(str(it_479["valor_total"])), Decimal("1333.33"))
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo E — Descontos
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_e_vale_transporte_teto_6_porcento(self):
+        """Vale-Transporte (0510): limitado a 6% do salário-base."""
+        # Salário R$ 3.000,00 -> 6% = R$ 180,00
+        res = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0510"}]
+        )
+        it_vt = next(it for it in res["itens"] if it["codigo_catalogo"] == "0510")
+        self.assertEqual(Decimal(str(it_vt["valor_total"])), Decimal("180.00"))
+
+        # Custo real informado R$ 150,00 (menor que o teto R$ 180,00) -> desconta R$ 150,00
+        res_menor = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0510", "valor_total": 150.00}]
+        )
+        it_vt_menor = next(it for it in res_menor["itens"] if it["codigo_catalogo"] == "0510")
+        self.assertEqual(Decimal(str(it_vt_menor["valor_total"])), Decimal("150.00"))
+
+    def test_grupo_e_adiantamento_salarial_40_porcento(self):
+        """Adiantamento Salarial quinzenal (0520): padrão 40% do salário-base."""
+        res = processar_calculo_folha(
+            salario_base=5000.00,
+            eventos_informados=[{"codigo": "0520"}]
+        )
+        it_adiant = next(it for it in res["itens"] if it["codigo_catalogo"] == "0520")
+        self.assertEqual(Decimal(str(it_adiant["valor_total"])), Decimal("2000.00"))  # 40% de 5000
+
+    def test_grupo_e_faltas_reduzem_base_inss_e_fgts(self):
+        """Faltas injustificadas (0530) reduzem a remuneração e a base de cálculo de INSS e FGTS."""
+        # Sem falta: base = 3000.00
+        res_sem_falta = processar_calculo_folha(salario_base=3000.00)
+        # Com 3 faltas: 3 x (3000/30) = 300.00 de desconto
+        res_com_falta = processar_calculo_folha(
+            salario_base=3000.00,
+            eventos_informados=[{"codigo": "0530", "referencia": 3}]
+        )
+        self.assertEqual(Decimal(str(res_sem_falta["resumo"]["base_inss"])), Decimal("3000.00"))
+        self.assertEqual(Decimal(str(res_com_falta["resumo"]["base_inss"])), Decimal("2700.00"))
+        self.assertEqual(Decimal(str(res_com_falta["resumo"]["base_fgts"])), Decimal("2700.00"))
+
+    def test_grupo_e_pensao_alimenticia_dedutivel_irrf(self):
+        """Pensão alimentícia judicial (0540) deduz da base de cálculo do IRRF."""
+        res_sem_pensao = processar_calculo_folha(salario_base=6000.00)
+        res_com_pensao = processar_calculo_folha(
+            salario_base=6000.00,
+            eventos_informados=[{"codigo": "0540", "valor_total": 800.00}]
+        )
+        # Base de IRRF com pensão deve ser menor
+        self.assertLess(
+            res_com_pensao["resumo"]["base_irrf"],
+            res_sem_pensao["resumo"]["base_irrf"]
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Novos Testes: Grupo F — Informativos e Encargos Patronais
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_grupo_f_encargos_patronais_e_nao_impacto_no_salario_liquido(self):
+        """Eventos informativos (0901 a 0907) não alteram proventos, descontos ou salário líquido."""
+        # Folha sem encargos patronais informativos
+        res_base = processar_calculo_folha(salario_base=4000.00)
+
+        # Folha com encargos patronais solicitados
+        res_encargos = processar_calculo_folha(
+            salario_base=4000.00,
+            eventos_informados=[
+                {"codigo": "0905"},  # INSS Patronal 20%
+                {"codigo": "0906"},  # RAT/FAP
+                {"codigo": "0907"}   # Terceiros 5.8%
+            ]
+        )
+
+        # Valida que total_proventos, total_descontos e salario_liquido são EXATAMENTE IDÊNTICOS
+        self.assertEqual(res_base["resumo"]["total_proventos"], res_encargos["resumo"]["total_proventos"])
+        self.assertEqual(res_base["resumo"]["total_descontos"], res_encargos["resumo"]["total_descontos"])
+        self.assertEqual(res_base["resumo"]["salario_liquido"], res_encargos["resumo"]["salario_liquido"])
+
+        # Valida cálculo dos encargos patronais informativos
+        it_patronal = next(it for it in res_encargos["itens"] if it["codigo_catalogo"] == "0905")
+        self.assertEqual(it_patronal["tipo"], "informativo")
+        # 20% de 4000 = 800.00
+        self.assertEqual(Decimal(str(it_patronal["valor_total"])), Decimal("800.00"))
+
+    def test_folha_completa_integrada_todos_os_grupos(self):
+        """Folha ampla com rubricas dos Grupos A, B, C, D, E e F simultaneamente."""
+        eventos = [
+            {"codigo": "0010", "referencia": 10},     # HE 50%
+            {"codigo": "0031"},                       # Periculosidade 30%
+            {"codigo": "0100", "referencia": 10},     # Férias 10 dias
+            {"codigo": "0101"},                       # 1/3 sobre férias
+            {"codigo": "0510"},                       # Vale transporte 6%
+            {"codigo": "0520"},                       # Adiantamento salarial 40%
+            {"codigo": "0905"}                        # INSS patronal 20% (informativo)
+        ]
+        res = processar_calculo_folha(
+            salario_base=5000.00,
+            eventos_informados=eventos,
+            numero_dependentes=1
+        )
+        resumo = res["resumo"]
+        proventos = Decimal(str(resumo["total_proventos"]))
+        descontos = Decimal(str(resumo["total_descontos"]))
+        liquido = Decimal(str(resumo["salario_liquido"]))
+
+        # Regra de ouro da folha: Líquido = Proventos - Descontos
+        self.assertEqual(liquido, proventos - descontos)
+        self.assertGreater(liquido, Decimal("0.00"))
+
+        # Valida que o evento informativo 0905 foi registrado como informativo
+        it_info = next(it for it in res["itens"] if it["codigo_catalogo"] == "0905")
+        self.assertEqual(it_info["tipo"], "informativo")
+
 
 if __name__ == "__main__":
     unittest.main()

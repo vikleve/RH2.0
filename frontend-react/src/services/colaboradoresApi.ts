@@ -11,16 +11,26 @@ export const colaboradoresApi = {
     page?: number;
     limit?: number;
     search?: string;
+    nome?: string;
+    matricula?: string;
+    cpf?: string;
     situacao?: string;
     departamentoId?: string;
+    setor?: string;
+    cargo?: string;
     filialId?: string;
   }): Promise<ColaboradoresListResponse> {
     const params = new URLSearchParams();
     if (filtros.page) params.append('page', String(filtros.page));
     if (filtros.limit) params.append('limit', String(filtros.limit));
     if (filtros.search) params.append('search', filtros.search);
+    if (filtros.nome) params.append('nome', filtros.nome);
+    if (filtros.matricula) params.append('matricula', filtros.matricula);
+    if (filtros.cpf) params.append('cpf', filtros.cpf);
     if (filtros.situacao) params.append('situacao', filtros.situacao);
     if (filtros.departamentoId) params.append('departamentoId', filtros.departamentoId);
+    if (filtros.setor) params.append('setor', filtros.setor);
+    if (filtros.cargo) params.append('cargo', filtros.cargo);
     if (filtros.filialId) params.append('filialId', filtros.filialId);
 
     const res = await fetch(`${API_BASE}?${params.toString()}`, {

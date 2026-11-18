@@ -1,129 +1,165 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RH2.0 — Login Seguro &amp; Departamento Pessoal</title>
-  <meta name="description" content="RH2.0 — Sistema de Departamento Pessoal, Folha de Pagamento e Gestão de Colaboradores.">
+  <meta name="description"
+    content="RH2.0 — Sistema de Departamento Pessoal, Folha de Pagamento e Gestão de Colaboradores.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <!-- ============================================================ -->
   <!-- TELA DE AUTENTICAÇÃO / LOGIN (RF-40, RF-41, RNF-01, RNF-02)   -->
   <!-- ============================================================ -->
   <div id="tela-login" class="login-wrapper">
-    <div class="login-card">
-      <div class="login-header">
-        <div class="login-brand-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-          </svg>
+    <!-- Painel Esquerdo: Hero Institucional ForçaVerde Usina -->
+    <div class="login-hero" aria-label="ForçaVerde Usina — Folha de Pagamento">
+      <div class="sr-only">
+        <h2>ForçaVerde Usina — Folha de Pagamento</h2>
+        <p>Mais organização, agilidade e segurança para o seu time.</p>
+        <ul>
+          <li>Gestão completa de colaboradores</li>
+          <li>Cálculos automáticos e precisos</li>
+          <li>Relatórios e comprovantes sempre disponíveis</li>
+          <li>Seus dados protegidos com segurança</li>
+        </ul>
+        <p>Juntos pelo nosso desenvolvimento!</p>
+      </div>
+    </div>
+
+    <!-- Painel Direito: Card de Login -->
+    <div class="login-panel">
+      <div class="login-card">
+        <div class="login-header">
+          <div class="login-logo-box">
+            <img src="assets/logo-forcaverde.png" alt="ForçaVerde Usina — Logo" class="login-logo-img">
+          </div>
+          <h1 class="login-title">Portal de Folha de Pagamento <span class="sr-only">RH2.0</span></h1>
+          <p class="login-subtitle">Acesse o sistema com sua conta</p>
         </div>
-        <h1 class="login-title">RH2.0</h1>
-        <p class="login-subtitle">Sistema Integrado de Departamento Pessoal &amp; Folha de Pagamento</p>
-        <div class="security-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+
+        <!-- Alerta de Erro de Autenticação (Acessível) -->
+        <div id="login-alerta" class="alert alert-danger hidden" role="alert" aria-live="assertive">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
-          <span>Acesso Restrito &bull; Autenticação Segura</span>
+          <span id="login-alerta-mensagem">E-mail ou senha inválidos.</span>
+        </div>
+
+        <form id="form-login" novalidate>
+          <!-- Campo: E-mail ou Identificador de Usuário -->
+          <div class="form-group login-form-group">
+            <label for="login-identificador" class="login-field-label">
+              <svg class="label-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <span>E-mail ou Usuário <span class="required">*</span></span>
+            </label>
+            <div class="input-with-icon">
+              <input type="text" id="login-identificador" class="form-control login-input"
+                placeholder="Digite seu e-mail ou usuário" autocomplete="username" required>
+            </div>
+            <span class="field-error hidden" id="erro-login-identificador">Informe seu e-mail ou nome de usuário.</span>
+          </div>
+
+          <!-- Campo: Senha com Toggle Mostrar/Ocultar -->
+          <div class="form-group login-form-group">
+            <label for="login-senha" class="login-field-label">
+              <svg class="label-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>Senha de Acesso <span class="required">*</span></span>
+            </label>
+            <div class="password-wrapper">
+              <input type="password" id="login-senha" class="form-control login-input" placeholder="Digite sua senha"
+                autocomplete="current-password" required>
+              <button type="button" id="btn-toggle-senha" class="btn-toggle-password"
+                aria-label="Mostrar ou ocultar senha" title="Mostrar ou ocultar senha">
+                <svg id="icon-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2">
+                  <path
+                    d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24">
+                  </path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+                <svg id="icon-eye-open" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+            <span class="field-error hidden" id="erro-login-senha">Informe sua senha de acesso.</span>
+          </div>
+
+          <!-- Botão de Ação -->
+          <button type="submit" id="btn-entrar" class="btn btn-primary btn-block btn-login">
+            <span class="spinner hidden" id="login-spinner"></span>
+            <svg class="btn-login-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10 17 15 12 10 7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            <span id="btn-entrar-texto">Entrar no Sistema</span>
+          </button>
+        </form>
+
+        <!-- Rodapé do Card (Ajuda e Links Institucionais) -->
+        <div class="login-footer">
+          <div class="login-footer-grid">
+            <div class="login-help-col">
+              <div class="login-help-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  <polyline points="9 12 11 14 15 10"></polyline>
+                </svg>
+              </div>
+              <div class="login-help-text">
+                <strong>Precisa de ajuda?</strong>
+                <span>Entre em contato com o RH ou Suporte de TI.</span>
+              </div>
+            </div>
+
+            <div class="login-links-col">
+              <a href="#privacidade" class="login-footer-link" onclick="return false;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>Política de Privacidade</span>
+              </a>
+              <a href="#termos" class="login-footer-link" onclick="return false;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                <span>Termos de Uso</span>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Alerta de Erro de Autenticação (Acessível) -->
-      <div id="login-alerta" class="alert alert-danger hidden" role="alert" aria-live="assertive">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span id="login-alerta-mensagem">E-mail ou senha inválidos.</span>
-      </div>
-
-      <form id="form-login" novalidate>
-        <!-- Campo: E-mail ou Identificador de Usuário -->
-        <div class="form-group">
-          <label for="login-identificador">E-mail ou Usuário <span class="required">*</span></label>
-          <div class="input-with-icon">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-            <input 
-              type="text" 
-              id="login-identificador" 
-              class="form-control" 
-              placeholder="ex: admin.dp@empresa.com.br" 
-              autocomplete="username"
-              required
-            >
-          </div>
-          <span class="field-error hidden" id="erro-login-identificador">Informe seu e-mail ou nome de usuário.</span>
-        </div>
-
-        <!-- Campo: Senha com Toggle Mostrar/Ocultar -->
-        <div class="form-group">
-          <label for="login-senha">Senha de Acesso <span class="required">*</span></label>
-          <div class="password-wrapper">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
-            <input 
-              type="password" 
-              id="login-senha" 
-              class="form-control" 
-              placeholder="Digite sua senha" 
-              autocomplete="current-password"
-              required
-            >
-            <button 
-              type="button" 
-              id="btn-toggle-senha" 
-              class="btn-toggle-password" 
-              aria-label="Mostrar ou ocultar senha"
-              title="Mostrar ou ocultar senha"
-            >
-              <svg id="icon-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <svg id="icon-eye-open" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
-          </div>
-          <span class="field-error hidden" id="erro-login-senha">Informe sua senha de acesso.</span>
-        </div>
-
-        <!-- Botão de Ação -->
-        <button type="submit" id="btn-entrar" class="btn btn-primary btn-block btn-login">
-          <span class="spinner hidden" id="login-spinner"></span>
-          <span id="btn-entrar-texto">Entrar no Sistema</span>
-        </button>
-      </form>
-
-      <!-- Orientações de Acesso & Recuperação (RF-40 / Especificação) -->
-      <div class="login-footer">
-        <p class="login-help-text">
-          <strong>Esqueceu sua senha ou precisa de acesso?</strong><br>
-          Por políticas de segurança e conformidade LGPD, a criação e administração de contas é restrita à administração de RH e GTI. Solicite suporte aos gestores do sistema.
-        </p>
-
-        <div class="demo-credentials-box">
-          <span class="demo-badge">Autenticação Corporativa</span>
-          <p style="font-size: 0.75rem; color: #475569; margin: 0.4rem 0 0 0;">
-            O acesso a este ambiente exige credenciais individuais cadastradas e homologadas pela equipe de RH e TI.
-            Consulte a documentação interna ou as variáveis de ambiente configuradas no arquivo <code>.env</code> local.
-          </p>
-        </div>
+      <div class="login-copyright">
+        ForçaVerde Usina &copy; 2025 &nbsp;|&nbsp; Sistema de Folha de Pagamento
       </div>
     </div>
   </div>
@@ -136,17 +172,12 @@
     <header class="app-header">
       <div class="header-container">
         <div class="brand">
-          <div class="brand-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
+          <div class="brand-icon" style="background: transparent; box-shadow: none; padding: 0;">
+            <img src="assets/logo-emblema.png" alt="ForçaVerde Usina" style="width: 44px; height: 44px; object-fit: contain;">
           </div>
           <div>
-            <h1 class="brand-title">RH2.0</h1>
-            <p class="brand-subtitle">Departamento Pessoal &amp; Folha de Pagamento</p>
+            <h1 class="brand-title">ForçaVerde Usina <span style="font-weight: 500; font-size: 0.9rem; color: #15803d;">&bull; RH2.0</span></h1>
+            <p class="brand-subtitle">Portal de Folha de Pagamento &amp; Gestão de Colaboradores</p>
           </div>
         </div>
         <div class="header-actions">
@@ -175,7 +206,7 @@
     </header>
 
     <!-- Barra de Navegação entre Módulos do Sistema -->
-    <nav class="nav-modules" aria-label="Navegação entre módulos">
+    <nav class="nav-modules" aria-label="Navegação entre módulos" style="display: none;">
       <button id="nav-tab-colaboradores" class="nav-module-tab active" type="button">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -183,7 +214,7 @@
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
           <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
         </svg>
-        <span>Colaboradores (Módulo 1)</span>
+        <span>Módulo 01 — Gestão de Colaboradores</span>
       </button>
 
       <button id="nav-tab-folha" class="nav-module-tab" type="button">
@@ -197,1080 +228,2110 @@
       </button>
     </nav>
 
-  <!-- Conteúdo Principal -->
-  <main class="main-content">
-
-    <!-- ============================================================ -->
-    <!-- VISÃO DO MÓDULO 1: CADASTRO DE COLABORADORES                 -->
-    <!-- ============================================================ -->
-    <div id="view-modulo-colaboradores">
-      <!-- Cards de Métricas / Resumo -->
-      <section class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-blue">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Total de Colaboradores</span>
-            <span class="metric-value" id="stat-total">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-green">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Colaboradores Ativos</span>
-            <span class="metric-value text-green" id="stat-ativos">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-gray">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Inativos (Histórico Preservado)</span>
-            <span class="metric-value text-gray" id="stat-inativos">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-purple">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Departamentos Atendidos</span>
-            <span class="metric-value text-purple" id="stat-setores">0</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Barra de Filtros e Pesquisa -->
-      <section class="filters-card">
-        <div class="search-input-wrapper">
-          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input 
-            type="text" 
-            id="filtro-pesquisa" 
-            class="form-control search-input" 
-            placeholder="Pesquisar por nome, CPF ou matrícula..."
-            autocomplete="off"
-          >
-          <button id="btn-limpar-pesquisa" class="btn-clear hidden" title="Limpar pesquisa">&times;</button>
-        </div>
-
-        <div class="filters-group">
-          <div class="filter-item">
-            <label for="filtro-situacao">Situação:</label>
-            <select id="filtro-situacao" class="form-control select-control">
-              <option value="todos">Todos</option>
-              <option value="ativo" selected>Ativos</option>
-              <option value="inativo">Inativos</option>
-            </select>
-          </div>
-
-          <div class="filter-item">
-            <label for="filtro-setor">Setor:</label>
-            <select id="filtro-setor" class="form-control select-control">
-              <option value="">Todos os Setores</option>
-              <option value="Recursos Humanos">Recursos Humanos</option>
-              <option value="Departamento Pessoal">Departamento Pessoal</option>
-              <option value="Tecnologia da Informação">Tecnologia da Informação</option>
-              <option value="Financeiro">Financeiro</option>
-              <option value="Operações">Operações</option>
-              <option value="Comercial">Comercial</option>
-              <option value="Administrativo">Administrativo</option>
-            </select>
-          </div>
-
-          <button id="btn-recarregar" class="btn btn-outline" title="Atualizar listagem">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M23 4v6h-6"></path>
-              <path d="M1 20v-6h6"></path>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            Atualizar
-          </button>
-        </div>
-      </section>
-
-      <!-- Tabela de Colaboradores -->
-      <section class="table-card">
-        <div class="table-responsive">
-          <table class="data-table" id="tabela-colaboradores">
-            <thead>
-              <tr>
-                <th>Matrícula</th>
-                <th>Nome Completo / CPF</th>
-                <th>Cargo / Setor</th>
-                <th>Salário-base</th>
-                <th>Dependentes</th>
-                <th>Situação</th>
-                <th class="text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody id="corpo-tabela">
-              <!-- Renderizado dinamicamente via JavaScript -->
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Estado Vazio / Sem Resultados -->
-        <div id="estado-vazio" class="empty-state hidden">
-          <div class="empty-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              <line x1="8" y1="11" x2="14" y2="11"></line>
-            </svg>
-          </div>
-          <h3 class="empty-title">Nenhum colaborador encontrado</h3>
-          <p class="empty-desc">Tente alterar os termos da busca ou os filtros de situação e setor.</p>
-          <button id="btn-limpar-filtros" class="btn btn-primary btn-sm">Limpar Filtros</button>
-        </div>
-      </section>
-    </div> <!-- /#view-modulo-colaboradores -->
-
-    <!-- ============================================================ -->
-    <!-- VISÃO DO MÓDULO 2: FOLHA DE PAGAMENTO                         -->
-    <!-- ============================================================ -->
-    <div id="view-modulo-folha" class="hidden">
-      <!-- Cards de Métricas da Folha -->
-      <section class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-blue">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Folhas na Competência</span>
-            <span class="metric-value" id="stat-folha-total">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-green">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="1" x2="12" y2="23"></line>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Total de Proventos (Bruto)</span>
-            <span class="metric-value text-green" id="stat-folha-proventos">R$ 0,00</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-gray">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="8" y1="12" x2="16" y2="12"></line>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Total de Descontos</span>
-            <span class="metric-value text-gray" id="stat-folha-descontos">R$ 0,00</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon metric-icon-purple">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-              <line x1="2" y1="10" x2="22" y2="10"></line>
-            </svg>
-          </div>
-          <div class="metric-info">
-            <span class="metric-label">Total Líquido a Pagar</span>
-            <span class="metric-value text-purple" id="stat-folha-liquido">R$ 0,00</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Barra de Filtros e Ações da Folha -->
-      <section class="filters-card">
-        <div class="search-input-wrapper">
-          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input 
-            type="text" 
-            id="filtro-folha-pesquisa" 
-            class="form-control search-input" 
-            placeholder="Pesquisar folha por colaborador, CPF ou matrícula..."
-            autocomplete="off"
-          >
-          <button id="btn-limpar-pesquisa-folha" class="btn-clear hidden" title="Limpar pesquisa">&times;</button>
-        </div>
-
-        <div class="filters-group">
-          <div class="filter-item">
-            <label for="filtro-folha-competencia">Competência:</label>
-            <input type="month" id="filtro-folha-competencia" class="form-control select-control" value="2026-10">
-          </div>
-
-          <div class="filter-item">
-            <label for="filtro-folha-situacao">Situação:</label>
-            <select id="filtro-folha-situacao" class="form-control select-control">
-              <option value="todos" selected>Todas</option>
-              <option value="calculada">Calculadas</option>
-              <option value="fechada">Fechadas</option>
-              <option value="rascunho">Rascunhos</option>
-            </select>
-          </div>
-
-          <div class="filter-item">
-            <label for="filtro-folha-setor">Setor:</label>
-            <select id="filtro-folha-setor" class="form-control select-control">
-              <option value="">Todos os Setores</option>
-              <option value="Recursos Humanos">Recursos Humanos</option>
-              <option value="Departamento Pessoal">Departamento Pessoal</option>
-              <option value="Tecnologia da Informação">Tecnologia da Informação</option>
-              <option value="Financeiro">Financeiro</option>
-              <option value="Operações">Operações</option>
-              <option value="Comercial">Comercial</option>
-              <option value="Administrativo">Administrativo</option>
-            </select>
-          </div>
-
-          <button id="btn-nova-folha" class="btn btn-primary" title="Lançar e calcular nova folha">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Nova Folha
-          </button>
-
-          <button id="btn-parametros-folha" class="btn btn-outline" title="Ver parâmetros de cálculo e vigências">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-            Parâmetros
-          </button>
-        </div>
-      </section>
-
-      <!-- Tabela de Folhas de Pagamento -->
-      <section class="table-card">
-        <div class="table-responsive">
-          <table class="data-table" id="tabela-folhas">
-            <thead>
-              <tr>
-                <th>Colaborador</th>
-                <th>Competência</th>
-                <th>Período de Pagamento</th>
-                <th>Salário-base</th>
-                <th>Proventos (+)</th>
-                <th>Descontos (-)</th>
-                <th>Salário Líquido</th>
-                <th>Situação</th>
-                <th class="text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody id="corpo-tabela-folha">
-              <!-- Renderizado dinamicamente via JavaScript -->
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Estado Vazio / Sem Resultados de Folha -->
-        <div id="estado-vazio-folha" class="empty-state hidden">
-          <div class="empty-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-              <line x1="2" y1="10" x2="22" y2="10"></line>
-              <line x1="12" y1="14" x2="12" y2="18"></line>
-              <line x1="8" y1="18" x2="16" y2="18"></line>
-            </svg>
-          </div>
-          <h3 class="empty-title">Nenhuma folha de pagamento encontrada</h3>
-          <p class="empty-desc">Tente alterar a competência selecionada ou clique no botão "Nova Folha" para calcular a folha de um colaborador.</p>
-          <button id="btn-limpar-filtros-folha" class="btn btn-primary btn-sm">Limpar Filtros</button>
-        </div>
-      </section>
-    </div> <!-- /#view-modulo-folha -->
-
-  </main>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: FORMULÁRIO DE CADASTRO / EDIÇÃO                       -->
-  <!-- ============================================================ -->
-  <div id="modal-form" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="form-modal-title">
-    <div class="modal-card modal-lg">
-      <div class="modal-header">
-        <div>
-          <h2 id="form-modal-title" class="modal-title">Cadastrar Novo Colaborador</h2>
-          <p class="modal-subtitle">Preencha os dados cadastrais conforme a especificação do Departamento Pessoal.</p>
-        </div>
-        <button class="btn-close" id="btn-fechar-form-modal" aria-label="Fechar">&times;</button>
-      </div>
-
-      <form id="colaborador-form" novalidate>
-        <input type="hidden" id="colaborador-id">
-
-        <div class="modal-body modal-scroll">
-          <!-- Alerta de Erro Geral -->
-          <div id="form-alerta-erro" class="alert alert-danger hidden"></div>
-
-          <!-- SEÇÃO A: DADOS PESSOAIS -->
-          <fieldset class="form-section">
-            <legend class="section-legend">
-              <span class="section-number">A</span>
-              Dados Pessoais
-            </legend>
-            <div class="form-grid">
-              <div class="form-group col-span-8">
-                <label for="campo-nome">Nome Completo <span class="required">*</span></label>
-                <input type="text" id="campo-nome" class="form-control" placeholder="Ex: Maria da Silva Souza" required>
-                <span class="field-error" id="erro-nome_completo"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-cpf">CPF <span class="required">*</span></label>
-                <input type="text" id="campo-cpf" class="form-control" placeholder="000.000.000-00" maxlength="14" required>
-                <span class="field-error" id="erro-cpf"></span>
-              </div>
-
-              <div class="form-group col-span-6">
-                <label for="campo-rg">RG <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-rg" class="form-control" placeholder="Ex: 12.345.678-9">
-                <span class="field-error" id="erro-rg"></span>
-              </div>
-
-              <div class="form-group col-span-6">
-                <label for="campo-data-nasc">Data de Nascimento <span class="required">*</span></label>
-                <input type="date" id="campo-data-nasc" class="form-control" required>
-                <span class="field-error" id="erro-data_nascimento"></span>
-              </div>
-            </div>
-          </fieldset>
-
-          <!-- SEÇÃO B: DADOS DE CONTATO E ENDEREÇO -->
-          <fieldset class="form-section">
-            <legend class="section-legend">
-              <span class="section-number">B</span>
-              Dados de Contato &amp; Endereço
-            </legend>
-            <div class="form-grid">
-              <div class="form-group col-span-6">
-                <label for="campo-email">E-mail Corporativo/Pessoal <span class="required">*</span></label>
-                <input type="email" id="campo-email" class="form-control" placeholder="colaborador@empresa.com.br" required>
-                <span class="field-error" id="erro-email"></span>
-              </div>
-
-              <div class="form-group col-span-6">
-                <label for="campo-telefone">Telefone / WhatsApp <span class="text-muted">(Opcional)</span></label>
-                <input type="tel" id="campo-telefone" class="form-control" placeholder="(00) 00000-0000">
-                <span class="field-error" id="erro-telefone"></span>
-              </div>
-
-              <div class="form-group col-span-8">
-                <label for="campo-logradouro">Logradouro / Rua <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-logradouro" class="form-control" placeholder="Av. Brasil">
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-numero">Número <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-numero" class="form-control" placeholder="Ex: 120">
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-bairro">Bairro <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-bairro" class="form-control" placeholder="Centro">
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-cidade">Cidade <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-cidade" class="form-control" placeholder="São Paulo">
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="campo-uf">UF <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-uf" class="form-control" placeholder="SP" maxlength="2">
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="campo-cep">CEP <span class="text-muted">(Opcional)</span></label>
-                <input type="text" id="campo-cep" class="form-control" placeholder="00000-000" maxlength="9">
-              </div>
-            </div>
-          </fieldset>
-
-          <!-- SEÇÃO C: DADOS PROFISSIONAIS -->
-          <fieldset class="form-section">
-            <legend class="section-legend">
-              <span class="section-number">C</span>
-              Dados Profissionais &amp; Vínculo
-            </legend>
-            <div class="form-grid">
-              <div class="form-group col-span-4">
-                <label for="campo-matricula">Matrícula (ID Único) <span class="required">*</span></label>
-                <input type="text" id="campo-matricula" class="form-control" placeholder="Ex: RH-2024" required>
-                <span class="field-error" id="erro-matricula"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-data-adm">Data de Admissão <span class="required">*</span></label>
-                <input type="date" id="campo-data-adm" class="form-control" required>
-                <span class="field-error" id="erro-data_admissao"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-situacao">Situação do Vínculo <span class="required">*</span></label>
-                <select id="campo-situacao" class="form-control select-control" required>
-                  <option value="ativo" selected>Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-                <span class="field-error" id="erro-situacao"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-cargo">Cargo ou Função <span class="required">*</span></label>
-                <input type="text" id="campo-cargo" class="form-control" placeholder="Ex: Analista de Recursos Humanos" required>
-                <span class="field-error" id="erro-cargo"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-setor">Setor / Departamento <span class="required">*</span></label>
-                <select id="campo-setor" class="form-control select-control" required>
-                  <option value="">Selecione um setor...</option>
-                  <option value="Recursos Humanos">Recursos Humanos</option>
-                  <option value="Departamento Pessoal">Departamento Pessoal</option>
-                  <option value="Tecnologia da Informação">Tecnologia da Informação</option>
-                  <option value="Financeiro">Financeiro</option>
-                  <option value="Operações">Operações</option>
-                  <option value="Comercial">Comercial</option>
-                  <option value="Administrativo">Administrativo</option>
-                </select>
-                <span class="field-error" id="erro-setor"></span>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="campo-salario">Salário-base (R$) <span class="required">*</span></label>
-                <input type="text" id="campo-salario" class="form-control" placeholder="0,00" required>
-                <span class="field-error" id="erro-salario_base"></span>
-              </div>
-            </div>
-          </fieldset>
-
-          <!-- SEÇÃO D: DEPENDENTES -->
-          <fieldset class="form-section">
-            <div class="section-legend-row">
-              <legend class="section-legend">
-                <span class="section-number">D</span>
-                Dependentes (Para Fins Cadastrais e Futuro IRRF/Salário-família)
-              </legend>
-              <button type="button" id="btn-adicionar-dependente" class="btn btn-outline btn-sm">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
+    <!-- Conteúdo Principal -->
+    
+    <!-- Layout Unificado da Plataforma: Sidebar + Conteúdo -->
+    <div class="platform-layout">
+      <!-- Barra Lateral de Navegação da Plataforma (Módulos 01 a 20) -->
+      <aside class="platform-sidebar" id="platform-sidebar">
+        <div class="sidebar-nav">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Estratégico & Indicadores</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn active" data-view="dashboard" id="btn-menu-dashboard" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="9"></rect>
+                  <rect x="14" y="3" width="7" height="5"></rect>
+                  <rect x="14" y="12" width="7" height="9"></rect>
+                  <rect x="3" y="16" width="7" height="5"></rect>
                 </svg>
-                + Adicionar Dependente
+                <span>Dashboard &amp; BI</span>
+              </button>
+              <button class="sidebar-btn" data-view="pendencias" id="btn-menu-pendencias" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>Central de Pendências</span>
+                <span class="sidebar-badge" id="badge-pendencias-count">0</span>
               </button>
             </div>
+          </div>
 
-            <div id="container-dependentes" class="dependentes-list">
-              <!-- Linhas de dependentes inseridas dinamicamente -->
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Ciclo do Colaborador</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn" data-view="colaboradores" id="btn-menu-colaboradores" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Colaboradores (M01)</span>
+              </button>
+              <button class="sidebar-btn" data-view="admissoes" id="btn-menu-admissoes" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="8.5" cy="7" r="4"></circle>
+                  <line x1="20" y1="8" x2="20" y2="14"></line>
+                  <line x1="23" y1="11" x2="17" y2="11"></line>
+                </svg>
+                <span>Admissões (M02)</span>
+              </button>
+              <button class="sidebar-btn" data-view="ponto" id="btn-menu-ponto" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>Jornada &amp; Ponto (M03)</span>
+              </button>
+              <button class="sidebar-btn" data-view="ferias" id="btn-menu-ferias" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>Férias &amp; Abono (M06)</span>
+              </button>
+              <button class="sidebar-btn" data-view="afastamentos" id="btn-menu-afastamentos" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+                <span>Afastamentos (M07)</span>
+              </button>
+              <button class="sidebar-btn" data-view="rescisoes" id="btn-menu-rescisoes" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="8.5" cy="7" r="4"></circle>
+                  <line x1="18" y1="8" x2="23" y2="13"></line>
+                  <line x1="23" y1="8" x2="18" y2="13"></line>
+                </svg>
+                <span>Rescisões (M11)</span>
+              </button>
             </div>
-            <div id="dependentes-vazio" class="dependentes-empty-hint">
-              Nenhum dependente informado para este colaborador.
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Folha &amp; Remuneração</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn" data-view="folha" id="btn-menu-folha" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <line x1="2" y1="10" x2="22" y2="10"></line>
+                  <line x1="12" y1="14" x2="12" y2="18"></line>
+                  <line x1="8" y1="18" x2="16" y2="18"></line>
+                </svg>
+                <span>Folha Mensal (M09/10)</span>
+              </button>
+              <button class="sidebar-btn" data-view="integracoes" id="btn-menu-integracoes" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                  <line x1="2" y1="10" x2="22" y2="10"></line>
+                </svg>
+                <span>Bancos / CNAB 240 (M18)</span>
+              </button>
             </div>
-          </fieldset>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Compliance &amp; Segurança</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn" data-view="sst" id="btn-menu-sst" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                <span>SST &amp; Medicina (M13)</span>
+              </button>
+              <button class="sidebar-btn" data-view="esocial" id="btn-menu-esocial" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>eSocial &amp; Obrigações (M12)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Governança &amp; Sistema</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn" data-view="auditoria" id="btn-menu-auditoria" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                <span>Auditoria &amp; Logs (M20)</span>
+              </button>
+              <button class="sidebar-btn" data-view="multiempresa" id="btn-menu-multiempresa" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span>Multiempresa (M17)</span>
+              </button>
+            </div>
+          </div>
         </div>
+      </aside>
 
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btn-cancelar-form">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="btn-salvar-colaborador">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
-            </svg>
-            Salvar Colaborador
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+      <!-- Conteúdo Principal da Plataforma -->
+      <main class="main-content platform-main-content">
 
-  <!-- ============================================================ -->
-  <!-- MODAL: VISUALIZAÇÃO DE DETALHES COMPLETOS E AUDITORIA       -->
-  <!-- ============================================================ -->
-  <div id="modal-detalhes" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card modal-lg">
-      <div class="modal-header">
-        <div>
-          <h2 class="modal-title" id="detalhes-nome">Ficha Cadastral do Colaborador</h2>
-          <p class="modal-subtitle" id="detalhes-matricula-sub">Matrícula: --</p>
-        </div>
-        <button class="btn-close" id="btn-fechar-detalhes">&times;</button>
-      </div>
-
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="tab-ficha">Ficha Cadastral</button>
-        <button class="modal-tab" data-tab="tab-dependentes">Dependentes (<span id="detalhes-qtd-dep">0</span>)</button>
-        <button class="modal-tab" data-tab="tab-historico">Histórico de Alterações / Auditoria</button>
-      </div>
-
-      <div class="modal-body modal-scroll">
-        <!-- Aba 1: Ficha Cadastral -->
-        <div id="tab-ficha" class="tab-content active">
-          <div class="details-grid">
-            <div class="details-card">
-              <h4>Dados Pessoais</h4>
-              <p><strong>Nome:</strong> <span id="view-nome">--</span></p>
-              <p><strong>CPF:</strong> <span id="view-cpf">--</span></p>
-              <p><strong>RG:</strong> <span id="view-rg">--</span></p>
-              <p><strong>Data de Nascimento:</strong> <span id="view-nasc">--</span></p>
+        <!-- ============================================================ -->
+        <!-- VISÃO DASHBOARD & BI (MÓDULOS 19 E 20)                        -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-dashboard" class="platform-view">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Painel Executivo &amp; Indicadores BI</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Métricas consolidadas em tempo real com fórmulas oficiais (RF-181 a RF-190)</p>
             </div>
+            <button id="btn-atualizar-indicadores" class="btn btn-outline" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Atualizar Indicadores
+            </button>
+          </div>
 
-            <div class="details-card">
-              <h4>Dados de Contato</h4>
-              <p><strong>E-mail:</strong> <span id="view-email">--</span></p>
-              <p><strong>Telefone:</strong> <span id="view-telefone">--</span></p>
-              <p><strong>Endereço:</strong> <span id="view-endereco">--</span></p>
-            </div>
-
-            <div class="details-card col-span-2">
-              <h4>Dados Profissionais &amp; Vínculo</h4>
-              <div class="details-subgrid">
-                <p><strong>Matrícula:</strong> <span id="view-matricula">--</span></p>
-                <p><strong>Data de Admissão:</strong> <span id="view-admissao">--</span></p>
-                <p><strong>Cargo:</strong> <span id="view-cargo">--</span></p>
-                <p><strong>Setor:</strong> <span id="view-setor">--</span></p>
-                <p><strong>Salário-base:</strong> <span id="view-salario" class="text-money">--</span></p>
-                <p><strong>Situação:</strong> <span id="view-situacao">--</span></p>
+          <section class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon metric-icon-blue">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Colaboradores Ativos</span>
+                <span class="metric-value" id="kpi-total-ativos">--</span>
+                <span class="text-xs text-muted">Contratos CLT e Estágio</span>
               </div>
             </div>
+
+            <div class="metric-card">
+              <div class="metric-icon" style="background-color: #fef3c7; color: #d97706;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                  <polyline points="17 6 23 6 23 12"></polyline>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Taxa de Turnover</span>
+                <span class="metric-value" id="kpi-turnover">0.00%</span>
+                <span class="kpi-formula-tag">((Adm+Desl)/2/Ativos)*100</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon" style="background-color: #fee2e2; color: #dc2626;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Taxa de Absenteísmo</span>
+                <span class="metric-value" id="kpi-absenteismo">0.00%</span>
+                <span class="kpi-formula-tag">(Horas Não Trab / Previstas)*100</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon" style="background-color: #ede9fe; color: #7c3aed;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Pendências em Aberto</span>
+                <span class="metric-value" id="kpi-pendencias-abertas">0</span>
+                <span class="text-xs text-muted" id="kpi-pendencias-criticas">0 críticas</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="table-card mt-3">
+            <div class="table-card-header">
+              <h3 style="font-size: 1.1rem; font-weight: 600;">Status Operacional da Plataforma — V1 &amp; Vigência 2026</h3>
+            </div>
+            <div class="p-3" style="padding: 1.25rem;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
+                  <strong style="color: var(--primary); display: block; margin-bottom: 0.25rem;">Parâmetros Legais 2026</strong>
+                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                    &bull; Salário Mínimo: <strong>R$ 1.621,00</strong><br>
+                    &bull; Teto INSS: <strong>R$ 8.475,55</strong><br>
+                    &bull; Dedução Dependente IRRF: <strong>R$ 189,59</strong><br>
+                    &bull; Desconto Simplificado IRRF: <strong>R$ 607,20</strong><br>
+                    &bull; Redução Lei 15.270/2025: <strong>Ativa</strong>
+                  </div>
+                </div>
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
+                  <strong style="color: #16a34a; display: block; margin-bottom: 0.25rem;">Compliance eSocial &amp; SST</strong>
+                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                    &bull; Eventos Iniciais e Tabelas: <strong>S-1000 a S-1020</strong><br>
+                    &bull; Eventos Não Periódicos: <strong>S-2190 a S-2299</strong><br>
+                    &bull; Eventos SST: <strong>S-2210, S-2220, S-2240</strong><br>
+                    &bull; Folha e Fechamento: <strong>S-1200, S-1210, S-1299</strong>
+                  </div>
+                </div>
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
+                  <strong style="color: #ea580c; display: block; margin-bottom: 0.25rem;">Segurança &amp; Governança</strong>
+                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                    &bull; Segregação de Funções: <strong>RN-080 Ativa</strong><br>
+                    &bull; Trilha de Auditoria Geral: <strong>RT-01 Ativa</strong><br>
+                    &bull; Exclusão Lógica e LGPD: <strong>RF-009 / RT-02</strong><br>
+                    &bull; Dual-Mode: <strong>SQLite / PostgreSQL</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO CENTRAL DE PENDÊNCIAS (RF-151 A RF-160, RN-076)        -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-pendencias" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Central de Pendências &amp; Workflow Operacional</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Monitoramento contínuo, SLAs e tratativa de inconsistências operacionais</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="btn-scanner-pendencias" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Executar Varredura Automática
+              </button>
+            </div>
           </div>
-        </div>
 
-        <!-- Aba 2: Dependentes -->
-        <div id="tab-dependentes" class="tab-content">
-          <div id="detalhes-lista-dependentes" class="dependentes-view-list">
-            <!-- Renderizado dinamicamente -->
-          </div>
-        </div>
-
-        <!-- Aba 3: Histórico de Alterações -->
-        <div id="tab-historico" class="tab-content">
-          <div class="timeline" id="detalhes-timeline">
-            <!-- Linhas de auditoria renderizadas dinamicamente -->
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btn-fechar-detalhes-footer">Fechar</button>
-        <button class="btn btn-primary" id="btn-editar-a-partir-detalhes">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-          </svg>
-          Editar Cadastro
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: CONFIRMAÇÃO DE INATIVAÇÃO LÓGICA                      -->
-  <!-- ============================================================ -->
-  <div id="modal-inativar" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card modal-sm">
-      <div class="modal-header">
-        <h2 class="modal-title text-warning">Confirmar Inativação</h2>
-        <button class="btn-close" id="btn-fechar-inativar">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Você está prestes a <strong>inativar</strong> o colaborador:</p>
-        <div class="alert alert-warning" id="inativar-info-colaborador">
-          --
-        </div>
-        <p class="text-sm text-muted">
-          Atenção: A inativação é <strong>lógica</strong>. O colaborador não será excluído do banco de dados,
-          seus dados pessoais e histórico permanecerão integralmente preservados para fins de auditoria e futuras consultas.
-        </p>
-
-        <div class="form-group mt-3">
-          <label for="inativar-motivo">Motivo do Desligamento / Inativação <span class="text-muted">(Opcional)</span></label>
-          <textarea id="inativar-motivo" class="form-control" rows="2" placeholder="Ex: Desligamento a pedido, término de contrato temporário..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btn-cancelar-inativar">Cancelar</button>
-        <button class="btn btn-danger" id="btn-confirmar-inativacao">Sim, Inativar Colaborador</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: LANÇAR E CALCULAR FOLHA DE PAGAMENTO (MÓDULO 2)       -->
-  <!-- ============================================================ -->
-  <div id="modal-folha-form" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-folha-title">
-    <div class="modal-card modal-lg">
-      <div class="modal-header">
-        <div>
-          <h2 id="modal-folha-title" class="modal-title">Lançar &amp; Calcular Folha de Pagamento</h2>
-          <p class="modal-subtitle">Selecione o colaborador, a competência e informe os eventos do período.</p>
-        </div>
-        <button class="btn-close" id="btn-fechar-folha-form">&times;</button>
-      </div>
-
-      <form id="form-folha-pagamento" novalidate>
-        <input type="hidden" id="folha-id-edicao">
-
-        <div class="modal-body modal-scroll">
-          <div id="folha-form-alerta" class="alert alert-danger hidden"></div>
-
-          <!-- SEÇÃO 1: COLABORADOR E COMPETÊNCIA -->
-          <fieldset class="form-section">
-            <legend class="section-legend">
-              <span class="section-number">1</span>
-              Colaborador &amp; Competência
-            </legend>
-            <div class="form-grid">
-              <div class="form-group col-span-8">
-                <label for="folha-campo-colaborador">Colaborador <span class="required">*</span></label>
-                <select id="folha-campo-colaborador" class="form-control" required>
-                  <option value="">Selecione um colaborador ativo...</option>
+          <div class="filters-card">
+            <div class="filters-row">
+              <div class="form-group">
+                <label for="filtro-pendencia-status">Status</label>
+                <select id="filtro-pendencia-status" class="form-control">
+                  <option value="">Todos</option>
+                  <option value="PENDENTE" selected>Pendente</option>
+                  <option value="EM_ANALISE">Em Análise</option>
+                  <option value="RESOLVIDO">Resolvido</option>
+                  <option value="DISPENSADO">Dispensado</option>
                 </select>
-                <span class="field-error" id="erro-folha-colaborador"></span>
               </div>
-
-              <div class="form-group col-span-4">
-                <label for="folha-campo-competencia">Competência (AAAA-MM) <span class="required">*</span></label>
-                <input type="month" id="folha-campo-competencia" class="form-control" required value="2026-10">
-                <span class="field-error" id="erro-folha-competencia"></span>
-              </div>
-
-              <!-- Card informativo dinâmico dos dados contratuais -->
-              <div id="folha-info-colaborador-box" class="col-span-12 alert alert-info" style="display: none; margin-bottom: 0.5rem;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; font-size: 0.85rem;">
-                  <div><strong>Matrícula:</strong> <span id="folha-info-matricula">--</span></div>
-                  <div><strong>Cargo:</strong> <span id="folha-info-cargo">--</span></div>
-                  <div><strong>Setor:</strong> <span id="folha-info-setor">--</span></div>
-                  <div><strong>Salário Contratual:</strong> <span id="folha-info-salario" class="text-money">R$ 0,00</span></div>
-                  <div><strong>Dependentes (IRRF):</strong> <span id="folha-info-dependentes">0</span></div>
-                </div>
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="folha-campo-inicio">Início do Período <span class="required">*</span></label>
-                <input type="date" id="folha-campo-inicio" class="form-control" required value="2026-10-01">
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="folha-campo-fim">Fim do Período <span class="required">*</span></label>
-                <input type="date" id="folha-campo-fim" class="form-control" required value="2026-10-31">
-              </div>
-
-              <div class="form-group col-span-4">
-                <label for="folha-campo-pagamento">Data de Pagamento</label>
-                <input type="date" id="folha-campo-pagamento" class="form-control" value="2026-11-05">
-              </div>
-
-              <div class="form-group col-span-6">
-                <label for="folha-campo-dias">Dias Trabalhados (Mês Comercial: 30) <span class="required">*</span></label>
-                <input type="number" id="folha-campo-dias" class="form-control" min="1" max="31" step="0.5" value="30" required>
-                <span class="text-muted text-xs">Para admissão no meio do mês, informe os dias trabalhados.</span>
-              </div>
-
-              <div class="form-group col-span-6">
-                <label for="folha-campo-divisor">Divisor Mensal de Horas <span class="required">*</span></label>
-                <input type="number" id="folha-campo-divisor" class="form-control" min="1" step="1" value="220" required>
-                <span class="text-muted text-xs">Padrão CLT: 220 horas (44h semanais) ou 200/180 conforme contrato.</span>
+              <div class="form-group">
+                <label for="filtro-pendencia-severidade">Severidade</label>
+                <select id="filtro-pendencia-severidade" class="form-control">
+                  <option value="">Todas</option>
+                  <option value="CRITICA">Crítica</option>
+                  <option value="ALTA">Alta</option>
+                  <option value="MEDIA">Média</option>
+                  <option value="BAIXA">Baixa</option>
+                </select>
               </div>
             </div>
-          </fieldset>
+          </div>
 
-          <!-- SEÇÃO 2: EVENTOS E APONTAMENTOS DA FOLHA -->
-          <fieldset class="form-section">
-            <legend class="section-legend">
-              <span class="section-number">2</span>
-              Eventos da Folha (Horas Extras, Noturno, Faltas &amp; Atrasos)
-            </legend>
-            <div class="eventos-box">
-              <div class="eventos-grid">
-                <div class="form-group">
-                  <label for="folha-campo-he50">Horas Extras 50% (horas)</label>
-                  <input type="number" id="folha-campo-he50" class="form-control" min="0" step="0.5" placeholder="0.0">
-                </div>
+          <section class="table-card mt-3">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-pendencias">
+                <thead>
+                  <tr>
+                    <th>Severidade</th>
+                    <th>Tipo</th>
+                    <th>Título / Ocorrência</th>
+                    <th>Colaborador / Alvo</th>
+                    <th>Prazo / SLA</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-pendencias">
+                  <tr>
+                    <td colspan="7" class="text-center text-muted" style="padding: 2rem;">Carregando pendências...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
 
-                <div class="form-group">
-                  <label for="folha-campo-he100">Horas Extras 100% (horas)</label>
-                  <input type="number" id="folha-campo-he100" class="form-control" min="0" step="0.5" placeholder="0.0">
-                </div>
 
-                <div class="form-group">
-                  <label for="folha-campo-noturno">Adicional Noturno (horas)</label>
-                  <input type="number" id="folha-campo-noturno" class="form-control" min="0" step="0.5" placeholder="0.0">
-                </div>
+      <!-- ============================================================ -->
+      <!-- VISÃO DO MÓDULO 1: CADASTRO DE COLABORADORES                 -->
+      <!-- ============================================================ -->
+      <div id="view-modulo-colaboradores">
+        <!-- Cards de Métricas / Resumo -->
+        <section class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-blue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Total de Colaboradores</span>
+              <span class="metric-value" id="stat-total">0</span>
+            </div>
+          </div>
 
-                <div class="form-group">
-                  <label for="folha-campo-faltas">Faltas Integrais (dias)</label>
-                  <input type="number" id="folha-campo-faltas" class="form-control" min="0" step="1" placeholder="0">
-                </div>
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-green">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Colaboradores Ativos</span>
+              <span class="metric-value text-green" id="stat-ativos">0</span>
+            </div>
+          </div>
 
-                <div class="form-group">
-                  <label for="folha-campo-atrasos">Atrasos / Saídas (horas)</label>
-                  <input type="number" id="folha-campo-atrasos" class="form-control" min="0" step="0.1" placeholder="0.0">
-                </div>
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-gray">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Inativos (Histórico Preservado)</span>
+              <span class="metric-value text-gray" id="stat-inativos">0</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-purple">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Departamentos Atendidos</span>
+              <span class="metric-value text-purple" id="stat-setores">0</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Barra de Filtros e Pesquisa (RF-002: Nome, Matrícula, CPF, Cargo e Setor) -->
+        <section class="filters-card filters-card-rf002" aria-label="Pesquisa de Colaboradores RF-002">
+          <div class="filters-top-row">
+            <div class="search-input-wrapper">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="filtro-pesquisa" class="form-control search-input"
+                placeholder="Pesquisa rápida unificada por nome, matrícula, CPF, cargo ou setor..." autocomplete="off">
+              <button id="btn-limpar-pesquisa" class="btn-clear hidden" title="Limpar pesquisa">&times;</button>
+            </div>
+
+            <div class="filters-group">
+              <div class="filter-item">
+                <label for="filtro-situacao">Situação:</label>
+                <select id="filtro-situacao" class="form-control select-control">
+                  <option value="todos">Todos</option>
+                  <option value="ativo" selected>Ativos</option>
+                  <option value="inativo">Inativos</option>
+                </select>
               </div>
 
-              <!-- Outros Proventos e Descontos Manuais -->
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; border-top: 1px dashed #cbd5e1; padding-top: 0.75rem;">
-                <span style="font-weight: 600; font-size: 0.85rem; color: #475569;">Outros Proventos ou Descontos Avulsos</span>
-                <button type="button" id="btn-add-rubrica" class="btn btn-outline btn-sm">
-                  + Adicionar Evento
-                </button>
-              </div>
+              <button id="btn-limpar-filtros-topo" type="button" class="btn btn-outline" title="Limpar todos os filtros de pesquisa">
+                Limpar Filtros
+              </button>
 
-              <div class="rubricas-table-wrapper" id="wrapper-rubricas-manuais" style="display: none;">
-                <table class="rubricas-table">
+              <button id="btn-recarregar" type="button" class="btn btn-outline" title="Atualizar listagem">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M1 20v-6h6"></path>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Atualizar
+              </button>
+            </div>
+          </div>
+
+          <!-- Campos Específicos do Requisito RF-002: Nome, Matrícula, CPF, Cargo e Setor -->
+          <div class="rf002-fields-grid">
+            <div class="rf002-field">
+              <label for="filtro-nome">Nome</label>
+              <input type="text" id="filtro-nome" class="form-control" placeholder="Filtrar por nome..." autocomplete="off">
+            </div>
+
+            <div class="rf002-field">
+              <label for="filtro-matricula">Matrícula</label>
+              <input type="text" id="filtro-matricula" class="form-control" placeholder="Ex: RH-1001" autocomplete="off">
+            </div>
+
+            <div class="rf002-field">
+              <label for="filtro-cpf">CPF</label>
+              <input type="text" id="filtro-cpf" class="form-control" placeholder="000.000.000-00" maxlength="14" autocomplete="off">
+            </div>
+
+            <div class="rf002-field">
+              <label for="filtro-cargo">Cargo</label>
+              <input type="text" id="filtro-cargo" class="form-control" placeholder="Filtrar por cargo..." autocomplete="off">
+            </div>
+
+            <div class="rf002-field">
+              <label for="filtro-setor">Setor</label>
+              <select id="filtro-setor" class="form-control select-control">
+                <option value="">Todos os Setores</option>
+                <option value="Recursos Humanos">Recursos Humanos</option>
+                <option value="Departamento Pessoal">Departamento Pessoal</option>
+                <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+                <option value="Financeiro">Financeiro</option>
+                <option value="Operações">Operações</option>
+                <option value="Comercial">Comercial</option>
+                <option value="Administrativo">Administrativo</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tabela de Colaboradores -->
+        <section class="table-card">
+          <div class="table-responsive">
+            <table class="data-table" id="tabela-colaboradores">
+              <thead>
+                <tr>
+                  <th>Matrícula</th>
+                  <th>Nome Completo / CPF</th>
+                  <th>Cargo / Setor</th>
+                  <th>Salário-base</th>
+                  <th>Dependentes</th>
+                  <th>Situação</th>
+                  <th class="text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="corpo-tabela">
+                <!-- Renderizado dinamicamente via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Estado Vazio / Sem Resultados -->
+          <div id="estado-vazio" class="empty-state hidden">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+            </div>
+            <h3 class="empty-title">Nenhum colaborador encontrado</h3>
+            <p class="empty-desc">Tente alterar os termos da busca ou os filtros de situação e setor.</p>
+            <button id="btn-limpar-filtros" class="btn btn-primary btn-sm">Limpar Filtros</button>
+          </div>
+        </section>
+      </div> <!-- /#view-modulo-colaboradores -->
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 2: ADMISSÕES & CONTRATOS (RF-011 A RF-020)    -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-admissoes" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Gestão de Admissões &amp; Checklist Documental</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Workflow admissional, validação documental e aprovação com segregação de funções (RN-080)</p>
+            </div>
+            <button id="btn-abrir-nova-admissao" class="btn btn-primary" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Nova Admissão
+            </button>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-admissoes">
+                <thead>
+                  <tr>
+                    <th>Candidato / Colaborador</th>
+                    <th>CPF</th>
+                    <th>Cargo Proposto</th>
+                    <th>Salário Proposto</th>
+                    <th>Data Admissão</th>
+                    <th>Checklist (Itens)</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-admissoes">
+                  <tr>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">Carregando propostas de admissão...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 3: JORNADA & PONTO ELETRÔNICO (RF-021 A RF-040)-->
+        <!-- ============================================================ -->
+        <div id="view-modulo-ponto" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Controle de Jornada, Ponto &amp; Banco de Horas</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Espelho de ponto mensal, marcações, horas extras 50%/100% e adicional noturno</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="btn-abrir-bater-ponto" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Registrar Batida de Ponto
+              </button>
+              <button id="btn-abrir-ajuste-ponto" class="btn btn-outline" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Solicitar Ajuste de Ponto
+              </button>
+            </div>
+          </div>
+
+          <div class="filters-card">
+            <div class="filters-row">
+              <div class="form-group">
+                <label for="ponto-colaborador-select">Colaborador</label>
+                <select id="ponto-colaborador-select" class="form-control">
+                  <option value="">Selecione um colaborador...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="ponto-competencia-input">Competência (Ano-Mês)</label>
+                <input type="month" id="ponto-competencia-input" class="form-control" value="2026-03">
+              </div>
+              <div class="form-group" style="align-self: flex-end;">
+                <button id="btn-carregar-espelho-ponto" class="btn btn-outline" type="button">Carregar Espelho</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="metrics-grid mt-2">
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Horas Trabalhadas</span>
+                <span class="metric-value" id="ponto-tot-normais">0h 00m</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Horas Extras 50%</span>
+                <span class="metric-value" id="ponto-tot-he50" style="color: #2563eb;">0h 00m</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Horas Extras 100%</span>
+                <span class="metric-value" id="ponto-tot-he100" style="color: #d97706;">0h 00m</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Adicional Noturno</span>
+                <span class="metric-value" id="ponto-tot-noturno" style="color: #7c3aed;">0h 00m</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Atrasos &amp; Faltas</span>
+                <span class="metric-value" id="ponto-tot-faltas" style="color: #dc2626;">0h 00m</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="table-card mt-3">
+            <div class="table-card-header">
+              <h3 style="font-size: 1.1rem; font-weight: 600;">Espelho de Ponto Oficial do Período</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-espelho-ponto">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Dia</th>
+                    <th>Entrada 1</th>
+                    <th>Saída 1 (Alm.)</th>
+                    <th>Entrada 2 (Ret.)</th>
+                    <th>Saída 2</th>
+                    <th>Total Trab.</th>
+                    <th>Saldo Diário</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-espelho-ponto">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Selecione um colaborador para ver o espelho de ponto.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 6: FÉRIAS & ABONO (RF-051 A RF-060)           -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-ferias" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Gestão de Férias &amp; Abono Pecuniário</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Controle de períodos aquisitivos/concessivos, cálculo de 1/3 e regras de antecipação CLT</p>
+            </div>
+            <button id="btn-abrir-programar-ferias" class="btn btn-primary" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Programar Férias
+            </button>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-ferias">
+                <thead>
+                  <tr>
+                    <th>Colaborador</th>
+                    <th>Período Aquisitivo</th>
+                    <th>Limite Concessivo</th>
+                    <th>Início Gozo</th>
+                    <th>Fim Gozo</th>
+                    <th>Dias Gozo</th>
+                    <th>Abono (Dias)</th>
+                    <th>Adiantamento 13º</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-ferias">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando histórico e programação de férias...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 7: AFASTAMENTOS & ESTABILIDADE (RF-061 A RF-070)-->
+        <!-- ============================================================ -->
+        <div id="view-modulo-afastamentos" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Afastamentos, Licenças &amp; Estabilidade Legal</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Controle de 15 dias empresa / INSS, CID-10, ASO de retorno e travas de estabilidade provisória</p>
+            </div>
+            <button id="btn-abrir-novo-afastamento" class="btn btn-primary" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Registrar Afastamento
+            </button>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-afastamentos">
+                <thead>
+                  <tr>
+                    <th>Colaborador</th>
+                    <th>Tipo / Motivo</th>
+                    <th>CID-10</th>
+                    <th>Início</th>
+                    <th>Término Previsto</th>
+                    <th>Dias Empresa</th>
+                    <th>Dias INSS</th>
+                    <th>Estabilidade Pós-Retorno</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-afastamentos">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando afastamentos cadastrados...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+
+      <!-- ============================================================ -->
+      <!-- VISÃO DO MÓDULO 2: FOLHA DE PAGAMENTO                         -->
+      <!-- ============================================================ -->
+      <div id="view-modulo-folha" class="hidden">
+        <!-- Cards de Métricas da Folha -->
+        <section class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-blue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Folhas na Competência</span>
+              <span class="metric-value" id="stat-folha-total">0</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-green">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="1" x2="12" y2="23"></line>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Total de Proventos (Bruto)</span>
+              <span class="metric-value text-green" id="stat-folha-proventos">R$ 0,00</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-gray">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Total de Descontos</span>
+              <span class="metric-value text-gray" id="stat-folha-descontos">R$ 0,00</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon metric-icon-purple">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                <line x1="2" y1="10" x2="22" y2="10"></line>
+              </svg>
+            </div>
+            <div class="metric-info">
+              <span class="metric-label">Total Líquido a Pagar</span>
+              <span class="metric-value text-purple" id="stat-folha-liquido">R$ 0,00</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Barra de Filtros e Ações da Folha -->
+        <section class="filters-card">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="filtro-folha-pesquisa" class="form-control search-input"
+              placeholder="Pesquisar folha por colaborador, CPF ou matrícula..." autocomplete="off">
+            <button id="btn-limpar-pesquisa-folha" class="btn-clear hidden" title="Limpar pesquisa">&times;</button>
+          </div>
+
+          <div class="filters-group">
+            <div class="filter-item">
+              <label for="filtro-folha-competencia">Competência:</label>
+              <input type="month" id="filtro-folha-competencia" class="form-control select-control" value="2026-10">
+            </div>
+
+            <div class="filter-item">
+              <label for="filtro-folha-situacao">Situação:</label>
+              <select id="filtro-folha-situacao" class="form-control select-control">
+                <option value="todos" selected>Todas</option>
+                <option value="calculada">Calculadas</option>
+                <option value="fechada">Fechadas</option>
+                <option value="rascunho">Rascunhos</option>
+              </select>
+            </div>
+
+            <div class="filter-item">
+              <label for="filtro-folha-setor">Setor:</label>
+              <select id="filtro-folha-setor" class="form-control select-control">
+                <option value="">Todos os Setores</option>
+                <option value="Recursos Humanos">Recursos Humanos</option>
+                <option value="Departamento Pessoal">Departamento Pessoal</option>
+                <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+                <option value="Financeiro">Financeiro</option>
+                <option value="Operações">Operações</option>
+                <option value="Comercial">Comercial</option>
+                <option value="Administrativo">Administrativo</option>
+              </select>
+            </div>
+
+            <button id="btn-nova-folha" class="btn btn-primary" title="Lançar e calcular nova folha">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Nova Folha
+            </button>
+
+            <button id="btn-parametros-folha" class="btn btn-outline" title="Ver parâmetros de cálculo e vigências">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                </path>
+              </svg>
+              Parâmetros
+            </button>
+          </div>
+        </section>
+
+        <!-- Tabela de Folhas de Pagamento -->
+        <section class="table-card">
+          <div class="table-responsive">
+            <table class="data-table" id="tabela-folhas">
+              <thead>
+                <tr>
+                  <th>Colaborador</th>
+                  <th>Competência</th>
+                  <th>Período de Pagamento</th>
+                  <th>Salário-base</th>
+                  <th>Proventos (+)</th>
+                  <th>Descontos (-)</th>
+                  <th>Salário Líquido</th>
+                  <th>Situação</th>
+                  <th class="text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="corpo-tabela-folha">
+                <!-- Renderizado dinamicamente via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Estado Vazio / Sem Resultados de Folha -->
+          <div id="estado-vazio-folha" class="empty-state hidden">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <line x1="2" y1="10" x2="22" y2="10"></line>
+                <line x1="12" y1="14" x2="12" y2="18"></line>
+                <line x1="8" y1="18" x2="16" y2="18"></line>
+              </svg>
+            </div>
+            <h3 class="empty-title">Nenhuma folha de pagamento encontrada</h3>
+            <p class="empty-desc">Tente alterar a competência selecionada ou clique no botão "Nova Folha" para calcular
+              a folha de um colaborador.</p>
+            <button id="btn-limpar-filtros-folha" class="btn btn-primary btn-sm">Limpar Filtros</button>
+          </div>
+        </section>
+      </div> <!-- /#view-modulo-folha -->
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 11: RESCISÕES CONTRATUAIS (RF-106 A RF-120)  -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-rescisoes" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Rescisão Contratual &amp; Verbas Rescisórias 2026</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Cálculo do TRCT oficial, multa FGTS (40%/20%), aviso prévio proporcional e prazo legal de 10 dias (CLT art. 477)</p>
+            </div>
+            <button id="btn-abrir-calcular-rescisao" class="btn btn-primary" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Calcular Nova Rescisão
+            </button>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-rescisoes">
+                <thead>
+                  <tr>
+                    <th>Colaborador</th>
+                    <th>Tipo de Rescisão</th>
+                    <th>Data Aviso</th>
+                    <th>Data Desligamento</th>
+                    <th>Prazo Pagamento (10d)</th>
+                    <th>Total Verbas</th>
+                    <th>Multa FGTS</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-rescisoes">
+                  <tr>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">Carregando rescisões processadas...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 13: SST — SAÚDE E SEGURANÇA (RF-121 A RF-130)-->
+        <!-- ============================================================ -->
+        <div id="view-modulo-sst" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">SST — Saúde &amp; Segurança do Trabalho</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Gestão de ASO, Fichas de EPIs com verificação de CA vencido (RN-039), Treinamentos e Emissão de CAT</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="btn-abrir-novo-aso" class="btn btn-outline" type="button">Novo ASO</button>
+              <button id="btn-abrir-entrega-epi" class="btn btn-outline" type="button">Entregar EPI</button>
+              <button id="btn-abrir-nova-cat" class="btn btn-primary" type="button">Emitir CAT</button>
+            </div>
+          </div>
+
+          <!-- SST Sub-abas -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem; border-bottom: 2px solid var(--border-color);">
+            <button id="sst-tab-btn-aso" class="nav-module-tab active" type="button">ASO &amp; Exames</button>
+            <button id="sst-tab-btn-epi" class="nav-module-tab" type="button">EPIs &amp; Fichas</button>
+            <button id="sst-tab-btn-treinamentos" class="nav-module-tab" type="button">Treinamentos NRs</button>
+            <button id="sst-tab-btn-cat" class="nav-module-tab" type="button">CATs Emitidas</button>
+          </div>
+
+          <div id="sst-painel-aso" class="sst-painel">
+            <section class="table-card">
+              <div class="table-responsive">
+                <table class="data-table" id="tabela-sst-asos">
                   <thead>
                     <tr>
-                      <th style="width: 120px;">Tipo</th>
-                      <th>Descrição do Evento</th>
-                      <th style="width: 90px;">Ref / Qtd</th>
-                      <th style="width: 130px;">Valor Total (R$)</th>
-                      <th style="width: 80px; text-align: center;">Ações</th>
+                      <th>Colaborador</th>
+                      <th>Tipo ASO</th>
+                      <th>Data Realização</th>
+                      <th>Validade</th>
+                      <th>Aptidão</th>
+                      <th>Médico / CRM</th>
+                      <th>Exames Complementares</th>
                     </tr>
                   </thead>
-                  <tbody id="corpo-rubricas-manuais">
-                    <!-- Linhas adicionadas dinamicamente -->
+                  <tbody id="tbody-sst-asos">
+                    <tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Carregando ASOs...</td></tr>
                   </tbody>
                 </table>
               </div>
-            </div>
-          </fieldset>
-
-          <!-- SEÇÃO 3: OBSERVAÇÕES E PRÉVIA DOS TOTAIS -->
-          <div class="form-group">
-            <label for="folha-campo-observacoes">Observações da Folha <span class="text-muted">(Opcional)</span></label>
-            <textarea id="folha-campo-observacoes" class="form-control" rows="2" placeholder="Ex: Horas extras autorizadas pela gerência, adiantamento homologado..."></textarea>
+            </section>
           </div>
 
-          <!-- Barra de Prévia em Tempo Real -->
-          <div class="folha-preview-bar">
-            <div class="folha-preview-item">
-              <span class="folha-preview-label">Salário Proporcional</span>
-              <span class="folha-preview-value" id="preview-salario-prop">R$ 0,00</span>
+          <div id="sst-painel-epi" class="sst-painel hidden">
+            <section class="table-card">
+              <div class="table-responsive">
+                <table class="data-table" id="tabela-sst-epis">
+                  <thead>
+                    <tr>
+                      <th>Colaborador</th>
+                      <th>EPI / Descrição</th>
+                      <th>Número CA</th>
+                      <th>Validade do CA</th>
+                      <th>Data Entrega</th>
+                      <th>Status Assinatura</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-sst-epis">
+                    <tr><td colspan="6" class="text-center text-muted" style="padding: 2rem;">Carregando entregas de EPIs...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <div id="sst-painel-treinamentos" class="sst-painel hidden">
+            <section class="table-card">
+              <div class="table-responsive">
+                <table class="data-table" id="tabela-sst-treinamentos">
+                  <thead>
+                    <tr>
+                      <th>Nome do Treinamento / NR</th>
+                      <th>Carga Horária</th>
+                      <th>Validade (Meses)</th>
+                      <th>Reciclagem Obrigatória</th>
+                      <th>Total Participantes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-sst-treinamentos">
+                    <tr><td colspan="5" class="text-center text-muted" style="padding: 2rem;">Carregando treinamentos...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <div id="sst-painel-cat" class="sst-painel hidden">
+            <section class="table-card">
+              <div class="table-responsive">
+                <table class="data-table" id="tabela-sst-cats">
+                  <thead>
+                    <tr>
+                      <th>Número CAT</th>
+                      <th>Colaborador</th>
+                      <th>Tipo Acidente</th>
+                      <th>Data / Hora</th>
+                      <th>Parte do Corpo / CID</th>
+                      <th>Status eSocial</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-sst-cats">
+                    <tr><td colspan="6" class="text-center text-muted" style="padding: 2rem;">Carregando CATs...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 12: ESOCIAL & OBRIGAÇÕES (RF-131 A RF-140)   -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-esocial" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Obrigações Legais &amp; Central eSocial</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Geração e mensageria de lotes XML (Eventos Iniciais, Tabelas, Não Periódicos, SST e Folha)</p>
             </div>
-            <div class="folha-preview-item">
-              <span class="folha-preview-label">Total Proventos</span>
-              <span class="folha-preview-value" id="preview-total-proventos">R$ 0,00</span>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="btn-esocial-transmitir" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Transmitir Lote ao eSocial
+              </button>
             </div>
-            <div class="folha-preview-item">
-              <span class="folha-preview-label">Total Descontos</span>
-              <span class="folha-preview-value" id="preview-total-descontos">R$ 0,00</span>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-esocial-eventos">
+                <thead>
+                  <tr>
+                    <th>Evento</th>
+                    <th>Tipo</th>
+                    <th>Competência / Data</th>
+                    <th>Colaborador / Alvo</th>
+                    <th>Status Mensageria</th>
+                    <th>Protocolo / Recibo</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-esocial-eventos">
+                  <tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Carregando eventos do eSocial...</td></tr>
+                </tbody>
+              </table>
             </div>
-            <div class="folha-preview-item">
-              <span class="folha-preview-label">Salário Líquido</span>
-              <span class="folha-preview-value" id="preview-salario-liquido">R$ 0,00</span>
+          </section>
+        </div>
             </div>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btn-cancelar-folha-form">Cancelar</button>
-          <button type="button" class="btn btn-secondary" id="btn-simular-calculo" title="Atualiza os cálculos e valores intermediários">
-            Simular / Recalcular
-          </button>
-          <button type="submit" class="btn btn-primary" id="btn-salvar-folha">
-            Salvar &amp; Gerar Folha
+          <button class="btn btn-outline" id="btn-fechar-detalhes-footer">Fechar</button>
+          <button class="btn btn-primary" id="btn-editar-a-partir-detalhes">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            Editar Cadastro
           </button>
         </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: DEMONSTRATIVO DETALHADO / HOLERITE OFICIAL            -->
-  <!-- ============================================================ -->
-  <div id="modal-holerite" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="holerite-titulo">
-    <div class="modal-card holerite-modal-card">
-      <div class="modal-header">
-        <div>
-          <h2 id="holerite-titulo" class="modal-title">Demonstrativo de Pagamento — Contracheque</h2>
-          <p class="modal-subtitle">Demonstrativo mensal detalhado conforme legislação e convenção trabalhista.</p>
-        </div>
-        <button class="btn-close" id="btn-fechar-holerite">&times;</button>
       </div>
+    </div>
 
-      <div class="modal-body modal-scroll">
+    <!-- ============================================================ -->
+    <!-- MODAL: CONFIRMAÇÃO DE INATIVAÇÃO LÓGICA                      -->
+    <!-- ============================================================ -->
+    <div id="modal-inativar" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h2 class="modal-title text-warning">Confirmar Inativação</h2>
+          <button class="btn-close" id="btn-fechar-inativar">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Você está prestes a <strong>inativar</strong> o colaborador:</p>
+          <div class="alert alert-warning" id="inativar-info-colaborador">
+            --
+          </div>
+          <p class="text-sm text-muted">
+            Atenção: A inativação é <strong>lógica</strong>. O colaborador não será excluído do banco de dados,
+            seus dados pessoais e histórico permanecerão integralmente preservados para fins de auditoria e futuras
+            consultas.
+          </p>
+
+          <div class="form-group mt-3">
+            <label for="inativar-motivo">Motivo do Desligamento / Inativação <span
+                class="text-muted">(Opcional)</span></label>
+            <textarea id="inativar-motivo" class="form-control" rows="2"
+              placeholder="Ex: Desligamento a pedido, término de contrato temporário..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-inativar">Cancelar</button>
+          <button class="btn btn-danger" id="btn-confirmar-inativacao">Sim, Inativar Colaborador</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: LANÇAR E CALCULAR FOLHA DE PAGAMENTO (MÓDULO 2)       -->
+    <!-- ============================================================ -->
+    <div id="modal-folha-form" class="modal-overlay hidden" role="dialog" aria-modal="true"
+      aria-labelledby="modal-folha-title">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <h2 id="modal-folha-title" class="modal-title">Lançar &amp; Calcular Folha de Pagamento</h2>
+            <p class="modal-subtitle">Selecione o colaborador, a competência e informe os eventos do período.</p>
+          </div>
+          <button class="btn-close" id="btn-fechar-folha-form">&times;</button>
+        </div>
+
+        <form id="form-folha-pagamento" novalidate>
+          <input type="hidden" id="folha-id-edicao">
+
+          <div class="modal-body modal-scroll">
+            <div id="folha-form-alerta" class="alert alert-danger hidden"></div>
+
+            <!-- SEÇÃO 1: COLABORADOR E COMPETÊNCIA -->
+            <fieldset class="form-section">
+              <legend class="section-legend">
+                <span class="section-number">1</span>
+                Colaborador &amp; Competência
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-8">
+                  <label for="folha-campo-colaborador">Colaborador <span class="required">*</span></label>
+                  <select id="folha-campo-colaborador" class="form-control" required>
+                    <option value="">Selecione um colaborador ativo...</option>
+                  </select>
+                  <span class="field-error" id="erro-folha-colaborador"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="folha-campo-competencia">Competência (AAAA-MM) <span class="required">*</span></label>
+                  <input type="month" id="folha-campo-competencia" class="form-control" required value="2026-10">
+                  <span class="field-error" id="erro-folha-competencia"></span>
+                </div>
+
+                <!-- Card informativo dinâmico dos dados contratuais -->
+                <div id="folha-info-colaborador-box" class="col-span-12 alert alert-info"
+                  style="display: none; margin-bottom: 0.5rem;">
+                  <div
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; font-size: 0.85rem;">
+                    <div><strong>Matrícula:</strong> <span id="folha-info-matricula">--</span></div>
+                    <div><strong>Cargo:</strong> <span id="folha-info-cargo">--</span></div>
+                    <div><strong>Setor:</strong> <span id="folha-info-setor">--</span></div>
+                    <div><strong>Salário Contratual:</strong> <span id="folha-info-salario" class="text-money">R$
+                        0,00</span></div>
+                    <div><strong>Dependentes (IRRF):</strong> <span id="folha-info-dependentes">0</span></div>
+                  </div>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="folha-campo-inicio">Início do Período <span class="required">*</span></label>
+                  <input type="date" id="folha-campo-inicio" class="form-control" required value="2026-10-01">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="folha-campo-fim">Fim do Período <span class="required">*</span></label>
+                  <input type="date" id="folha-campo-fim" class="form-control" required value="2026-10-31">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="folha-campo-pagamento">Data de Pagamento</label>
+                  <input type="date" id="folha-campo-pagamento" class="form-control" value="2026-11-05">
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="folha-campo-dias">Dias Trabalhados (Mês Comercial: 30) <span
+                      class="required">*</span></label>
+                  <input type="number" id="folha-campo-dias" class="form-control" min="1" max="31" step="0.5" value="30"
+                    required>
+                  <span class="text-muted text-xs">Para admissão no meio do mês, informe os dias trabalhados.</span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="folha-campo-divisor">Divisor Mensal de Horas <span class="required">*</span></label>
+                  <input type="number" id="folha-campo-divisor" class="form-control" min="1" step="1" value="220"
+                    required>
+                  <span class="text-muted text-xs">Padrão CLT: 220 horas (44h semanais) ou 200/180 conforme
+                    contrato.</span>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO 2: EVENTOS E APONTAMENTOS DA FOLHA -->
+            <fieldset class="form-section">
+              <legend class="section-legend">
+                <span class="section-number">2</span>
+                Eventos da Folha (Horas Extras, Noturno, Faltas &amp; Atrasos)
+              </legend>
+              <div class="eventos-box">
+                <div class="eventos-grid">
+                  <div class="form-group">
+                    <label for="folha-campo-he50">Horas Extras 50% (horas)</label>
+                    <input type="number" id="folha-campo-he50" class="form-control" min="0" step="0.5"
+                      placeholder="0.0">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="folha-campo-he100">Horas Extras 100% (horas)</label>
+                    <input type="number" id="folha-campo-he100" class="form-control" min="0" step="0.5"
+                      placeholder="0.0">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="folha-campo-noturno">Adicional Noturno (horas)</label>
+                    <input type="number" id="folha-campo-noturno" class="form-control" min="0" step="0.5"
+                      placeholder="0.0">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="folha-campo-faltas">Faltas Integrais (dias)</label>
+                    <input type="number" id="folha-campo-faltas" class="form-control" min="0" step="1" placeholder="0">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="folha-campo-atrasos">Atrasos / Saídas (horas)</label>
+                    <input type="number" id="folha-campo-atrasos" class="form-control" min="0" step="0.1"
+                      placeholder="0.0">
+                  </div>
+                </div>
+
+                <!-- Outros Proventos e Descontos Manuais -->
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; border-top: 1px dashed #cbd5e1; padding-top: 0.75rem;">
+                  <span style="font-weight: 600; font-size: 0.85rem; color: #475569;">Outros Proventos ou Descontos
+                    Avulsos</span>
+                  <button type="button" id="btn-add-rubrica" class="btn btn-outline btn-sm">
+                    + Adicionar Evento
+                  </button>
+                </div>
+
+                <div class="rubricas-table-wrapper" id="wrapper-rubricas-manuais" style="display: none;">
+                  <table class="rubricas-table">
+                    <thead>
+                      <tr>
+                        <th style="width: 120px;">Tipo</th>
+                        <th>Descrição do Evento</th>
+                        <th style="width: 90px;">Ref / Qtd</th>
+                        <th style="width: 130px;">Valor Total (R$)</th>
+                        <th style="width: 48px;" title="Excluir linha">🗑️</th>
+                      </tr>
+                    </thead>
+                    <tbody id="corpo-rubricas-manuais">
+                      <!-- Linhas adicionadas dinamicamente -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO 3: OBSERVAÇÕES E PRÉVIA DOS TOTAIS -->
+            <div class="form-group">
+              <label for="folha-campo-observacoes">Observações da Folha <span
+                  class="text-muted">(Opcional)</span></label>
+              <textarea id="folha-campo-observacoes" class="form-control" rows="2"
+                placeholder="Ex: Horas extras autorizadas pela gerência, adiantamento homologado..."></textarea>
+            </div>
+
+            <!-- Barra de Prévia em Tempo Real -->
+            <div class="folha-preview-bar">
+              <div class="folha-preview-item">
+                <span class="folha-preview-label">Salário Proporcional</span>
+                <span class="folha-preview-value" id="preview-salario-prop">R$ 0,00</span>
+              </div>
+              <div class="folha-preview-item">
+                <span class="folha-preview-label">Total Proventos</span>
+                <span class="folha-preview-value" id="preview-total-proventos">R$ 0,00</span>
+              </div>
+              <div class="folha-preview-item">
+                <span class="folha-preview-label">Total Descontos</span>
+                <span class="folha-preview-value" id="preview-total-descontos">R$ 0,00</span>
+              </div>
+              <div class="folha-preview-item">
+                <span class="folha-preview-label">Salário Líquido</span>
+                <span class="folha-preview-value" style="color: #6ee7b7;" id="preview-salario-liquido">R$ 0,00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-cancelar-folha-form">Cancelar</button>
+            <button type="button" class="btn btn-secondary" id="btn-simular-calculo"
+              title="Atualiza os cálculos e valores intermediários">
+              Simular / Recalcular
+            </button>
+            <button type="submit" class="btn btn-primary" id="btn-salvar-folha">
+              Salvar &amp; Gerar Folha
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: DEMONSTRATIVO DETALHADO / HOLERITE OFICIAL            -->
+    <!-- ============================================================ -->
+    <div id="modal-holerite" class="modal-overlay hidden" role="dialog" aria-modal="true"
+      aria-labelledby="holerite-titulo">
+      <div class="modal-card holerite-modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 id="holerite-titulo" class="modal-title">Demonstrativo de Pagamento — Contracheque</h2>
+            <p class="modal-subtitle">Demonstrativo mensal detalhado conforme legislação e convenção trabalhista.</p>
+          </div>
+          <button class="btn-close" id="btn-fechar-holerite">&times;</button>
+        </div>
+
+        <div class="modal-body modal-scroll">
         <!-- Banner de Confirmação de Salvamento da Folha -->
         <div id="holerite-alerta-sucesso" class="alert alert-success hidden" style="margin-bottom: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;">
           <span style="font-size: 1.25rem; line-height: 1;">✓</span>
           <span>Folha de pagamento calculada e salva com sucesso no banco de dados!</span>
         </div>
-
-        <!-- Documento de Contracheque Oficial (Pronto para Visualização e Impressão) -->
-        <div class="holerite-container" id="holerite-documento-imprimivel">
-          <!-- Cabeçalho da Empresa -->
-          <div class="holerite-header">
-            <div>
-              <div class="holerite-empresa-titulo">PORTAL DP &amp; RH LTDA</div>
-              <div style="font-size: 0.8rem; color: #475569;">CNPJ: 12.345.678/0001-90 &bull; Av. Paulista, 1000 - Bela Vista - São Paulo / SP</div>
+          <!-- Documento de Contracheque Oficial (Pronto para Visualização e Impressão) -->
+          <div class="holerite-container" id="holerite-documento-imprimivel">
+            <!-- Cabeçalho da Empresa -->
+            <div class="holerite-header">
+              <div>
+                <div class="holerite-empresa-titulo">PORTAL DP &amp; RH LTDA</div>
+                <div style="font-size: 0.8rem; color: #475569;">CNPJ: 12.345.678/0001-90 &bull; Av. Paulista, 1000 -
+                  Bela Vista - São Paulo / SP</div>
+              </div>
+              <div class="holerite-recibo-badge">
+                <div>RECIBO DE PAGAMENTO DE SALÁRIO</div>
+                <div style="font-size: 0.85rem; color: #1e40af; margin-top: 0.2rem;">
+                  Competência: <strong id="h-competencia">--/----</strong>
+                </div>
+              </div>
             </div>
-            <div class="holerite-recibo-badge">
-              <div>RECIBO DE PAGAMENTO DE SALÁRIO</div>
-              <div style="font-size: 0.85rem; color: #1e40af; margin-top: 0.2rem;">
-                Competência: <strong id="h-competencia">--/----</strong>
+
+            <!-- Dados do Colaborador -->
+            <div class="holerite-colaborador-box">
+              <div><strong>Matrícula:</strong> <span id="h-matricula">--</span></div>
+              <div style="grid-column: span 2;"><strong>Nome:</strong> <span id="h-nome">--</span></div>
+              <div><strong>CPF:</strong> <span id="h-cpf">--</span></div>
+              <div><strong>Cargo:</strong> <span id="h-cargo">--</span></div>
+              <div><strong>Setor:</strong> <span id="h-setor">--</span></div>
+              <div><strong>Admissão:</strong> <span id="h-admissao">--</span></div>
+              <div><strong>Data Pagto:</strong> <span id="h-data-pagto">--</span></div>
+            </div>
+
+            <!-- Tabela de Vencimentos e Descontos -->
+            <table class="holerite-table">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">Cód.</th>
+                  <th>Descrição do Evento</th>
+                  <th style="width: 90px; text-align: center;">Referência</th>
+                  <th style="width: 140px; text-align: right;">Vencimentos (R$)</th>
+                  <th style="width: 140px; text-align: right;">Descontos (R$)</th>
+                </tr>
+              </thead>
+              <tbody id="h-corpo-itens">
+                <!-- Itens preenchidos dinamicamente -->
+              </tbody>
+            </table>
+
+            <!-- Totais da Folha -->
+            <div class="holerite-totais-box">
+              <div class="holerite-total-item">
+                <span class="holerite-total-label">Total de Vencimentos</span>
+                <span class="holerite-total-val text-green" id="h-total-proventos">R$ 0,00</span>
+              </div>
+
+              <div class="holerite-total-item">
+                <span class="holerite-total-label">Total de Descontos</span>
+                <span class="holerite-total-val text-gray" id="h-total-descontos">R$ 0,00</span>
+              </div>
+
+              <div class="holerite-liquido-destaque">
+                <span class="holerite-total-label" style="color: #047857;">Valor Líquido a Receber</span>
+                <span class="holerite-total-val" id="h-salario-liquido">R$ 0,00</span>
+              </div>
+            </div>
+
+            <!-- Bases Oficiais de Encargos -->
+            <div class="holerite-bases-rodape">
+              <div><strong>Salário-Base:</strong> <br><span id="h-base-contratual">R$ 0,00</span></div>
+              <div><strong>Sal. Contr. INSS:</strong> <br><span id="h-base-inss">R$ 0,00</span></div>
+              <div><strong>Base Cálc. FGTS:</strong> <br><span id="h-base-fgts">R$ 0,00</span></div>
+              <div><strong>FGTS do Mês:</strong> <br><span id="h-valor-fgts">R$ 0,00</span></div>
+              <div><strong>Base Cálc. IRRF:</strong> <br><span id="h-base-irrf">R$ 0,00</span></div>
+            </div>
+
+            <!-- Declaração de Quitação e Assinatura -->
+            <div class="holerite-assinatura">
+              <div style="max-width: 450px;">
+                Declaro ter recebido a importância líquida discriminada neste demonstrativo, correspondente à quitação
+                das verbas devidas no período.
+              </div>
+              <div class="linha-assinatura">
+                Assinatura do Colaborador
               </div>
             </div>
           </div>
 
-          <!-- Dados do Colaborador -->
-          <div class="holerite-colaborador-box">
-            <div><strong>Matrícula:</strong> <span id="h-matricula">--</span></div>
-            <div style="grid-column: span 2;"><strong>Nome:</strong> <span id="h-nome">--</span></div>
-            <div><strong>CPF:</strong> <span id="h-cpf">--</span></div>
-            <div><strong>Cargo:</strong> <span id="h-cargo">--</span></div>
-            <div><strong>Setor:</strong> <span id="h-setor">--</span></div>
-            <div><strong>Admissão:</strong> <span id="h-admissao">--</span></div>
-            <div><strong>Data Pagto:</strong> <span id="h-data-pagto">--</span></div>
-          </div>
-
-          <!-- Tabela de Vencimentos e Descontos -->
-          <table class="holerite-table">
-            <thead>
-              <tr>
-                <th style="width: 60px;">Cód.</th>
-                <th>Descrição do Evento</th>
-                <th style="width: 90px; text-align: center;">Referência</th>
-                <th style="width: 140px; text-align: right;">Vencimentos (R$)</th>
-                <th style="width: 140px; text-align: right;">Descontos (R$)</th>
-              </tr>
-            </thead>
-            <tbody id="h-corpo-itens">
-              <!-- Itens preenchidos dinamicamente -->
-            </tbody>
-          </table>
-
-          <!-- Totais da Folha -->
-          <div class="holerite-totais-box">
-            <div class="holerite-total-item">
-              <span class="holerite-total-label">Total de Vencimentos</span>
-              <span class="holerite-total-val text-green" id="h-total-proventos">R$ 0,00</span>
+          <!-- Memória de Cálculo Expansível (Validação e Conferência por Profissional) -->
+          <div class="memoria-box" id="h-memoria-box">
+            <div class="memoria-titulo" id="btn-toggle-memoria">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span>Memória Detalhada de Cálculo &bull; Conferência Passo a Passo</span>
             </div>
-
-            <div class="holerite-total-item">
-              <span class="holerite-total-label">Total de Descontos</span>
-              <span class="holerite-total-val text-gray" id="h-total-descontos">R$ 0,00</span>
-            </div>
-
-            <div class="holerite-liquido-destaque">
-              <span class="holerite-total-label" style="color: #047857;">Valor Líquido a Receber</span>
-              <span class="holerite-total-val" id="h-salario-liquido">R$ 0,00</span>
+            <div class="memoria-conteudo" id="h-memoria-linhas">
+              <!-- Linhas com valores intermediários renderizadas via JS -->
             </div>
           </div>
 
-          <!-- Bases Oficiais de Encargos -->
-          <div class="holerite-bases-rodape">
-            <div><strong>Salário-Base:</strong> <br><span id="h-base-contratual">R$ 0,00</span></div>
-            <div><strong>Sal. Contr. INSS:</strong> <br><span id="h-base-inss">R$ 0,00</span></div>
-            <div><strong>Base Cálc. FGTS:</strong> <br><span id="h-base-fgts">R$ 0,00</span></div>
-            <div><strong>FGTS do Mês:</strong> <br><span id="h-valor-fgts">R$ 0,00</span></div>
-            <div><strong>Base Cálc. IRRF:</strong> <br><span id="h-base-irrf">R$ 0,00</span></div>
-          </div>
-
-          <!-- Declaração de Quitação e Assinatura -->
-          <div class="holerite-assinatura">
-            <div style="max-width: 450px;">
-              Declaro ter recebido a importância líquida discriminada neste demonstrativo, correspondente à quitação das verbas devidas no período.
+          <!-- Trilha de Auditoria da Folha -->
+          <div class="memoria-box" style="margin-top: 1rem;">
+            <div style="font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 0.5rem;">
+              Histórico &amp; Auditoria desta Folha:
             </div>
-            <div class="linha-assinatura">
-              Assinatura do Colaborador
+            <div id="h-auditoria-timeline"
+              style="font-size: 0.8rem; color: #64748b; display: flex; flex-direction: column; gap: 0.4rem;">
+              <!-- Timeline de auditoria -->
             </div>
           </div>
         </div>
 
-        <!-- Memória de Cálculo Expansível (Validação e Conferência por Profissional) -->
-        <div class="memoria-box" id="h-memoria-box">
-          <div class="memoria-titulo" id="btn-toggle-memoria">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-fechar-holerite-footer">Fechar</button>
+          <button class="btn btn-primary" id="btn-imprimir-holerite">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
             </svg>
-            <span>Memória Detalhada de Cálculo &bull; Conferência Passo a Passo</span>
-          </div>
-          <div class="memoria-conteudo" id="h-memoria-linhas">
-            <!-- Linhas com valores intermediários renderizadas via JS -->
-          </div>
+            Imprimir Demonstrativo
+          </button>
+          <button class="btn btn-warning" id="btn-fechar-folha-acao" style="display: none;">
+            Fechar &amp; Homologar Folha
+          </button>
+          <button class="btn btn-secondary" id="btn-reabrir-folha-acao" style="display: none;">
+            Reabrir Folha
+          </button>
         </div>
-
-        <!-- Trilha de Auditoria da Folha -->
-        <div class="memoria-box" style="margin-top: 1rem;">
-          <div style="font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 0.5rem;">
-            Histórico &amp; Auditoria desta Folha:
-          </div>
-          <div id="h-auditoria-timeline" style="font-size: 0.8rem; color: #64748b; display: flex; flex-direction: column; gap: 0.4rem;">
-            <!-- Timeline de auditoria -->
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btn-fechar-holerite-footer">Fechar</button>
-        <button class="btn btn-primary" id="btn-imprimir-holerite">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 6 2 18 2 18 9"></polyline>
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-            <rect x="6" y="14" width="12" height="8"></rect>
-          </svg>
-          Imprimir Demonstrativo
-        </button>
-        <button class="btn btn-warning" id="btn-fechar-folha-acao" style="display: none;">
-          Fechar &amp; Homologar Folha
-        </button>
-        <button class="btn btn-secondary" id="btn-reabrir-folha-acao" style="display: none;">
-          Reabrir Folha
-        </button>
       </div>
     </div>
-  </div>
 
-  <!-- ============================================================ -->
-  <!-- MODAL: PARÂMETROS DE CÁLCULO E VIGÊNCIAS                     -->
-  <!-- ============================================================ -->
-  <div id="modal-parametros-folha" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card modal-md">
-      <div class="modal-header">
-        <div>
-          <h2 class="modal-title">Parâmetros de Cálculo da Folha</h2>
-          <p class="modal-subtitle">Configurações trabalhistas vigentes e validadas por profissional de RH/DP.</p>
+    <!-- ============================================================ -->
+    <!-- MODAL: PARÂMETROS DE CÁLCULO E VIGÊNCIAS                     -->
+    <!-- ============================================================ -->
+    <div id="modal-parametros-folha" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Parâmetros de Cálculo da Folha</h2>
+            <p class="modal-subtitle">Configurações trabalhistas vigentes e validadas por profissional de RH/DP.</p>
+          </div>
+          <button class="btn-close" id="btn-fechar-parametros">&times;</button>
         </div>
-        <button class="btn-close" id="btn-fechar-parametros">&times;</button>
+        <div class="modal-body modal-scroll">
+          <div class="alert alert-info" style="font-size: 0.82rem; margin-bottom: 1rem;">
+            <strong>Aviso de Conformidade:</strong> Os parâmetros abaixo regem os divisores, limites e alíquotas da
+            folha de pagamento. Devem ser homologados formalmente pelo profissional responsável de DP.
+          </div>
+
+          <form id="form-parametros-folha">
+            <div class="form-grid">
+              <div class="form-group col-span-12">
+                <label for="param-codigo">Código do Parâmetro:</label>
+                <input type="text" id="param-codigo" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-12">
+                <label for="param-descricao">Descrição:</label>
+                <input type="text" id="param-descricao" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-divisor">Divisor Padrão de Horas:</label>
+                <input type="number" id="param-divisor" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-dias">Dias Mês Comercial:</label>
+                <input type="number" id="param-dias" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-he50">Percentual HE Padrão (%):</label>
+                <input type="number" id="param-he50" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-he100">Percentual HE Especial (%):</label>
+                <input type="number" id="param-he100" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-noturno">Adicional Noturno (%):</label>
+                <input type="number" id="param-noturno" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-teto-inss">Teto Máximo INSS (R$):</label>
+                <input type="number" id="param-teto-inss" class="form-control" readonly>
+              </div>
+              <div class="form-group col-span-12">
+                <label for="param-deducao-dep">Dedução por Dependente IRRF (R$):</label>
+                <input type="number" id="param-deducao-dep" class="form-control" readonly>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="btn-fechar-parametros-footer">OK, Entendido</button>
+        </div>
       </div>
-      <div class="modal-body modal-scroll">
-        <div class="alert alert-info" style="font-size: 0.82rem; margin-bottom: 1rem;">
-          <strong>Aviso de Conformidade:</strong> Os parâmetros abaixo regem os divisores, limites e alíquotas da folha de pagamento. Devem ser homologados formalmente pelo profissional responsável de DP.
-        </div>
+    </div>
 
-        <form id="form-parametros-folha">
-          <div class="form-grid">
-            <div class="form-group col-span-12">
-              <label for="param-codigo">Código do Parâmetro:</label>
-              <input type="text" id="param-codigo" class="form-control" readonly>
+    <!-- ============================================================ -->
+    <!-- MODAL: CONFIRMAR FECHAMENTO DE FOLHA                         -->
+    <!-- ============================================================ -->
+    <div id="modal-fechar-folha-confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h2 class="modal-title text-warning">Fechar Folha de Pagamento</h2>
+          <button class="btn-close" id="btn-cancelar-fechamento-topo">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Você está prestes a <strong>fechar e homologar</strong> a folha de pagamento:</p>
+          <div class="alert alert-warning" id="fechar-folha-info">
+            --
+          </div>
+          <p class="text-sm text-muted">
+            Ao fechar a folha, os cálculos tornam-se definitivos para o fechamento contábil e bancário. Não será
+            possível editar valores sem reabertura formal e justificada na trilha de auditoria.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-fechamento">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-fechamento">Sim, Fechar Folha</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: REABRIR FOLHA FECHADA                                 -->
+    <!-- ============================================================ -->
+    <div id="modal-reabrir-folha-confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h2 class="modal-title text-warning">Reabrir Folha Fechada</h2>
+          <button class="btn-close" id="btn-cancelar-reabertura-topo">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Informe a justificativa obrigatória para reabertura da folha:</p>
+          <div class="form-group mt-2">
+            <label for="reabrir-folha-motivo">Motivo da Reabertura <span class="required">*</span></label>
+            <textarea id="reabrir-folha-motivo" class="form-control" rows="3"
+              placeholder="Ex: Inclusão de atestado médico entregue com atraso, estorno de horas extras indevidas..."></textarea>
+            <span class="field-error" id="erro-reabrir-folha-motivo"></span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-reabertura">Cancelar</button>
+          <button class="btn btn-warning" id="btn-confirmar-reabertura">Confirmar Reabertura</button>
+        </div>
+      </div>
+    </div>
+  
+    <!-- ============================================================ -->
+    <!-- MODAL: NOVA ADMISSÃO / PROPOSTA ADMISSIONAL                   -->
+    <!-- ============================================================ -->
+    <div id="modal-nova-admissao" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <h2 class="modal-title">Nova Proposta de Admissão (Módulo 02)</h2>
+          <button class="btn-close" id="btn-fechar-modal-admissao">&times;</button>
+        </div>
+        <form id="form-nova-admissao" class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="adm-candidato-nome">Nome do Candidato <span class="required">*</span></label>
+              <input type="text" id="adm-candidato-nome" class="form-control" required placeholder="Nome completo">
             </div>
-            <div class="form-group col-span-12">
-              <label for="param-descricao">Descrição:</label>
-              <input type="text" id="param-descricao" class="form-control" readonly>
+            <div class="form-group">
+              <label for="adm-candidato-cpf">CPF <span class="required">*</span></label>
+              <input type="text" id="adm-candidato-cpf" class="form-control" required placeholder="000.000.000-00">
             </div>
-            <div class="form-group col-span-6">
-              <label for="param-divisor">Divisor Padrão de Horas:</label>
-              <input type="number" id="param-divisor" class="form-control" readonly>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="adm-candidato-email">E-mail</label>
+              <input type="email" id="adm-candidato-email" class="form-control" placeholder="candidato@email.com">
             </div>
-            <div class="form-group col-span-6">
-              <label for="param-dias">Dias Mês Comercial:</label>
-              <input type="number" id="param-dias" class="form-control" readonly>
+            <div class="form-group">
+              <label for="adm-candidato-cargo">Cargo Proposto <span class="required">*</span></label>
+              <input type="text" id="adm-candidato-cargo" class="form-control" required placeholder="Ex: Operador de Caldeira">
             </div>
-            <div class="form-group col-span-6">
-              <label for="param-he50">Percentual HE Padrão (%):</label>
-              <input type="number" id="param-he50" class="form-control" readonly>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="adm-candidato-salario">Salário Proposto (R$) <span class="required">*</span></label>
+              <input type="number" step="0.01" min="1621.00" id="adm-candidato-salario" class="form-control" required value="1621.00">
+              <span class="text-xs text-muted">Piso mínimo legal 2026: R$ 1.621,00</span>
             </div>
-            <div class="form-group col-span-6">
-              <label for="param-he100">Percentual HE Especial (%):</label>
-              <input type="number" id="param-he100" class="form-control" readonly>
-            </div>
-            <div class="form-group col-span-6">
-              <label for="param-noturno">Adicional Noturno (%):</label>
-              <input type="number" id="param-noturno" class="form-control" readonly>
-            </div>
-            <div class="form-group col-span-6">
-              <label for="param-teto-inss">Teto Máximo INSS (R$):</label>
-              <input type="number" id="param-teto-inss" class="form-control" readonly>
-            </div>
-            <div class="form-group col-span-12">
-              <label for="param-deducao-dep">Dedução por Dependente IRRF (R$):</label>
-              <input type="number" id="param-deducao-dep" class="form-control" readonly>
+            <div class="form-group">
+              <label for="adm-candidato-data">Data de Início Prevista <span class="required">*</span></label>
+              <input type="date" id="adm-candidato-data" class="form-control" required value="2026-04-01">
             </div>
           </div>
         </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" id="btn-fechar-parametros-footer">OK, Entendido</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: CONFIRMAR FECHAMENTO DE FOLHA                         -->
-  <!-- ============================================================ -->
-  <div id="modal-fechar-folha-confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card modal-sm">
-      <div class="modal-header">
-        <h2 class="modal-title text-warning">Fechar Folha de Pagamento</h2>
-        <button class="btn-close" id="btn-cancelar-fechamento-topo">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Você está prestes a <strong>fechar e homologar</strong> a folha de pagamento:</p>
-        <div class="alert alert-warning" id="fechar-folha-info">
-          --
-        </div>
-        <p class="text-sm text-muted">
-          Ao fechar a folha, os cálculos tornam-se definitivos para o fechamento contábil e bancário. Não será possível editar valores sem reabertura formal e justificada na trilha de auditoria.
-        </p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btn-cancelar-fechamento">Cancelar</button>
-        <button class="btn btn-primary" id="btn-confirmar-fechamento">Sim, Fechar Folha</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- MODAL: REABRIR FOLHA FECHADA                                 -->
-  <!-- ============================================================ -->
-  <div id="modal-reabrir-folha-confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card modal-sm">
-      <div class="modal-header">
-        <h2 class="modal-title text-warning">Reabrir Folha Fechada</h2>
-        <button class="btn-close" id="btn-cancelar-reabertura-topo">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Informe a justificativa obrigatória para reabertura da folha:</p>
-        <div class="form-group mt-2">
-          <label for="reabrir-folha-motivo">Motivo da Reabertura <span class="required">*</span></label>
-          <textarea id="reabrir-folha-motivo" class="form-control" rows="3" placeholder="Ex: Inclusão de atestado médico entregue com atraso, estorno de horas extras indevidas..."></textarea>
-          <span class="field-error" id="erro-reabrir-folha-motivo"></span>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-admissao">Cancelar</button>
+          <button class="btn btn-primary" id="btn-salvar-nova-admissao">Registrar Admissão</button>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" id="btn-cancelar-reabertura">Cancelar</button>
-        <button class="btn btn-warning" id="btn-confirmar-reabertura">Confirmar Reabertura</button>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CHECKLIST ADMISSIONAL                                  -->
+    <!-- ============================================================ -->
+    <div id="modal-checklist-admissao" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Checklist de Documentos Admissionais</h2>
+          <button class="btn-close" id="btn-fechar-checklist-admissao">&times;</button>
+        </div>
+        <div class="modal-body" id="corpo-checklist-admissao">
+          <p class="text-muted text-sm mb-2">Validação e conferência documental obrigatória (8 itens):</p>
+          <div id="lista-itens-checklist" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <!-- Itens preenchidos via JS -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="btn-concluir-checklist">Fechar</button>
+        </div>
       </div>
     </div>
-  </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: REGISTRAR MARCAÇÃO DE PONTO                           -->
+    <!-- ============================================================ -->
+    <div id="modal-registrar-ponto" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h2 class="modal-title">Registrar Batida de Ponto</h2>
+          <button class="btn-close" id="btn-fechar-modal-ponto">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="ponto-colab-registro">Colaborador <span class="required">*</span></label>
+            <select id="ponto-colab-registro" class="form-control"></select>
+          </div>
+          <div class="form-group mt-2">
+            <label for="ponto-tipo-batida">Tipo de Marcação <span class="required">*</span></label>
+            <select id="ponto-tipo-batida" class="form-control">
+              <option value="ENTRADA_1">Entrada 1 (Início do Turno)</option>
+              <option value="SAIDA_1">Saída 1 (Início do Intervalo)</option>
+              <option value="ENTRADA_2">Entrada 2 (Fim do Intervalo)</option>
+              <option value="SAIDA_2">Saída 2 (Fim do Turno)</option>
+            </select>
+          </div>
+          <div class="form-group mt-2">
+            <label for="ponto-datahora-registro">Data e Hora <span class="required">*</span></label>
+            <input type="datetime-local" id="ponto-datahora-registro" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-ponto">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-batida-ponto">Confirmar Marcação</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: SOLICITAR AJUSTE DE PONTO                             -->
+    <!-- ============================================================ -->
+    <div id="modal-ajuste-ponto" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Solicitar Ajuste de Ponto</h2>
+          <button class="btn-close" id="btn-fechar-modal-ajuste">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="ajuste-colab-select">Colaborador <span class="required">*</span></label>
+            <select id="ajuste-colab-select" class="form-control"></select>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="ajuste-data">Data da Marcação <span class="required">*</span></label>
+              <input type="date" id="ajuste-data" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="ajuste-tipo-marcacao">Tipo <span class="required">*</span></label>
+              <select id="ajuste-tipo-marcacao" class="form-control">
+                <option value="ENTRADA_1">Entrada 1</option>
+                <option value="SAIDA_1">Saída 1</option>
+                <option value="ENTRADA_2">Entrada 2</option>
+                <option value="SAIDA_2">Saída 2</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label for="ajuste-horario-novo">Horário Proposto <span class="required">*</span></label>
+            <input type="time" id="ajuste-horario-novo" class="form-control" required value="08:00">
+          </div>
+          <div class="form-group mt-2">
+            <label for="ajuste-justificativa">Justificativa Legal Obrigatória <span class="required">*</span></label>
+            <textarea id="ajuste-justificativa" class="form-control" rows="3" required placeholder="Ex: Esquecimento de registro, falha no leitor biométrico, consulta médica..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-ajuste">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-ajuste-ponto">Enviar Solicitação</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: PROGRAMAR FÉRIAS                                      -->
+    <!-- ============================================================ -->
+    <div id="modal-programar-ferias" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Programar Gozo de Férias (Módulo 06)</h2>
+          <button class="btn-close" id="btn-fechar-modal-ferias">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="ferias-colab-select">Colaborador <span class="required">*</span></label>
+            <select id="ferias-colab-select" class="form-control"></select>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="ferias-data-inicio">Data Início Gozo <span class="required">*</span></label>
+              <input type="date" id="ferias-data-inicio" class="form-control" required>
+              <span class="text-xs text-muted">Proibido início 2 dias antes do repouso semanal (RN-019).</span>
+            </div>
+            <div class="form-group">
+              <label for="ferias-dias-gozo">Dias de Férias <span class="required">*</span></label>
+              <input type="number" id="ferias-dias-gozo" class="form-control" min="5" max="30" value="20" required>
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="ferias-abono-dias">Abono Pecuniário (Dias)</label>
+              <input type="number" id="ferias-abono-dias" class="form-control" min="0" max="10" value="10">
+              <span class="text-xs text-muted">Venda de no máximo 1/3 das férias (10 dias).</span>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1.5rem;">
+              <input type="checkbox" id="ferias-adiantar-13" style="width: 18px; height: 18px;">
+              <label for="ferias-adiantar-13" style="margin: 0; font-size: 0.88rem;">Adiantar 50% do 13º Salário</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-ferias">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-programar-ferias">Programar Férias</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: REGISTRAR AFASTAMENTO PREVIDENCIÁRIO                  -->
+    <!-- ============================================================ -->
+    <div id="modal-novo-afastamento" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Registrar Afastamento &amp; Licença (Módulo 07)</h2>
+          <button class="btn-close" id="btn-fechar-modal-afastamento">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="afast-colab-select">Colaborador <span class="required">*</span></label>
+            <select id="afast-colab-select" class="form-control"></select>
+          </div>
+          <div class="form-group mt-2">
+            <label for="afast-motivo-select">Motivo do Afastamento <span class="required">*</span></label>
+            <select id="afast-motivo-select" class="form-control">
+              <option value="DOENCA_COMUM_15D">Auxílio por Incapacidade Temporária Comum (B31)</option>
+              <option value="ACIDENTE_TRABALHO_B91">Acidente do Trabalho ou Doença Ocupacional (B91 — Gera Estabilidade)</option>
+              <option value="LICENCA_MATERNIDADE">Licença-Maternidade (120 dias — Estabilidade 5 meses pós-parto)</option>
+              <option value="LICENCA_PATERNIDADE">Licença-Paternidade (5 a 20 dias)</option>
+              <option value="OUTROS">Outras Licenças Remuneradas / Não Remuneradas</option>
+            </select>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="afast-data-inicio">Data Início <span class="required">*</span></label>
+              <input type="date" id="afast-data-inicio" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="afast-data-fim">Data Término Prevista</label>
+              <input type="date" id="afast-data-fim" class="form-control">
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label for="afast-cid">Código CID-10</label>
+            <input type="text" id="afast-cid" class="form-control" placeholder="Ex: M54.5, S82.1">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-afastamento">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-afastamento">Salvar Afastamento</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CALCULAR RESCISÃO CONTRATUAL                          -->
+    <!-- ============================================================ -->
+    <div id="modal-calcular-rescisao" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <h2 class="modal-title">Cálculo de Rescisão de Contrato (Módulo 11)</h2>
+          <button class="btn-close" id="btn-fechar-modal-rescisao">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="resc-colab-select">Colaborador <span class="required">*</span></label>
+              <select id="resc-colab-select" class="form-control"></select>
+            </div>
+            <div class="form-group">
+              <label for="resc-tipo-select">Tipo de Desligamento <span class="required">*</span></label>
+              <select id="resc-tipo-select" class="form-control">
+                <option value="SEM_JUSTA_CAUSA">Dispensa sem Justa Causa (Empregador — Multa FGTS 40%)</option>
+                <option value="COM_JUSTA_CAUSA">Dispensa com Justa Causa (Falta Grave CLT art. 482)</option>
+                <option value="PEDIDO_DEMISSAO">Pedido de Demissão (Empregado)</option>
+                <option value="ACORDO_MUTUO">Acordo Mútuo (CLT art. 484-A — Multa FGTS 20%)</option>
+                <option value="TERMINO_CONTRATO">Término Normal de Contrato de Experiência</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="resc-data-aviso">Data do Aviso Prévio <span class="required">*</span></label>
+              <input type="date" id="resc-data-aviso" class="form-control" required value="2026-03-01">
+            </div>
+            <div class="form-group">
+              <label for="resc-data-desligamento">Data do Desligamento (Último Dia) <span class="required">*</span></label>
+              <input type="date" id="resc-data-desligamento" class="form-control" required value="2026-03-31">
+            </div>
+          </div>
+
+          <!-- Memória de Cálculo Rescisória -->
+          <div id="resc-preview-box" class="memoria-box mt-3 hidden">
+            <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--primary);">Memória de Cálculo de Verbas Rescisórias (Oficial 2026)</h4>
+            <div id="resc-preview-detalhes" style="font-size: 0.85rem; line-height: 1.6;"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-rescisao">Cancelar</button>
+          <button class="btn btn-outline" id="btn-previa-rescisao">Simular Cálculo</button>
+          <button class="btn btn-primary" id="btn-confirmar-rescisao">Homologar Rescisão</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: REGISTRAR ASO (SST)                                   -->
+    <!-- ============================================================ -->
+    <div id="modal-novo-aso" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Registrar Atestado de Saúde Ocupacional (ASO)</h2>
+          <button class="btn-close" id="btn-fechar-modal-aso">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="aso-colab-select">Colaborador <span class="required">*</span></label>
+            <select id="aso-colab-select" class="form-control"></select>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="aso-tipo-select">Tipo de Exame <span class="required">*</span></label>
+              <select id="aso-tipo-select" class="form-control">
+                <option value="ADMISSIONAL">Admissional</option>
+                <option value="PERIODICO">Periódico</option>
+                <option value="RETORNO_TRABALHO">Retorno ao Trabalho</option>
+                <option value="MUDANCA_RISCO">Mudança de Riscos Ocupacionais</option>
+                <option value="DEMISSIONAL">Demissional</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="aso-resultado-select">Conclusão / Aptidão <span class="required">*</span></label>
+              <select id="aso-resultado-select" class="form-control">
+                <option value="APTO">Apto para a Função</option>
+                <option value="INAPTO">Inapto</option>
+                <option value="APTO_COM_RESTRICAO">Apto com Restrições</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="aso-data-exame">Data do Exame <span class="required">*</span></label>
+              <input type="date" id="aso-data-exame" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="aso-data-validade">Data de Validade <span class="required">*</span></label>
+              <input type="date" id="aso-data-validade" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="aso-medico-nome">Médico Examinador <span class="required">*</span></label>
+              <input type="text" id="aso-medico-nome" class="form-control" required value="Dr. Marcelo Santos">
+            </div>
+            <div class="form-group">
+              <label for="aso-medico-crm">CRM / UF <span class="required">*</span></label>
+              <input type="text" id="aso-medico-crm" class="form-control" required value="CRM-SP 98765">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-aso">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-aso">Registrar ASO</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: REGISTRAR ENTREGA DE EPI                              -->
+    <!-- ============================================================ -->
+    <div id="modal-entrega-epi" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h2 class="modal-title">Ficha de Entrega de EPI (NR-06)</h2>
+          <button class="btn-close" id="btn-fechar-modal-epi">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="epi-colab-select">Colaborador <span class="required">*</span></label>
+            <select id="epi-colab-select" class="form-control"></select>
+          </div>
+          <div class="form-group mt-2">
+            <label for="epi-catalogo-select">Equipamento de Proteção (EPI) <span class="required">*</span></label>
+            <select id="epi-catalogo-select" class="form-control">
+              <option value="1">Capacete de Segurança com Jugular (CA: 31469)</option>
+              <option value="2">Óculos de Proteção Antirrisco (CA: 25714)</option>
+              <option value="3">Protetor Auditivo tipo Concha (CA: 12188)</option>
+              <option value="4">Luvas de Vaqueta para Eletricista (CA: 41250)</option>
+              <option value="5">Botina de Segurança com Bico de Composite (CA: 28511)</option>
+            </select>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="epi-data-entrega">Data de Entrega <span class="required">*</span></label>
+              <input type="date" id="epi-data-entrega" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="epi-quantidade">Quantidade</label>
+              <input type="number" id="epi-quantidade" class="form-control" min="1" value="1">
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="epi-termo-assinado" checked style="width: 18px; height: 18px;">
+              <span>Termo de responsabilidade e biometria/assinatura colhida</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-epi">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-entrega-epi">Registrar Entrega</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: EMISSÃO DE CAT (SST / ESOCIAL S-2210)                  -->
+    <!-- ============================================================ -->
+    <div id="modal-nova-cat" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <h2 class="modal-title">Emissão de Comunicação de Acidente de Trabalho (CAT)</h2>
+          <button class="btn-close" id="btn-fechar-modal-cat">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cat-colab-select">Colaborador Acidentado <span class="required">*</span></label>
+              <select id="cat-colab-select" class="form-control"></select>
+            </div>
+            <div class="form-group">
+              <label for="cat-tipo-select">Tipo de Acidente <span class="required">*</span></label>
+              <select id="cat-tipo-select" class="form-control">
+                <option value="TIPICO">Típico (No local de trabalho em operação)</option>
+                <option value="TRAJETO">Trajeto (Deslocamento residência / empresa)</option>
+                <option value="DOENCA_OCUPACIONAL">Doença Profissional ou Ocupacional</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="cat-data-hora">Data e Hora do Acidente <span class="required">*</span></label>
+              <input type="datetime-local" id="cat-data-hora" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="cat-local">Local / Setor do Acidente <span class="required">*</span></label>
+              <input type="text" id="cat-local" class="form-control" required value="Usina - Moenda Setor B">
+            </div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="form-group">
+              <label for="cat-parte-corpo">Parte do Corpo Atingida</label>
+              <input type="text" id="cat-parte-corpo" class="form-control" placeholder="Ex: Mão direita, Antebraço esquerdo">
+            </div>
+            <div class="form-group">
+              <label for="cat-cid">CID-10 do Diagnóstico Médico</label>
+              <input type="text" id="cat-cid" class="form-control" placeholder="Ex: S61.0 - Ferimento no dedo">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-modal-cat">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-cat">Emitir CAT &amp; Gerar S-2210</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: VISUALIZADOR DE XML ESOCIAL                           -->
+    <!-- ============================================================ -->
+    <div id="modal-xml-esocial" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <h2 class="modal-title" id="xml-modal-titulo">XML do Evento eSocial</h2>
+          <button class="btn-close" id="btn-fechar-modal-xml">&times;</button>
+        </div>
+        <div class="modal-body">
+          <pre id="xml-modal-conteudo" style="background: #0f172a; color: #38bdf8; padding: 1.25rem; border-radius: 6px; font-size: 0.8rem; overflow: auto; max-height: 400px; white-space: pre-wrap; word-break: break-all;"></pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="btn-fechar-modal-xml-rodape">Fechar</button>
+        </div>
+      </div>
+    </div>
+
   </div> <!-- /#tela-sistema -->
 
   <!-- Toast Container para Notificações -->
@@ -1278,4 +2339,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>

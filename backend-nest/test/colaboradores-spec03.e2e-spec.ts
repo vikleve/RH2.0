@@ -181,8 +181,8 @@ describe('Módulo de Cadastro de Colaboradores — SPEC-03 (NestJS E2E)', () => 
     expect(encontrado.cpf_mascarado).toBe('529.***.***-25');
   });
 
-  // RF-02: Pesquisa por nome, CPF e matrícula
-  it('RF-02: Pesquisa colaboradores por termo no backend (search)', async () => {
+  // RF-002 / RF-02: Pesquisa por nome, matrícula, CPF, cargo e setor
+  it('RF-002: Pesquisa colaboradores por nome, matrícula, CPF, cargo e setor no backend', async () => {
     const resPorNome = await request(app.getHttpServer())
       .get('/api/colaboradores?search=Carlos')
       .set('Cookie', authCookie);
@@ -198,6 +198,36 @@ describe('Módulo de Cadastro de Colaboradores — SPEC-03 (NestJS E2E)', () => 
     expect(resPorMat.status).toBe(200);
     expect(resPorMat.body.data.length).toBe(1);
     expect(resPorMat.body.data[0].matricula).toBe('SPEC03-001');
+
+    const resPorCpf = await request(app.getHttpServer())
+      .get('/api/colaboradores?search=529.982.247-25')
+      .set('Cookie', authCookie);
+
+    expect(resPorCpf.status).toBe(200);
+    expect(resPorCpf.body.data.length).toBeGreaterThanOrEqual(1);
+
+    const resPorCargo = await request(app.getHttpServer())
+      .get('/api/colaboradores?search=Coordenador%20de%20TI')
+      .set('Cookie', authCookie);
+
+    expect(resPorCargo.status).toBe(200);
+    expect(resPorCargo.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(resPorCargo.body.data[0].cargo).toContain('Coordenador de TI');
+
+    const resPorSetor = await request(app.getHttpServer())
+      .get('/api/colaboradores?search=Tecnologia%20da%20Informa')
+      .set('Cookie', authCookie);
+
+    expect(resPorSetor.status).toBe(200);
+    expect(resPorSetor.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(resPorSetor.body.data[0].setor).toContain('Tecnologia da Informação');
+
+    const resFiltroCargoSetor = await request(app.getHttpServer())
+      .get('/api/colaboradores?cargo=Coordenador&setor=Tecnologia')
+      .set('Cookie', authCookie);
+
+    expect(resFiltroCargoSetor.status).toBe(200);
+    expect(resFiltroCargoSetor.body.data.length).toBeGreaterThanOrEqual(1);
   });
 
   // RF-03: Filtros combináveis
