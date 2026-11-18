@@ -29,6 +29,12 @@ try:
         FolhaValidacaoException,
     )
     from .service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
+    from .plataforma_service import (
+        PlataformaService,
+        PlataformaValidacaoException,
+        PlataformaAcessoNegadoException,
+        PlataformaRecursoNaoEncontradoException,
+    )
     from .database import erro_http, status_banco
 except ImportError:
     import sys
@@ -43,6 +49,12 @@ except ImportError:
         FolhaValidacaoException,
     )
     from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
+    from backend.plataforma_service import (
+        PlataformaService,
+        PlataformaValidacaoException,
+        PlataformaAcessoNegadoException,
+        PlataformaRecursoNaoEncontradoException,
+    )
     from backend.database import erro_http, status_banco
 
 PORT = 8000
@@ -51,12 +63,14 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 _global_colab_service = None
 _global_auth_service = None
 _global_folha_service = None
+_global_plataforma_service = None
 
 class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self._local_colab_service = None
         self._local_auth_service = None
         self._local_folha_service = None
+        self._local_plataforma_service = None
         # Em ambientes serverless (Vercel), FRONTEND_DIR pode não existir no mesmo diretório local
         dir_to_serve = FRONTEND_DIR if os.path.exists(FRONTEND_DIR) else os.getcwd()
         super().__init__(*args, directory=dir_to_serve, **kwargs)
@@ -109,6 +123,23 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 _global_folha_service = FolhaService(db_path=db_path)
             self._local_folha_service = _global_folha_service
         return self._local_folha_service
+
+    @property
+    def plataforma_service(self) -> PlataformaService:
+        """Garante acesso ao PlataformaService para gestão do ciclo trabalhista."""
+        if hasattr(self, "server") and self.server is not None:
+            if not hasattr(self.server, "plataforma_service"):
+                db_path = getattr(self.service, "db_path", None)
+                self.server.plataforma_service = PlataformaService(db_path=db_path)
+            return self.server.plataforma_service
+
+        if getattr(self, "_local_plataforma_service", None) is None:
+            global _global_plataforma_service
+            if _global_plataforma_service is None:
+                db_path = getattr(self.service, "db_path", None)
+                _global_plataforma_service = PlataformaService(db_path=db_path)
+            self._local_plataforma_service = _global_plataforma_service
+        return self._local_plataforma_service
 
     def _obter_caminho_e_query(self) -> tuple[str, dict]:
         """
@@ -405,6 +436,110 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except FolhaNaoEncontradaException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
+        # Rotas da Plataforma de Gestão do Ciclo Trabalhista (Módulos 01 a 20)
+        if path == "/api/admissoes":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            status = query.get("status", [None])[0]
+            admissoes = self.plataforma_service.listar_admissoes(status=status)
+            return self._enviar_json(200, {"sucesso": True, "total": len(admissoes), "dados": admissoes})
+
+        if path.startswith("/api/admissoes/"):
+            partes = path.strip("/").split("/")
+            if len(partes) == 3 and partes[2].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                adm_id = int(partes[2])
+                try:
+                    adm = self.plataforma_service.obter_admissao(adm_id)
+                    return self._enviar_json(200, {"sucesso": True, "dados": adm})
+                except PlataformaRecursoNaoEncontradoException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+        if path == "/api/ponto/espelho":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            periodo = (query.get("periodo") or [datetime.now().strftime("%Y-%m")])[0]
+            if not colab_id or not colab_id.isdigit():
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Parâmetro 'colaborador_id' obrigatório."})
+            espelho = self.plataforma_service.obter_espelho_ponto(int(colab_id), periodo)
+            return self._enviar_json(200, {"sucesso": True, "dados": espelho})
+
+        if path == "/api/ferias":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            ferias = self.plataforma_service.listar_ferias(int(colab_id) if colab_id and colab_id.isdigit() else None)
+            return self._enviar_json(200, {"sucesso": True, "total": len(ferias), "dados": ferias})
+
+        if path == "/api/afastamentos":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            afast = self.plataforma_service.listar_afastamentos(int(colab_id) if colab_id and colab_id.isdigit() else None)
+            return self._enviar_json(200, {"sucesso": True, "total": len(afast), "dados": afast})
+
+        if path == "/api/rescisoes":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            resc = self.plataforma_service.listar_rescisoes()
+            return self._enviar_json(200, {"sucesso": True, "total": len(resc), "dados": resc})
+
+        if path == "/api/sst/resumo":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            resumo_sst = self.plataforma_service.listar_sst_resumo()
+            return self._enviar_json(200, {"sucesso": True, "dados": resumo_sst})
+
+        if path == "/api/esocial/eventos":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            status = query.get("status", [None])[0]
+            tipo = query.get("tipo", [None])[0]
+            eventos = self.plataforma_service.listar_esocial_eventos(status=status, tipo=tipo)
+            return self._enviar_json(200, {"sucesso": True, "total": len(eventos), "dados": eventos})
+
+        if path == "/api/pendencias":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            status = query.get("status", [None])[0]
+            pendencias = self.plataforma_service.listar_pendencias(status=status)
+            return self._enviar_json(200, {"sucesso": True, "total": len(pendencias), "dados": pendencias})
+
+        if path == "/api/bi/indicadores":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            kpis = self.plataforma_service.obter_indicadores_bi()
+            return self._enviar_json(200, {"sucesso": True, "dados": kpis})
+
+        if path == "/api/multiempresa":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresas = self.plataforma_service.listar_empresas_e_filiais()
+            return self._enviar_json(200, {"sucesso": True, "dados": empresas})
+
+        if path == "/api/auditoria":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            mod = query.get("modulo", [None])[0]
+            op = query.get("operacao", [None])[0]
+            usr = query.get("usuario", [None])[0]
+            logs = self.plataforma_service.listar_auditoria(modulo=mod, operacao=op, usuario=usr)
+            return self._enviar_json(200, {"sucesso": True, "total": len(logs), "dados": logs})
+
         # Servir Frontend estático (index.html, styles.css, app.js) se arquivo existir
         return super().do_GET()
 
@@ -628,6 +763,254 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as e:
                     return self._enviar_json(*erro_http(e))
 
+        # Rotas POST da Plataforma de Gestão do Ciclo Trabalhista
+        if path == "/api/admissoes":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_admissao(dados, usuario_auth["nome_completo"])
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Admissão registrada com sucesso!", "dados": resp})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/admissoes/") and path.endswith("/aprovar"):
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            partes = path.strip("/").split("/")
+            if len(partes) == 4 and partes[2].isdigit():
+                adm_id = int(partes[2])
+                try:
+                    resp = self.plataforma_service.aprovar_admissao(adm_id, aprovador=usuario_auth["nome_completo"])
+                    return self._enviar_json(200, resp)
+                except PlataformaAcessoNegadoException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except PlataformaValidacaoException as e:
+                    return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/marcacao":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_marcacao_ponto(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data=dados["data"],
+                    hora=dados["hora"],
+                    tipo_registro=dados.get("tipo_registro", "manual"),
+                    coletor_id=dados.get("coletor_id")
+                )
+                return self._enviar_json(200 if resp.get("sucesso") else 400, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/ajuste":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.solicitar_ajuste_ponto(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data=dados["data"],
+                    hora_ajustada=dados["hora_ajustada"],
+                    tipo_marcacao=dados.get("tipo_marcacao", "entrada"),
+                    motivo=dados["motivo"],
+                    solicitante=usuario_auth["nome_completo"],
+                    hora_original=dados.get("hora_original")
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/ponto/ajuste/") and path.endswith("/aprovar"):
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            partes = path.strip("/").split("/")
+            if len(partes) == 5 and partes[3].isdigit():
+                ajuste_id = int(partes[3])
+                try:
+                    corpo = self._ler_json_body()
+                    aprovar = corpo.get("aprovar", True)
+                    motivo_rep = corpo.get("motivo_reprovacao")
+                    resp = self.plataforma_service.aprovar_ajuste_ponto(ajuste_id, aprovador=usuario_auth["nome_completo"], aprovar=aprovar, motivo_reprovacao=motivo_rep)
+                    return self._enviar_json(200, resp)
+                except PlataformaAcessoNegadoException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ferias/programar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.programar_ferias(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data_inicio=dados["data_inicio"],
+                    dias_gozo=int(dados["dias_gozo"]),
+                    abono_pecuniario=bool(dados.get("abono_pecuniario", False)),
+                    adiantar_13=bool(dados.get("adiantar_13", False)),
+                    solicitante=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/afastamentos":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_afastamento(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    tipo=dados["tipo"],
+                    data_inicio=dados["data_inicio"],
+                    data_fim_prevista=dados["data_fim_prevista"],
+                    cid=dados.get("cid"),
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/rescisoes":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_rescisao(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    tipo_rescisao=dados["tipo_rescisao"],
+                    data_afastamento=dados["data_afastamento"],
+                    tipo_aviso=dados.get("tipo_aviso", "indenizado"),
+                    saldo_salario_dias=int(dados.get("saldo_salario_dias", 0)),
+                    ferias_vencidas_dias=int(dados.get("ferias_vencidas_dias", 0)),
+                    meses_trabalhados_ano=int(dados.get("meses_trabalhados_ano", 0)),
+                    saldo_fgts=dados.get("saldo_fgts", 0.0),
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/sst/aso":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_aso(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    tipo_aso=dados["tipo_aso"],
+                    data_emissao=dados["data_emissao"],
+                    data_validade=dados["data_validade"],
+                    resultado=dados["resultado"],
+                    medico_nome=dados["medico_nome"],
+                    medico_crm=dados["medico_crm"],
+                    medico_uf=dados["medico_uf"],
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/sst/epi/entrega":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_entrega_epi(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    epi_id=int(dados["epi_id"]),
+                    quantidade=int(dados.get("quantidade", 1)),
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/sst/cat":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.registrar_cat(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    tipo_acidente=dados["tipo_acidente"],
+                    data_hora=dados["data_hora"],
+                    local_acidente=dados["local_acidente"],
+                    descricao=dados["descricao"],
+                    houve_obito=bool(dados.get("houve_obito", False)),
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/esocial/transmitir":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                evento_ids = dados.get("evento_ids", [])
+                resp = self.plataforma_service.transmitir_lote_esocial(evento_ids, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/pendencias/") and path.endswith("/resolver"):
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            partes = path.strip("/").split("/")
+            if len(partes) == 4 and partes[2].isdigit():
+                pend_id = int(partes[2])
+                try:
+                    resp = self.plataforma_service.resolver_pendencia(pend_id, usuario=usuario_auth["nome_completo"])
+                    return self._enviar_json(200, resp)
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
+        if path == "/api/integracoes/cnab":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                comp = dados.get("competencia", datetime.now().strftime("%Y-%m"))
+                banco = dados.get("banco_codigo", "001")
+                resp = self.plataforma_service.gerar_arquivo_cnab240(comp, banco_codigo=banco, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PUT(self):
@@ -791,6 +1174,20 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        if len(partes) == 4 and partes[1] == "admissoes" and partes[2] == "checklist" and partes[3].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            item_id = int(partes[3])
+            try:
+                dados = self._ler_json_body()
+                status = dados.get("status", "validado")
+                just = dados.get("justificativa_dispensa")
+                resp = self.plataforma_service.atualizar_item_checklist(item_id, status=status, usuario=usuario_auth["nome_completo"], justificativa=just)
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
 def run_server(port: int = PORT, db_path: str = None):
@@ -800,6 +1197,7 @@ def run_server(port: int = PORT, db_path: str = None):
     httpd.colab_service = ColaboradorService(db_path=db_path)
     httpd.auth_service = AuthService(db_path=db_path)
     httpd.folha_service = FolhaService(db_path=db_path)
+    httpd.plataforma_service = PlataformaService(db_path=db_path)
     print(f"Servidor rodando em http://localhost:{port}")
     try:
         httpd.serve_forever()

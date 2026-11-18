@@ -1782,3 +1782,203 @@ body {
     color: #000000 !important;
   }
 }
+
+/* ==========================================================================
+   PLATAFORMA INTEGRADA — SIDEBAR E MÓDULOS DE GESTÃO DO CICLO TRABALHISTA
+   ========================================================================== */
+
+.platform-layout {
+  display: flex;
+  min-height: calc(100vh - 75px);
+  width: 100%;
+}
+
+.platform-sidebar {
+  width: 270px;
+  min-width: 270px;
+  background-color: var(--bg-card);
+  border-right: 1px solid var(--border-color);
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 75px);
+  position: sticky;
+  top: 75px;
+}
+
+.platform-main-content {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-x: hidden;
+  max-width: 1350px;
+}
+
+.sidebar-group-title {
+  font-size: 0.70rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+  padding-left: 0.75rem;
+}
+
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.60rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: var(--transition);
+}
+
+.sidebar-btn:hover {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.sidebar-btn.active {
+  background-color: var(--primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.sidebar-btn.active svg {
+  stroke: #ffffff;
+}
+
+.sidebar-badge {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  background-color: #fef2f2;
+  color: #dc2626;
+  font-weight: 700;
+  border: 1px solid #fecaca;
+}
+
+.badge-severidade-critica {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+}
+
+.badge-severidade-alta {
+  background-color: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+}
+
+.badge-severidade-media {
+  background-color: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+}
+
+.badge-severidade-baixa {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+}
+
+.kpi-formula-tag {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-family: monospace;
+}
+
+.espelho-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.espelho-dia-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+}
+
+.espelho-dia-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.batidas-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.batida-pill {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.80rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--primary-border);
+}
+
+@media (max-width: 992px) {
+  .platform-layout {
+    flex-direction: column;
+  }
+  .platform-sidebar {
+    width: 100%;
+    min-width: 100%;
+    position: static;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .platform-main-content {
+    padding: 1rem;
+  }
+}
+
