@@ -1840,7 +1840,7 @@ const FolhaManager = {
     if (atrasos > 0) eventos.push({ tipo: 'atraso', codigo: 'ATRASO', quantidade: atrasos });
 
     this.rubricasManuais.forEach((r, i) => {
-      if (r.valor_total > 0 && r.descricao && r.codigo) {
+      if (r.codigo && (r.valor_total > 0 || r.referencia > 0 || r.codigo !== '__outro')) {
         eventos.push({
           codigo: r.codigo === '__outro' ? undefined : r.codigo,
           descricao: r.descricao,
@@ -1881,8 +1881,28 @@ const FolhaManager = {
     totDescontos += atrasos * vh;
 
     this.rubricasManuais.forEach(r => {
-      if (r.tipo === 'provento') totProventos += Number(r.valor_total || 0);
-      else if (r.tipo === 'desconto') totDescontos += Number(r.valor_total || 0);
+      let v = Number(r.valor_total || 0);
+      if (v <= 0 && sb > 0) {
+        // Prévia estimada instantânea com base nas fórmulas do catálogo de eventos
+        const ref = Number(r.referencia || 0);
+        if (r.codigo === '0010') v = ref * (vh * 1.5);
+        else if (r.codigo === '0011') v = ref * (vh * 2.0);
+        else if (r.codigo === '0020') v = ref * (vh * 0.2);
+        else if (r.codigo === '0030') v = 1518.00 * ((ref === 10 || ref === 20 || ref === 40 ? ref : 20) / 100);
+        else if (r.codigo === '0031') v = sb * 0.30;
+        else if (r.codigo === '0032') v = sb * 0.25;
+        else if (r.codigo === '0040') v = sb * ((ref || 40) / 100);
+        else if (r.codigo === '0041') v = sb * 0.10;
+        else if (r.codigo === '0100') v = (sb / 30) * (ref || 30);
+        else if (r.codigo === '0101') v = (sb / 30) * (ref || 30) * (1 / 3);
+        else if (r.codigo === '0110') v = ((sb / 12) * (ref || 12)) * 0.50;
+        else if (r.codigo === '0510') v = sb * ((ref || 6) / 100);
+        else if (r.codigo === '0520') v = sb * ((ref || 40) / 100);
+        else if (r.codigo === '0530') v = (sb / 30) * (ref || 1);
+        else if (r.codigo === '0532') v = vh * (ref || 1);
+      }
+      if (r.tipo === 'provento') totProventos += v;
+      else if (r.tipo === 'desconto') totDescontos += v;
       // informativo: apenas registro (bases/encargos), não entra nos totais
     });
 

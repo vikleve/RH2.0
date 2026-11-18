@@ -193,3 +193,89 @@ export function calcularFgtsInformativo(baseCalculo: any, aliquota = ALIQUOTA_FG
   return arredondarMoeda(base.times(aliquota).dividedBy(100));
 }
 
+export function calcularInsalubridade(grauOuPerc: any = 20, salarioMinimo = new Decimal('1518.00')): { valor: Decimal; memoria: string } {
+  const sm = toDecimal(salarioMinimo);
+  const ref = toDecimal(grauOuPerc);
+  let perc = new Decimal(20);
+  if (ref.equals(1) || ref.equals(10)) perc = new Decimal(10);
+  else if (ref.equals(3) || ref.equals(40)) perc = new Decimal(40);
+  const valor = arredondarMoeda(sm.times(perc).dividedBy(100));
+  return { valor, memoria: `Insalubridade (${perc}% sobre Salário Mínimo R$ ${sm}): R$ ${valor}` };
+}
+
+export function calcularPericulosidade(salarioBase: any, percentual = 30): { valor: Decimal; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const perc = toDecimal(percentual);
+  const valor = arredondarMoeda(sb.times(perc).dividedBy(100));
+  return { valor, memoria: `Periculosidade (${perc}% sobre Salário Base R$ ${sb}): R$ ${valor}` };
+}
+
+export function calcularFeriasGozadas(salarioBase: any, dias = 30): { valor: Decimal; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const d = toDecimal(dias);
+  const valor = arredondarMoeda(sb.dividedBy(30).times(d));
+  return { valor, memoria: `Férias (${d} dias): R$ ${valor}` };
+}
+
+export function calcularTercoConstitucional(baseFerias: any): { valor: Decimal; memoria: string } {
+  const base = toDecimal(baseFerias);
+  const valor = arredondarMoeda(base.dividedBy(3));
+  return { valor, memoria: `1/3 Constitucional de Férias: R$ ${valor}` };
+}
+
+export function calcularDecimoTerceiro(salarioBase: any, avos = 12, parcela = 1, adiantamento = 0): { valor: Decimal; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const av = toDecimal(avos);
+  const integral = sb.dividedBy(12).times(av);
+  if (parcela === 1) {
+    const valor = arredondarMoeda(integral.times(0.5));
+    return { valor, memoria: `13º Salário 1ª Parcela (${av}/12 avos): R$ ${valor}` };
+  } else {
+    const valor = arredondarMoeda(Decimal.max(0, integral.minus(toDecimal(adiantamento))));
+    return { valor, memoria: `13º Salário 2ª Parcela (${av}/12 avos - adiantamento): R$ ${valor}` };
+  }
+}
+
+export function calcularSalarioFamilia(salarioBase: any, dependentes = 0, teto = new Decimal('1906.00'), cota = new Decimal('65.00')): { valor: Decimal; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const dep = Number(dependentes);
+  if (dep <= 0 || sb.greaterThan(teto)) {
+    return { valor: new Decimal('0.00'), memoria: `Salário-família não elegível (Salário R$ ${sb} > Teto R$ ${teto})` };
+  }
+  const valor = arredondarMoeda(toDecimal(cota).times(dep));
+  return { valor, memoria: `Salário-família: ${dep} cotas x R$ ${cota} = R$ ${valor}` };
+}
+
+export function calcularAvisoPrevioIndenizado(salarioBase: any, anosServico = 0): { valor: Decimal; dias: number; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const anos = Math.max(0, Number(anosServico));
+  const dias = Math.min(90, 30 + anos * 3);
+  const valor = arredondarMoeda(sb.dividedBy(30).times(dias));
+  return { valor, dias, memoria: `Aviso prévio indenizado (${dias} dias): R$ ${valor}` };
+}
+
+export function calcularValeTransporte(salarioBase: any, custoTotal: any = null, maxPerc = 6): { valor: Decimal; memoria: string } {
+  const sb = toDecimal(salarioBase);
+  const tetoLegal = arredondarMoeda(sb.times(maxPerc).dividedBy(100));
+  if (custoTotal !== null && custoTotal !== undefined) {
+    const custo = toDecimal(custoTotal);
+    const valor = Decimal.min(tetoLegal, custo);
+    return { valor, memoria: `VT: menor entre custo R$ ${custo} e teto 6% R$ ${tetoLegal} = R$ ${valor}` };
+  }
+  return { valor: tetoLegal, memoria: `VT 6% sobre salário base R$ ${sb} = R$ ${tetoLegal}` };
+}
+
+export function calcularEncargosPatronais(baseInss: any, aliqPatronal = 20, aliqRat = 2, fap = 1, aliqTerceiros = 5.8) {
+  const base = toDecimal(baseInss);
+  const inssPatronal = arredondarMoeda(base.times(aliqPatronal).dividedBy(100));
+  const ratFap = arredondarMoeda(base.times(toDecimal(aliqRat).times(toDecimal(fap))).dividedBy(100));
+  const terceiros = arredondarMoeda(base.times(aliqTerceiros).dividedBy(100));
+  return {
+    inssPatronal,
+    ratFap,
+    terceiros,
+    total: inssPatronal.plus(ratFap).plus(terceiros),
+  };
+}
+
+
