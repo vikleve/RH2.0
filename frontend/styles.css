@@ -1729,6 +1729,293 @@ body {
 }
 
 /* ==========================================================================
+   OTIMIZAÇÃO MOBILE DE ALTA FIDELIDADE (SMARTPHONES E TABLETS)
+   ========================================================================== */
+
+/* Melhorias globais para dispositivos de toque */
+@media (max-width: 768px) {
+  /* Previne zoom acidental no iOS ao focar inputs */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="month"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Barra de Navegação de Módulos (Scroll Horizontal Suave) */
+  .nav-modules {
+    padding: 0 0.75rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+  .nav-modules::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-module-tab {
+    padding: 0.75rem 1rem;
+    font-size: 0.88rem;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  /* Header da Aplicação */
+  .app-header {
+    padding: 0.75rem 1rem;
+  }
+  .header-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  .btn-logout {
+    padding: 0.5rem 0.85rem;
+    min-height: 40px;
+  }
+
+  /* Grid de Métricas */
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
+    margin-bottom: 1rem;
+  }
+  .metric-card {
+    padding: 0.85rem;
+    gap: 0.65rem;
+  }
+  .metric-icon {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+  .metric-value {
+    font-size: 1.15rem;
+  }
+  .metric-label {
+    font-size: 0.72rem;
+  }
+
+  /* Card de Filtros e Ações */
+  .filters-card {
+    padding: 0.85rem;
+    gap: 0.75rem;
+  }
+  .search-input-wrapper {
+    width: 100%;
+  }
+  .filters-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    width: 100%;
+  }
+  .filter-item {
+    width: 100%;
+  }
+  .filter-item label {
+    font-size: 0.78rem;
+    margin-bottom: 0.25rem;
+  }
+  .filters-group .btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Tabela Responsiva com Scroll Suave e Sombras */
+  .table-card {
+    border-radius: var(--radius-sm);
+  }
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+    box-shadow: inset -8px 0 8px -8px rgba(0, 0, 0, 0.15);
+  }
+  .data-table th, .data-table td {
+    padding: 0.65rem 0.6rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+  .table-actions {
+    display: flex;
+    gap: 0.35rem;
+    justify-content: flex-end;
+  }
+  .btn-action {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+  }
+
+  /* Modais no Mobile (Layout de Tela Cheia / Quase Cheia) */
+  .modal-overlay {
+    padding: 0.5rem;
+    align-items: flex-end;
+  }
+  .modal-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 94vh !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin: 0 !important;
+  }
+  .modal-header {
+    padding: 0.85rem 1rem;
+  }
+  .modal-title {
+    font-size: 1.1rem;
+  }
+  .modal-subtitle {
+    font-size: 0.78rem;
+  }
+  .modal-body {
+    padding: 0.85rem 1rem;
+  }
+  .modal-footer {
+    padding: 0.75rem 1rem;
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+  .modal-footer .btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Formulários dentro dos Modais */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem;
+  }
+  .form-grid [class*="col-span-"] {
+    grid-column: span 1 !important;
+  }
+
+  /* Eventos da Folha e Rubricas no Modal */
+  .eventos-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  .folha-preview-bar {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
+    padding: 0.85rem;
+  }
+  .folha-preview-value {
+    font-size: 1rem;
+  }
+
+  /* Tabela de Rubricas Customizadas no Mobile */
+  .rubricas-table th, .rubricas-table td {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.78rem;
+  }
+  .rub-val, .rub-ref {
+    width: 75px !important;
+  }
+
+  /* Demonstrativo / Holerite no Mobile */
+  .holerite-modal-card {
+    padding: 0 !important;
+  }
+  .holerite-container {
+    padding: 0.85rem;
+    font-size: 0.82rem;
+  }
+  .holerite-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+  .holerite-recibo-badge {
+    text-align: left;
+    width: 100%;
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 0.4rem;
+  }
+  .holerite-colaborador-box {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.6rem 0.75rem;
+  }
+  .holerite-colaborador-box div[style*="grid-column: span 2"] {
+    grid-column: span 1 !important;
+  }
+  .holerite-table th, .holerite-table td {
+    padding: 0.4rem 0.35rem;
+    font-size: 0.78rem;
+  }
+  .holerite-totais-box {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+  .holerite-liquido-destaque {
+    text-align: center;
+  }
+  .holerite-bases-rodape {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+    font-size: 0.72rem;
+  }
+  .holerite-assinatura {
+    flex-direction: column;
+    gap: 1.5rem;
+    text-align: center;
+  }
+  .linha-assinatura {
+    width: 100%;
+  }
+
+  /* Painel de Login no Mobile */
+  .login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .login-hero {
+    min-height: 140px !important;
+    max-height: 180px;
+  }
+  .login-panel {
+    padding: 1.25rem 0.75rem;
+  }
+  .login-card {
+    padding: 1.5rem 1rem;
+    box-shadow: var(--shadow-md);
+  }
+}
+
+/* Telas Ultra-Pequenas (Smartphones < 440px) */
+@media (max-width: 440px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .eventos-grid {
+    grid-template-columns: 1fr;
+  }
+  .folha-preview-bar {
+    grid-template-columns: 1fr;
+  }
+  .holerite-bases-rodape {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
    ESTILOS DE IMPRESSÃO OFICIAL (@media print)
    ========================================================================== */
 @media print {

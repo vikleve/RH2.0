@@ -148,9 +148,44 @@ class TestConfiguracaoBanco(unittest.TestCase):
             with mock.patch.dict(sys.modules, {"psycopg2": fake}):
                 with self.assertRaises(db.DatabaseUnavailableError) as ctx:
                     db.get_connection()
-        self.assertNotIn(senha_neon, str(ctx.exception))
-        self.assertNotIn("neon.tech", str(ctx.exception))
-        self.assertNotIn(host_neon, str(ctx.exception))
+                self.assertNotIn(senha_neon, str(ctx.exception))
+                self.assertNotIn("neon.tech", str(ctx.exception))
+                self.assertNotIn(host_neon, str(ctx.exception))
+
+    def test_row_to_dict_converte_decimal_para_float(self):
+        """Verifica que objetos Decimal retornados pelo PostgreSQL são convertidos para float."""
+        from decimal import Decimal
+        import json
+
+        # Mock cursor com description e row com Decimals
+        mock_cursor = mock.MagicMock()
+        mock_cursor.description = [("id",), ("salario_base",), ("total_descontos",)]
+        row = (1, Decimal("4500.50"), Decimal("612.35"))
+
+        with mock.patch.object(db, "_usar_postgres", return_value=True):
+            d = db.row_to_dict(mock_cursor, row)
+
+        self.assertIsInstance(d["salario_base"], float)
+        self.assertIsInstance(d["total_descontos"], float)
+        self.assertEqual(d["salario_base"], 4500.50)
+        self.assertEqual(d["total_descontos"], 612.35)
+
+        # Garante que json.dumps serializa sem lançar TypeError
+        serializado = json.dumps(d)
+        self.assertIn('"salario_base": 4500.5', serializado)
+
+    def test_init_db_cache_evita_overhead(self):
+        """init_db utiliza cache para evitar reexecução desnecessária de DDL no mesmo banco."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            caminho = os.path.join(d, "cache_teste.db")
+            db.init_db(caminho, auto_provision=False, force=True)
+            self.assertIn(caminho, db._INITIALIZED_TARGETS)
+
+            # Segunda chamada não reconecta para DDL se já inicializado
+            with mock.patch.object(db, "get_connection") as mock_conn:
+                db.init_db(caminho, auto_provision=False)
+                mock_conn.assert_not_called()
 
 
 if __name__ == "__main__":

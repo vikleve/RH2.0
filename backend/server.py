@@ -10,6 +10,7 @@ import json
 import os
 import socketserver
 import urllib.parse
+from decimal import Decimal
 
 # Carrega variaveis de ambiente do arquivo .env (se existir)
 try:
@@ -212,7 +213,12 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
     def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None, extra_headers: dict = None):
         """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store e suporte a cookies HttpOnly."""
-        corpo = json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
+        corpo = json.dumps(
+            dados,
+            ensure_ascii=False,
+            indent=2,
+            default=lambda o: float(o) if isinstance(o, Decimal) else str(o)
+        ).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
@@ -518,6 +524,96 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     "mensagem": "Parâmetros de cálculo da folha atualizados com sucesso!",
                     "dados": salvo
                 })
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rota protegida: Simular cálculo da folha sem persistir POST /api/folha/simular
+        if path == "/api/folha/simular":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                colab_id = dados.get("colaborador_id")
+                competencia = dados.get("competencia", "").strip()
+                if not colab_id or not competencia:
+                    return self._enviar_json(400, {
+                        "sucesso": False,
+                        "mensagem": "Informe o colaborador e a competência (AAAA-MM)."
+                    })
+
+                simulacao = self.folha_service.simular_folha(
+                    colaborador_id=int(colab_id),
+                    competencia=competencia,
+                    periodo_inicio=dados.get("periodo_inicio"),
+                    periodo_fim=dados.get("periodo_fim"),
+                    data_pagamento=dados.get("data_pagamento"),
+                    dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
+                    dias_mes=int(dados.get("dias_mes", 30)),
+                    horas_divisor=float(dados.get("horas_divisor", 220.0)),
+                    eventos=dados.get("eventos", []),
+                    observacoes=dados.get("observacoes", "")
+                )
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Simulação de folha executada com sucesso.",
+                    "dados": simulacao
+                })
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
+            except FolhaNaoEncontradaException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rota protegida: Gerar folhas em lote para uma competência POST /api/folha/gerar-competencia
+        if path == "/api/folha/gerar-competencia":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                competencia = dados.get("competencia", "").strip()
+                if not competencia:
+                    return self._enviar_json(400, {"sucesso": False, "mensagem": "Informe a competência (AAAA-MM)."})
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                resultado = self.folha_service.gerar_folhas_competencia(
+                    competencia=competencia,
+                    usuario=nome_responsavel,
+                    substituir_existentes=bool(dados.get("substituir_existentes", False))
+                )
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": f"Processamento em lote da competência {competencia} concluído com sucesso.",
+                    "dados": resultado
+                })
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rota protegida: Fechar competência em lote POST /api/folha/fechar-competencia
+        if path == "/api/folha/fechar-competencia":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                competencia = dados.get("competencia", "").strip()
+                if not competencia:
+                    return self._enviar_json(400, {"sucesso": False, "mensagem": "Informe a competência (AAAA-MM)."})
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                resultado = self.folha_service.fechar_competencia(
+                    competencia=competencia,
+                    usuario=nome_responsavel
+                )
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": f"Fechamento da competência {competencia} homologado com sucesso.",
+                    "dados": resultado
+                })
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 

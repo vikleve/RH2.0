@@ -1363,6 +1363,47 @@ const FolhaManager = {
     if (btnParametros) {
       btnParametros.addEventListener('click', () => this.abrirModalParametros());
     }
+
+    const btnGerarLote = document.getElementById('btn-gerar-lote-folha');
+    if (btnGerarLote) {
+      btnGerarLote.addEventListener('click', () => this.abrirModalLote('gerar'));
+    }
+
+    const btnFecharLote = document.getElementById('btn-fechar-lote-competencia');
+    if (btnFecharLote) {
+      btnFecharLote.addEventListener('click', () => this.abrirModalLote('fechar'));
+    }
+
+    const btnConfirmarLote = document.getElementById('btn-confirmar-lote');
+    if (btnConfirmarLote) {
+      btnConfirmarLote.addEventListener('click', () => this.executarOperacaoLote());
+    }
+
+    const fecharModalLote = () => {
+      const m = document.getElementById('modal-lote-confirm');
+      if (m) m.classList.add('hidden');
+    };
+    const btnCancLote = document.getElementById('btn-cancelar-lote');
+    const btnCancLoteTopo = document.getElementById('btn-cancelar-lote-topo');
+    if (btnCancLote) btnCancLote.addEventListener('click', fecharModalLote);
+    if (btnCancLoteTopo) btnCancLoteTopo.addEventListener('click', fecharModalLote);
+
+    const btnSalvarParam = document.getElementById('btn-salvar-parametros');
+    if (btnSalvarParam) {
+      btnSalvarParam.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.salvarParametros();
+      });
+    }
+
+    const fecharModalParam = () => {
+      const m = document.getElementById('modal-parametros-folha');
+      if (m) m.classList.add('hidden');
+    };
+    const btnFecharParam = document.getElementById('btn-fechar-parametros');
+    const btnFecharParamFooter = document.getElementById('btn-fechar-parametros-footer');
+    if (btnFecharParam) btnFecharParam.addEventListener('click', fecharModalParam);
+    if (btnFecharParamFooter) btnFecharParamFooter.addEventListener('click', fecharModalParam);
   },
 
   async carregarFolhas() {
@@ -1595,21 +1636,26 @@ const FolhaManager = {
       this.rubricasManuais = [];
 
       const refNumerica = (it) => parseFloat(String(it.unidade_referencia || '').replace(',', '.')) || Number(it.referencia) || '';
+      const codigosPadrao = ['0001', '0002', '101', '102', '103', '104', '201', '202', '901', '902', '903'];
+
       (folha.itens || []).forEach(it => {
-        if (it.origem !== 'manual' && it.codigo_evento === '101') {
-          if (String(it.descricao).includes('100%')) he100 = refNumerica(it);
-          else he50 = refNumerica(it);
-        }
-        else if (it.origem !== 'manual' && it.codigo_evento === '102') noturno = refNumerica(it);
-        else if (it.origem !== 'manual' && it.codigo_evento === '201') faltas = refNumerica(it);
-        else if (it.origem !== 'manual' && it.codigo_evento === '202') atrasos = refNumerica(it);
-        else if (it.origem === 'manual') {
+        if (it.codigo_evento === '101') {
+          he50 = refNumerica(it);
+        } else if (it.codigo_evento === '102') {
+          he100 = refNumerica(it);
+        } else if (it.codigo_evento === '103') {
+          noturno = refNumerica(it);
+        } else if (it.codigo_evento === '201') {
+          faltas = refNumerica(it);
+        } else if (it.codigo_evento === '202') {
+          atrasos = refNumerica(it);
+        } else if (!codigosPadrao.includes(it.codigo_evento) || it.origem === 'manual') {
           this.rubricasManuais.push({
             tipo: it.tipo,
             codigo: this.catalogoEventos.some(c => c.codigo === it.codigo_evento) ? it.codigo_evento : '__outro',
             descricao: it.descricao,
-            referencia: parseFloat(String(it.unidade_referencia || '').replace(',', '.')) || 1,
-            valor_total: it.valor_total
+            referencia: parseFloat(String(it.unidade_referencia || '').replace(',', '.')) || Number(it.referencia) || 1,
+            valor_total: Number(it.valor_total) || 0
           });
         }
       });
@@ -2033,6 +2079,19 @@ const FolhaManager = {
       this.folhaParaFecharOuReabrir = f;
 
       // Preencher Contracheque
+      if (!this.parametrosVigentes) {
+        await this.carregarParametros();
+      }
+      const p = this.parametrosVigentes || {};
+      const elRazao = document.getElementById('h-empresa-razao');
+      const elSub = document.getElementById('h-empresa-sub');
+      if (elRazao) elRazao.textContent = p.razao_social || 'PORTAL DP & RH LTDA';
+      if (elSub) {
+        const cnpj = p.cnpj || '12.345.678/0001-90';
+        const end = p.endereco_empresa || 'Av. Paulista, 1000 - Bela Vista - São Paulo / SP';
+        elSub.innerHTML = `CNPJ: ${cnpj} &bull; ${end}`;
+      }
+
       document.getElementById('h-competencia').textContent = f.competencia;
       document.getElementById('h-matricula').textContent = f.colaborador_matricula || '--';
       document.getElementById('h-nome').textContent = f.colaborador_nome || '--';
@@ -2308,10 +2367,17 @@ const FolhaManager = {
       return;
     }
 
-    document.getElementById('param-codigo').value = p.codigo || '';
-    document.getElementById('param-descricao').value = p.descricao || '';
+    document.getElementById('param-codigo').value = p.codigo || 'PADRAO_CLT_2026';
+    document.getElementById('param-descricao').value = p.descricao || 'Parâmetros Gerais CLT 220h';
+    document.getElementById('param-razao-social').value = p.razao_social || 'PORTAL DP & RH LTDA';
+    document.getElementById('param-cnpj').value = p.cnpj || '12.345.678/0001-90';
+    document.getElementById('param-endereco').value = p.endereco_empresa || 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP';
+    document.getElementById('param-telefone').value = p.telefone_empresa || '(11) 3456-7890';
+    document.getElementById('param-email').value = p.email_empresa || 'contato@portaldprh.com.br';
+
     document.getElementById('param-divisor').value = p.horas_mensais_padrao || 220;
     document.getElementById('param-dias').value = p.dias_mes_padrao || 30;
+    document.getElementById('param-fgts').value = p.aliquota_fgts || 8.0;
     document.getElementById('param-he50').value = p.percentual_he_padrao || 50;
     document.getElementById('param-he100').value = p.percentual_he_extra || 100;
     document.getElementById('param-noturno').value = p.percentual_adicional_noturno || 20;
@@ -2319,6 +2385,114 @@ const FolhaManager = {
     document.getElementById('param-deducao-dep').value = p.deducao_dependente_irrf || 189.59;
 
     document.getElementById('modal-parametros-folha').classList.remove('hidden');
+  },
+
+  async salvarParametros() {
+    const payload = {
+      codigo: document.getElementById('param-codigo').value.trim() || 'PADRAO_CLT_2026',
+      descricao: document.getElementById('param-descricao').value.trim() || 'Parâmetros Gerais CLT 220h',
+      razao_social: document.getElementById('param-razao-social').value.trim(),
+      cnpj: document.getElementById('param-cnpj').value.trim(),
+      endereco_empresa: document.getElementById('param-endereco').value.trim(),
+      telefone_empresa: document.getElementById('param-telefone').value.trim(),
+      email_empresa: document.getElementById('param-email').value.trim(),
+      horas_mensais_padrao: Number(document.getElementById('param-divisor').value || 220),
+      dias_mes_padrao: Number(document.getElementById('param-dias').value || 30),
+      aliquota_fgts: Number(document.getElementById('param-fgts').value || 8.0),
+      percentual_he_padrao: Number(document.getElementById('param-he50').value || 50),
+      percentual_he_extra: Number(document.getElementById('param-he100').value || 100),
+      percentual_adicional_noturno: Number(document.getElementById('param-noturno').value || 20),
+      teto_inss: Number(document.getElementById('param-teto-inss').value || 8157.41),
+      deducao_dependente_irrf: Number(document.getElementById('param-deducao-dep').value || 189.59)
+    };
+
+    try {
+      const resp = await fetch(`${API_BASE}/folha/parametros`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao salvar parâmetros.', 'error');
+        return;
+      }
+      this.parametrosVigentes = json.dados;
+      exibirToast('Parâmetros da folha e empresa salvos com sucesso!', 'success');
+      document.getElementById('modal-parametros-folha').classList.add('hidden');
+    } catch (e) {
+      console.error('Erro ao salvar parâmetros:', e);
+      exibirToast('Erro de comunicação ao salvar parâmetros.', 'error');
+    }
+  },
+
+  abrirModalLote(tipo) {
+    this.operacaoLotePendente = tipo;
+    const comp = this.filtros.competencia || '2026-10';
+    const tituloEl = document.getElementById('modal-lote-titulo');
+    const msgEl = document.getElementById('modal-lote-mensagem');
+    const detEl = document.getElementById('modal-lote-detalhes');
+    const btnConf = document.getElementById('btn-confirmar-lote');
+
+    if (tipo === 'gerar') {
+      tituloEl.textContent = 'Gerar Folhas da Competência em Lote';
+      msgEl.innerHTML = `Deseja gerar automaticamente as folhas de pagamento de <strong>todos os colaboradores ativos</strong> para a competência <strong>${comp}</strong>?`;
+      detEl.innerHTML = `Colaboradores que já possuam folha fechada serão preservados. As folhas calculadas receberão proventos padrão e ficarão disponíveis para edição individual.`;
+      btnConf.className = 'btn btn-primary';
+      btnConf.textContent = 'Gerar Folhas em Lote';
+    } else {
+      tituloEl.textContent = 'Fechar Competência em Lote';
+      msgEl.innerHTML = `Deseja <strong>fechar e homologar</strong> todas as folhas abertas da competência <strong>${comp}</strong>?`;
+      detEl.innerHTML = `Após o fechamento, as folhas dessa competência não poderão mais ser alteradas sem justificativa formal de reabertura auditada.`;
+      btnConf.className = 'btn btn-warning';
+      btnConf.textContent = 'Sim, Fechar Competência';
+    }
+
+    document.getElementById('modal-lote-confirm').classList.remove('hidden');
+  },
+
+  async executarOperacaoLote() {
+    const tipo = this.operacaoLotePendente;
+    const comp = this.filtros.competencia || '2026-10';
+    const modalEl = document.getElementById('modal-lote-confirm');
+
+    try {
+      if (tipo === 'gerar') {
+        const resp = await fetch(`${API_BASE}/folha/gerar-competencia`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ competencia: comp, substituir_existentes: false })
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+          exibirToast(json.mensagem || 'Falha ao gerar folhas em lote.', 'error');
+          return;
+        }
+        modalEl.classList.add('hidden');
+        exibirToast(`Lote gerado: ${json.dados.criados} criadas, ${json.dados.ignorados} mantidas.`, 'success');
+        await this.carregarFolhas();
+      } else if (tipo === 'fechar') {
+        const resp = await fetch(`${API_BASE}/folha/fechar-competencia`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ competencia: comp })
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+          exibirToast(json.mensagem || 'Falha ao fechar competência em lote.', 'error');
+          return;
+        }
+        modalEl.classList.add('hidden');
+        exibirToast(`Competência ${comp} fechada: ${json.dados.fechadas} folhas homologadas!`, 'success');
+        await this.carregarFolhas();
+      }
+    } catch (e) {
+      console.error('Erro na operação em lote:', e);
+      exibirToast('Erro de conexão ao processar operação em lote.', 'error');
+    }
   }
 };
 

@@ -519,6 +519,22 @@
               Nova Folha
             </button>
 
+            <button id="btn-gerar-lote-folha" class="btn btn-secondary" title="Gerar e calcular folhas de todos os colaboradores ativos nesta competência">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+              Gerar Mês (Lote)
+            </button>
+
+            <button id="btn-fechar-lote-competencia" class="btn btn-warning" title="Homologar e fechar todas as folhas abertas desta competência">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              Fechar Mês
+            </button>
+
             <button id="btn-parametros-folha" class="btn btn-outline" title="Ver parâmetros de cálculo e vigências">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"></circle>
@@ -1127,8 +1143,8 @@
             <!-- Cabeçalho da Empresa -->
             <div class="holerite-header">
               <div>
-                <div class="holerite-empresa-titulo">PORTAL DP &amp; RH LTDA</div>
-                <div style="font-size: 0.8rem; color: #475569;">CNPJ: 12.345.678/0001-90 &bull; Av. Paulista, 1000 -
+                <div class="holerite-empresa-titulo" id="h-empresa-razao">PORTAL DP &amp; RH LTDA</div>
+                <div id="h-empresa-sub" style="font-size: 0.8rem; color: #475569;">CNPJ: 12.345.678/0001-90 &bull; Av. Paulista, 1000 -
                   Bela Vista - São Paulo / SP</div>
               </div>
               <div class="holerite-recibo-badge">
@@ -1253,66 +1269,102 @@
     </div>
 
     <!-- ============================================================ -->
-    <!-- MODAL: PARÂMETROS DE CÁLCULO E VIGÊNCIAS                     -->
+    <!-- MODAL: PARÂMETROS DE CÁLCULO E DADOS DA EMPRESA              -->
     <!-- ============================================================ -->
     <div id="modal-parametros-folha" class="modal-overlay hidden" role="dialog" aria-modal="true">
-      <div class="modal-card modal-md">
+      <div class="modal-card modal-lg">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title">Parâmetros de Cálculo da Folha</h2>
-            <p class="modal-subtitle">Configurações trabalhistas vigentes e validadas por profissional de RH/DP.</p>
+            <h2 class="modal-title">Parâmetros da Folha &amp; Dados da Empresa</h2>
+            <p class="modal-subtitle">Configurações trabalhistas vigentes e identificação da empresa no contracheque.</p>
           </div>
           <button class="btn-close" id="btn-fechar-parametros">&times;</button>
         </div>
         <div class="modal-body modal-scroll">
-          <div class="alert alert-info" style="font-size: 0.82rem; margin-bottom: 1rem;">
-            <strong>Aviso de Conformidade:</strong> Os parâmetros abaixo regem os divisores, limites e alíquotas da
-            folha de pagamento. Devem ser homologados formalmente pelo profissional responsável de DP.
+          <div id="param-alerta" class="alert alert-info" style="font-size: 0.82rem; margin-bottom: 1rem;">
+            <strong>Aviso de Gestão:</strong> As alterações salvas aqui atualizam a razão social, CNPJ e os parâmetros de cálculo utilizados nas próximas folhas e contracheques.
           </div>
 
           <form id="form-parametros-folha">
+            <h3 class="section-title" style="font-size: 0.95rem; margin-bottom: 0.75rem; color: #1e3a8a;">Identificação da Empresa Empregadora</h3>
+            <div class="form-grid" style="margin-bottom: 1.5rem;">
+              <div class="form-group col-span-8">
+                <label for="param-razao-social">Razão Social:</label>
+                <input type="text" id="param-razao-social" class="form-control" placeholder="Razão Social da Empresa">
+              </div>
+              <div class="form-group col-span-4">
+                <label for="param-cnpj">CNPJ:</label>
+                <input type="text" id="param-cnpj" class="form-control" placeholder="00.000.000/0001-00">
+              </div>
+              <div class="form-group col-span-12">
+                <label for="param-endereco">Endereço Completo:</label>
+                <input type="text" id="param-endereco" class="form-control" placeholder="Logradouro, número, bairro, cidade - UF">
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-telefone">Telefone:</label>
+                <input type="text" id="param-telefone" class="form-control" placeholder="(00) 0000-0000">
+              </div>
+              <div class="form-group col-span-6">
+                <label for="param-email">E-mail de Contato:</label>
+                <input type="email" id="param-email" class="form-control" placeholder="contato@empresa.com.br">
+              </div>
+            </div>
+
+            <h3 class="section-title" style="font-size: 0.95rem; margin-bottom: 0.75rem; color: #1e3a8a;">Parâmetros Oficiais de Cálculo</h3>
             <div class="form-grid">
-              <div class="form-group col-span-12">
-                <label for="param-codigo">Código do Parâmetro:</label>
-                <input type="text" id="param-codigo" class="form-control" readonly>
+              <div class="form-group col-span-4">
+                <label for="param-codigo">Código:</label>
+                <input type="text" id="param-codigo" class="form-control" readonly style="background-color: #f1f5f9;">
               </div>
-              <div class="form-group col-span-12">
+              <div class="form-group col-span-8">
                 <label for="param-descricao">Descrição:</label>
-                <input type="text" id="param-descricao" class="form-control" readonly>
+                <input type="text" id="param-descricao" class="form-control">
               </div>
-              <div class="form-group col-span-6">
-                <label for="param-divisor">Divisor Padrão de Horas:</label>
-                <input type="number" id="param-divisor" class="form-control" readonly>
+              <div class="form-group col-span-4">
+                <label for="param-divisor">Divisor de Horas:</label>
+                <input type="number" id="param-divisor" class="form-control" step="0.5">
               </div>
-              <div class="form-group col-span-6">
+              <div class="form-group col-span-4">
                 <label for="param-dias">Dias Mês Comercial:</label>
-                <input type="number" id="param-dias" class="form-control" readonly>
+                <input type="number" id="param-dias" class="form-control">
               </div>
-              <div class="form-group col-span-6">
+              <div class="form-group col-span-4">
+                <label for="param-fgts">Alíquota FGTS (%):</label>
+                <input type="number" id="param-fgts" class="form-control" step="0.1">
+              </div>
+              <div class="form-group col-span-4">
                 <label for="param-he50">Percentual HE Padrão (%):</label>
-                <input type="number" id="param-he50" class="form-control" readonly>
+                <input type="number" id="param-he50" class="form-control" step="1">
               </div>
-              <div class="form-group col-span-6">
+              <div class="form-group col-span-4">
                 <label for="param-he100">Percentual HE Especial (%):</label>
-                <input type="number" id="param-he100" class="form-control" readonly>
+                <input type="number" id="param-he100" class="form-control" step="1">
               </div>
-              <div class="form-group col-span-6">
+              <div class="form-group col-span-4">
                 <label for="param-noturno">Adicional Noturno (%):</label>
-                <input type="number" id="param-noturno" class="form-control" readonly>
+                <input type="number" id="param-noturno" class="form-control" step="1">
               </div>
               <div class="form-group col-span-6">
                 <label for="param-teto-inss">Teto Máximo INSS (R$):</label>
-                <input type="number" id="param-teto-inss" class="form-control" readonly>
+                <input type="number" id="param-teto-inss" class="form-control" step="0.01">
               </div>
-              <div class="form-group col-span-12">
+              <div class="form-group col-span-6">
                 <label for="param-deducao-dep">Dedução por Dependente IRRF (R$):</label>
-                <input type="number" id="param-deducao-dep" class="form-control" readonly>
+                <input type="number" id="param-deducao-dep" class="form-control" step="0.01">
               </div>
             </div>
           </form>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" id="btn-fechar-parametros-footer">OK, Entendido</button>
+          <button class="btn btn-outline" id="btn-fechar-parametros-footer">Cancelar</button>
+          <button class="btn btn-primary" id="btn-salvar-parametros">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Salvar Parâmetros
+          </button>
         </div>
       </div>
     </div>
@@ -1364,6 +1416,26 @@
         <div class="modal-footer">
           <button class="btn btn-outline" id="btn-cancelar-reabertura">Cancelar</button>
           <button class="btn btn-warning" id="btn-confirmar-reabertura">Confirmar Reabertura</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CONFIRMAR OPERAÇÃO EM LOTE DA COMPETÊNCIA             -->
+    <!-- ============================================================ -->
+    <div id="modal-lote-confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-lote-titulo">Operação em Lote</h2>
+          <button class="btn-close" id="btn-cancelar-lote-topo">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="modal-lote-mensagem">Confirma a operação para a competência selecionada?</p>
+          <div class="alert alert-info" id="modal-lote-detalhes">--</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancelar-lote">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirmar-lote">Confirmar</button>
         </div>
       </div>
     </div>

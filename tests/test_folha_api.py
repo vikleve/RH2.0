@@ -183,6 +183,61 @@ class TestFolhaApi(unittest.TestCase):
         self.assertEqual(st_del, 200)
         self.assertTrue(res_del["sucesso"])
 
+    def test_simular_folha_api(self):
+        """POST /api/folha/simular simula o cálculo sem persistir."""
+        payload = {
+            "colaborador_id": self.colaborador["id"],
+            "competencia": "2026-11",
+            "dias_trabalhados": 30,
+            "eventos": [{"codigo": "HE50", "quantidade": 5}]
+        }
+        status, dados = self._executar_requisicao("POST", "/api/folha/simular", payload, token=self.token)
+        self.assertEqual(status, 200)
+        self.assertTrue(dados["sucesso"])
+        self.assertIn("resumo", dados["dados"])
+        self.assertIn("itens", dados["dados"])
+
+    def test_lote_competencia_api(self):
+        """POST /api/folha/gerar-competencia e /api/folha/fechar-competencia."""
+        # 1. Gerar lote
+        st_gerar, res_gerar = self._executar_requisicao(
+            "POST", "/api/folha/gerar-competencia",
+            {"competencia": "2026-12"},
+            token=self.token
+        )
+        self.assertEqual(st_gerar, 200)
+        self.assertTrue(res_gerar["sucesso"])
+        self.assertGreater(res_gerar["dados"]["criados"], 0)
+
+        # 2. Fechar lote
+        st_fechar, res_fechar = self._executar_requisicao(
+            "POST", "/api/folha/fechar-competencia",
+            {"competencia": "2026-12"},
+            token=self.token
+        )
+        self.assertEqual(st_fechar, 200)
+        self.assertTrue(res_fechar["sucesso"])
+        self.assertGreater(res_fechar["dados"]["fechadas"], 0)
+
+    def test_salvar_parametros_api(self):
+        """POST /api/folha/parametros atualiza parâmetros e dados da empresa."""
+        payload = {
+            "codigo": "NOVA_EMPRESA_2026",
+            "descricao": "Parâmetros Gerais Atualizados",
+            "razao_social": "EMPRESA MODELO BRASIL LTDA",
+            "cnpj": "11.222.333/0001-44",
+            "endereco_empresa": "Rua das Flores, 123 - Centro",
+            "telefone_empresa": "(11) 2222-3333",
+            "email_empresa": "rh@empresamodelo.com.br",
+            "horas_mensais_padrao": 220,
+            "dias_mes_padrao": 30
+        }
+        status, dados = self._executar_requisicao("POST", "/api/folha/parametros", payload, token=self.token)
+        self.assertEqual(status, 200)
+        self.assertTrue(dados["sucesso"])
+        self.assertEqual(dados["dados"]["razao_social"], "EMPRESA MODELO BRASIL LTDA")
+        self.assertEqual(dados["dados"]["cnpj"], "11.222.333/0001-44")
+
 
 if __name__ == "__main__":
     unittest.main()

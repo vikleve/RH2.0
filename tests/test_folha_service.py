@@ -189,6 +189,90 @@ class TestFolhaService(unittest.TestCase):
         lista_busca = self.folha_service.listar_folhas(termo="Carlos")
         self.assertEqual(len(lista_busca), 2)
 
+    def test_simular_folha_sem_persistencia(self):
+        """Simulação de cálculo calcula corretamente sem gravar no banco de dados."""
+        sim = self.folha_service.simular_folha(
+            colaborador_id=self.colaborador["id"],
+            competencia="2026-11",
+            dias_trabalhados=30,
+            eventos=[{"codigo": "HE50", "quantidade": 5}]
+        )
+        self.assertEqual(sim["competencia"], "2026-11")
+        self.assertIn("resumo", sim)
+        self.assertIn("itens", sim)
+        self.assertGreater(sim["resumo"]["total_proventos"], 4400.00)
+
+        # Garante que NENHUMA folha foi gravada no banco
+        folhas_banco = self.folha_service.listar_folhas(competencia="2026-11")
+        self.assertEqual(len(folhas_banco), 0)
+
+    def test_gerar_e_fechar_competencia_em_lote(self):
+        """Testa geração de folhas em lote para ativos e fechamento em lote da competência."""
+        # Cadastra segundo colaborador ativo
+        self.colab_service.cadastrar({
+            "matricula": "RH-1002",
+            "nome_completo": "Mariana Santos",
+            "cpf": "11144477735",  # CPF matematicamente válido
+            "rg": "11.222.333-4",
+            "data_nascimento": "1994-08-20",
+            "telefone": "(11) 98765-4321",
+            "email": "mariana.santos@empresa.com.br",
+            "logradouro": "Rua Central",
+            "numero": "200",
+            "bairro": "Centro",
+            "cidade": "São Paulo",
+            "uf": "SP",
+            "cep": "01001-000",
+            "data_admissao": "2023-01-10",
+            "cargo": "Assistente de RH",
+            "setor": "Recursos Humanos",
+            "salario_base": 2800.00,
+            "situacao": "ativo"
+        }, usuario="Admin")
+
+        # Geração em lote para 2026-12
+        res_lote = self.folha_service.gerar_folhas_competencia("2026-12", usuario="Rotina Automática")
+        self.assertEqual(res_lote["total_colaboradores_ativos"], 2)
+        self.assertEqual(res_lote["criados"], 2)
+
+        # Valida que as duas folhas existem e estão 'calculada'
+        folhas = self.folha_service.listar_folhas(competencia="2026-12")
+        self.assertEqual(len(folhas), 2)
+        for f in folhas:
+            self.assertEqual(f["situacao"], "calculada")
+
+        # Fechamento em lote
+        res_fechamento = self.folha_service.fechar_competencia("2026-12", usuario="Auditor DP")
+        self.assertEqual(res_fechamento["fechadas"], 2)
+
+        # Confere que agora estão 'fechada'
+        folhas_fechadas = self.folha_service.listar_folhas(competencia="2026-12")
+        for f in folhas_fechadas:
+            self.assertEqual(f["situacao"], "fechada")
+
+    def test_parametros_com_dados_da_empresa(self):
+        """Salva e recupera parâmetros trabalhistas e dados da empresa empregadora."""
+        dados = {
+            "codigo": "EMPRESA_TESTE",
+            "descricao": "Vigência Especial Teste",
+            "razao_social": "USINA TESTE BIOENERGIA S.A.",
+            "cnpj": "98.765.432/0001-10",
+            "endereco_empresa": "Rodovia BR-101, Km 50",
+            "telefone_empresa": "(19) 3333-4444",
+            "email_empresa": "dp@usinateste.com.br",
+            "horas_mensais_padrao": 220,
+            "dias_mes_padrao": 30,
+            "aliquota_fgts": 8.0
+        }
+        salvo = self.folha_service.salvar_parametros(dados, usuario="Admin Empresa")
+        self.assertEqual(salvo["razao_social"], "USINA TESTE BIOENERGIA S.A.")
+        self.assertEqual(salvo["cnpj"], "98.765.432/0001-10")
+        self.assertEqual(salvo["telefone_empresa"], "(19) 3333-4444")
+
+        # Recupera parâmetro vigente
+        vigente = self.folha_service.obter_parametro_vigente()
+        self.assertEqual(vigente["razao_social"], "USINA TESTE BIOENERGIA S.A.")
+
 
 if __name__ == "__main__":
     unittest.main()

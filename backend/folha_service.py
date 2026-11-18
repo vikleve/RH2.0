@@ -85,13 +85,24 @@ class FolhaService:
                 "aliquota_fgts": 8.0,
                 "teto_inss": 8157.41,
                 "deducao_dependente_irrf": 189.59,
+                "razao_social": "PORTAL DP & RH LTDA",
+                "cnpj": "12.345.678/0001-90",
+                "endereco_empresa": "Av. Paulista, 1000 - Bela Vista, São Paulo - SP",
+                "telefone_empresa": "(11) 3456-7890",
+                "email_empresa": "contato@portaldprh.com.br",
                 "ativo": 1,
                 "validado_por_profissional": 1
             }
+        # Garante defaults para campos da empresa caso existam nulos
+        param["razao_social"] = param.get("razao_social") or "PORTAL DP & RH LTDA"
+        param["cnpj"] = param.get("cnpj") or "12.345.678/0001-90"
+        param["endereco_empresa"] = param.get("endereco_empresa") or "Av. Paulista, 1000 - Bela Vista, São Paulo - SP"
+        param["telefone_empresa"] = param.get("telefone_empresa") or "(11) 3456-7890"
+        param["email_empresa"] = param.get("email_empresa") or "contato@portaldprh.com.br"
         return param
 
     def salvar_parametros(self, dados: Dict[str, Any], usuario: str = "Sistema/Administrador") -> Dict[str, Any]:
-        """Cria ou atualiza parâmetros de cálculo."""
+        """Cria ou atualiza parâmetros de cálculo incluindo dados da empresa."""
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
@@ -101,6 +112,11 @@ class FolhaService:
         desc = dados.get("descricao", "Parâmetros Customizados").strip()
         vig_ini = dados.get("vigencia_inicio", "2026-01-01").strip()
         vig_fim = dados.get("vigencia_fim") or None
+        razao = dados.get("razao_social", "PORTAL DP & RH LTDA").strip()
+        cnpj = dados.get("cnpj", "12.345.678/0001-90").strip()
+        endereco = dados.get("endereco_empresa", "Av. Paulista, 1000 - Bela Vista, São Paulo - SP").strip()
+        telefone = dados.get("telefone_empresa", "(11) 3456-7890").strip()
+        email = dados.get("email_empresa", "contato@portaldprh.com.br").strip()
 
         cursor.execute(f"SELECT id FROM folha_parametros WHERE codigo = {P}", (codigo,))
         existente = cursor.fetchone()
@@ -119,6 +135,7 @@ class FolhaService:
             float(dados.get("aliquota_fgts", 8.0)),
             float(dados.get("teto_inss", 8157.41)),
             float(dados.get("deducao_dependente_irrf", 189.59)),
+            razao, cnpj, endereco, telefone, email,
             int(dados.get("ativo", 1)),
             int(dados.get("validado_por_profissional", 0)),
             agora
@@ -132,7 +149,9 @@ class FolhaService:
                     horas_mensais_padrao = {P}, dias_mes_padrao = {P}, percentual_he_padrao = {P},
                     percentual_he_extra = {P}, percentual_adicional_noturno = {P}, aplicar_reducao_noturna = {P},
                     fator_reducao_noturna = {P}, aplicar_inss = {P}, aplicar_irrf = {P}, aliquota_fgts = {P},
-                    teto_inss = {P}, deducao_dependente_irrf = {P}, ativo = {P}, validado_por_profissional = {P},
+                    teto_inss = {P}, deducao_dependente_irrf = {P},
+                    razao_social = {P}, cnpj = {P}, endereco_empresa = {P}, telefone_empresa = {P}, email_empresa = {P},
+                    ativo = {P}, validado_por_profissional = {P},
                     atualizado_em = {P}
                 WHERE id = {param_id};
             """, params_values)
@@ -143,9 +162,11 @@ class FolhaService:
                     horas_mensais_padrao, dias_mes_padrao, percentual_he_padrao,
                     percentual_he_extra, percentual_adicional_noturno, aplicar_reducao_noturna,
                     fator_reducao_noturna, aplicar_inss, aplicar_irrf, aliquota_fgts,
-                    teto_inss, deducao_dependente_irrf, ativo, validado_por_profissional,
+                    teto_inss, deducao_dependente_irrf,
+                    razao_social, cnpj, endereco_empresa, telefone_empresa, email_empresa,
+                    ativo, validado_por_profissional,
                     atualizado_em, codigo, criado_em
-                ) VALUES ({P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P})
+                ) VALUES ({P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P})
                 RETURNING id;
             """
             sql_sqlite = f"""
@@ -154,9 +175,11 @@ class FolhaService:
                     horas_mensais_padrao, dias_mes_padrao, percentual_he_padrao,
                     percentual_he_extra, percentual_adicional_noturno, aplicar_reducao_noturna,
                     fator_reducao_noturna, aplicar_inss, aplicar_irrf, aliquota_fgts,
-                    teto_inss, deducao_dependente_irrf, ativo, validado_por_profissional,
+                    teto_inss, deducao_dependente_irrf,
+                    razao_social, cnpj, endereco_empresa, telefone_empresa, email_empresa,
+                    ativo, validado_por_profissional,
                     atualizado_em, codigo, criado_em
-                ) VALUES ({P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P});
+                ) VALUES ({P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P},{P});
             """
             param_id = self._insert_id(cursor, conn, sql_pg, sql_sqlite, params_values + (codigo, agora))
 
@@ -190,8 +213,65 @@ class FolhaService:
         return colab
 
     # ──────────────────────────────────────────────────────────
-    # Ciclo de Vida da Folha de Pagamento
+    # Ciclo de Vida da Folha de Pagamento & Simulação
     # ──────────────────────────────────────────────────────────
+
+    def simular_folha(
+        self,
+        colaborador_id: int,
+        competencia: str,
+        periodo_inicio: Optional[str] = None,
+        periodo_fim: Optional[str] = None,
+        data_pagamento: Optional[str] = None,
+        dias_trabalhados: float = 30.0,
+        dias_mes: int = 30,
+        horas_divisor: float = 220.0,
+        eventos: Optional[List[Dict[str, Any]]] = None,
+        observacoes: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Calcula a folha em memória SEM persistir no banco de dados.
+        Ideal para prévia em tempo real na interface web e conferência instantânea.
+        """
+        colab = self.obter_dados_colaborador(colaborador_id)
+        salario_base = float(colab.get("salario_base", 0.0))
+        num_dependentes = int(colab.get("total_dependentes", 0))
+
+        comp = competencia.strip()
+        partes_comp = comp.split("-")
+        if len(partes_comp) != 2 or not (len(partes_comp[0]) == 4 and len(partes_comp[1]) == 2):
+            raise FolhaValidacaoException({"competencia": "A competência deve estar no formato AAAA-MM (ex: 2026-10)."})
+
+        param = self.obter_parametro_vigente()
+        calc_result = processar_calculo_folha(
+            salario_base=salario_base,
+            dias_trabalhados=dias_trabalhados,
+            dias_mes=dias_mes,
+            divisor_horas=horas_divisor,
+            eventos_informados=eventos or [],
+            numero_dependentes=num_dependentes,
+            parametros_config={
+                "percentual_noturno": float(param.get("percentual_adicional_noturno", 20.0)),
+                "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
+                "fator_reducao_noturna": float(param.get("fator_reducao_noturna", 1.142857)),
+                "aplicar_inss": bool(param.get("aplicar_inss", 1)),
+                "aplicar_irrf": bool(param.get("aplicar_irrf", 1)),
+                "aliquota_fgts": float(param.get("aliquota_fgts", 8.0)),
+                "teto_inss": float(param.get("teto_inss", 8157.41)),
+                "deducao_dependente_irrf": float(param.get("deducao_dependente_irrf", 189.59))
+            }
+        )
+
+        return {
+            "colaborador": colab,
+            "competencia": comp,
+            "periodo_inicio": periodo_inicio or f"{comp}-01",
+            "periodo_fim": periodo_fim or f"{comp}-30",
+            "data_pagamento": data_pagamento,
+            "resumo": calc_result["resumo"],
+            "itens": calc_result["itens"],
+            "parametro": param
+        }
 
     def criar_ou_atualizar_folha(
         self,
@@ -603,4 +683,125 @@ class FolhaService:
         conn.commit()
         conn.close()
         return True
+
+    def gerar_folhas_competencia(
+        self,
+        competencia: str,
+        usuario: str = "Sistema/Administrador",
+        substituir_existentes: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Gera e calcula em lote as folhas de pagamento de todos os colaboradores ativos
+        para a competência especificada.
+        """
+        import calendar
+        comp = competencia.strip()
+        partes = comp.split("-")
+        if len(partes) != 2 or not (len(partes[0]) == 4 and len(partes[1]) == 2):
+            raise FolhaValidacaoException({"competencia": "A competência deve estar no formato AAAA-MM (ex: 2026-10)."})
+
+        ano = int(partes[0])
+        mes = int(partes[1])
+        dias_mes = calendar.monthrange(ano, mes)[1]
+        periodo_ini = f"{comp}-01"
+        periodo_fim = f"{comp}-{dias_mes:02d}"
+
+        # Buscar colaboradores ativos
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, nome_completo, salario_base FROM colaboradores WHERE situacao = 'ativo' ORDER BY nome_completo ASC;")
+        colaboradores = self._fetchall(cursor)
+        conn.close()
+
+        criados = 0
+        atualizados = 0
+        ignorados = 0
+        erros = []
+
+        for colab in colaboradores:
+            colab_id = colab["id"]
+            conn = self._conn()
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT id, situacao FROM folhas_pagamento WHERE colaborador_id = {P} AND competencia = {P};", (colab_id, comp))
+            folha_existente = cursor.fetchone()
+            conn.close()
+
+            if folha_existente:
+                folha_id = folha_existente[0]
+                situacao = folha_existente[1]
+                if situacao == "fechada":
+                    ignorados += 1
+                    continue
+                if not substituir_existentes:
+                    ignorados += 1
+                    continue
+                try:
+                    self.criar_ou_atualizar_folha(
+                        colaborador_id=colab_id,
+                        competencia=comp,
+                        periodo_inicio=periodo_ini,
+                        periodo_fim=periodo_fim,
+                        dias_trabalhados=30.0,
+                        dias_mes=30,
+                        usuario=usuario,
+                        folha_id_existente=folha_id
+                    )
+                    atualizados += 1
+                except Exception as e:
+                    erros.append({"colaborador_id": colab_id, "nome": colab["nome_completo"], "erro": str(e)})
+            else:
+                try:
+                    self.criar_ou_atualizar_folha(
+                        colaborador_id=colab_id,
+                        competencia=comp,
+                        periodo_inicio=periodo_ini,
+                        periodo_fim=periodo_fim,
+                        dias_trabalhados=30.0,
+                        dias_mes=30,
+                        usuario=usuario
+                    )
+                    criados += 1
+                except Exception as e:
+                    erros.append({"colaborador_id": colab_id, "nome": colab["nome_completo"], "erro": str(e)})
+
+        return {
+            "competencia": comp,
+            "total_colaboradores_ativos": len(colaboradores),
+            "criados": criados,
+            "atualizados": atualizados,
+            "ignorados": ignorados,
+            "erros": erros
+        }
+
+    def fechar_competencia(self, competencia: str, usuario: str = "Sistema/Administrador") -> Dict[str, Any]:
+        """
+        Homologa e fecha em lote todas as folhas calculadas da competência informada.
+        """
+        comp = competencia.strip()
+        partes = comp.split("-")
+        if len(partes) != 2 or not (len(partes[0]) == 4 and len(partes[1]) == 2):
+            raise FolhaValidacaoException({"competencia": "A competência deve estar no formato AAAA-MM (ex: 2026-10)."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT id FROM folhas_pagamento WHERE competencia = {P} AND situacao != 'fechada';", (comp,))
+        folhas_abertas = cursor.fetchall()
+        conn.close()
+
+        fechadas = 0
+        for f in folhas_abertas:
+            fid = f[0]
+            try:
+                self.fechar_folha(fid, usuario=usuario)
+                fechadas += 1
+            except Exception:
+                pass
+
+        return {
+            "competencia": comp,
+            "fechadas": fechadas
+        }
+
 

@@ -13,6 +13,10 @@ import os
 import sqlite3
 import tempfile
 from datetime import datetime
+from decimal import Decimal
+
+# Conjunto de alvos de banco de dados ja inicializados neste processo
+_INITIALIZED_TARGETS = set()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuracao de Ambiente e Drivers
@@ -319,6 +323,11 @@ _DDL_FOLHA_PARAMETROS_PG = """
         aliquota_fgts               NUMERIC(5,2) NOT NULL DEFAULT 8.00,
         teto_inss                   NUMERIC(15,2) NOT NULL DEFAULT 8157.41,
         deducao_dependente_irrf     NUMERIC(15,2) NOT NULL DEFAULT 189.59,
+        razao_social                TEXT DEFAULT 'PORTAL DP & RH LTDA',
+        cnpj                        TEXT DEFAULT '12.345.678/0001-90',
+        endereco_empresa            TEXT DEFAULT 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
+        telefone_empresa            TEXT DEFAULT '(11) 3456-7890',
+        email_empresa               TEXT DEFAULT 'contato@portaldprh.com.br',
         ativo                       INTEGER NOT NULL DEFAULT 1,
         validado_por_profissional   INTEGER NOT NULL DEFAULT 0,
         criado_em                   TEXT NOT NULL,
@@ -345,6 +354,11 @@ _DDL_FOLHA_PARAMETROS_SQLITE = """
         aliquota_fgts               REAL NOT NULL DEFAULT 8.00,
         teto_inss                   REAL NOT NULL DEFAULT 8157.41,
         deducao_dependente_irrf     REAL NOT NULL DEFAULT 189.59,
+        razao_social                TEXT DEFAULT 'PORTAL DP & RH LTDA',
+        cnpj                        TEXT DEFAULT '12.345.678/0001-90',
+        endereco_empresa            TEXT DEFAULT 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
+        telefone_empresa            TEXT DEFAULT '(11) 3456-7890',
+        email_empresa               TEXT DEFAULT 'contato@portaldprh.com.br',
         ativo                       INTEGER NOT NULL DEFAULT 1,
         validado_por_profissional   INTEGER NOT NULL DEFAULT 0,
         criado_em                   TEXT NOT NULL,
@@ -430,10 +444,10 @@ _DDL_FOLHA_ITENS = """
         codigo_evento       TEXT NOT NULL,
         descricao           TEXT NOT NULL,
         tipo                TEXT NOT NULL CHECK (tipo IN ('provento', 'desconto', 'informativo')),
-        referencia          REAL DEFAULT 0.0,
+        referencia          {num_type} DEFAULT 0.0,
         unidade_referencia  TEXT,
-        valor_unitario      REAL DEFAULT 0.0,
-        valor_total         REAL NOT NULL DEFAULT 0.0,
+        valor_unitario      {num_type} DEFAULT 0.0,
+        valor_total         {num_type} NOT NULL DEFAULT 0.0,
         origem              TEXT NOT NULL DEFAULT 'calculado'
                             CHECK (origem IN ('sistema', 'calculado', 'manual', 'importado')),
         memoria_calculo     TEXT,
@@ -481,16 +495,22 @@ _DDL_AUDITORIA_AUTENTICACAO_SQLITE = """
 # Inicializacao
 # ─────────────────────────────────────────────────────────────────────────────
 
-def init_db(db_path: str = None, auto_provision: bool = True):
+def init_db(db_path: str = None, auto_provision: bool = True, force: bool = False):
     """
     Cria as tabelas e indices necessarios se nao existirem.
     Funciona tanto com PostgreSQL quanto com SQLite.
+    Possui cache para evitar execucoes redundantes de DDL em conexoes serverless (Neon/PgBouncer).
     """
+    target_key = db_path if db_path else ("PG:" + get_database_url() if _usar_postgres(db_path) else "SQLITE_DEFAULT")
+    if not force and target_key in _INITIALIZED_TARGETS:
+        return
+
     pg = _usar_postgres(db_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
 
     serial = "SERIAL" if pg else "INTEGER"
+    num_type = "NUMERIC(15,2)" if pg else "REAL"
 
     cursor.execute(_DDL_COLABORADORES_PG if pg else _DDL_COLABORADORES_SQLITE)
     cursor.execute(_DDL_DEPENDENTES.format(serial=serial))
@@ -499,7 +519,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     cursor.execute(_DDL_SESSOES)
     cursor.execute(_DDL_FOLHA_PARAMETROS_PG if pg else _DDL_FOLHA_PARAMETROS_SQLITE)
     cursor.execute(_DDL_FOLHAS_PAGAMENTO_PG if pg else _DDL_FOLHAS_PAGAMENTO_SQLITE)
-    cursor.execute(_DDL_FOLHA_ITENS.format(serial=serial))
+    cursor.execute(_DDL_FOLHA_ITENS.format(serial=serial, num_type=num_type))
     cursor.execute(_DDL_FOLHA_HISTORICO.format(serial=serial))
     cursor.execute(_DDL_AUDITORIA_AUTENTICACAO_PG if pg else _DDL_AUDITORIA_AUTENTICACAO_SQLITE)
 
@@ -530,7 +550,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         except Exception:
             pass
 
-    # Colunas complementares idempotentes de schema para PostgreSQL (SPEC-03 e SPEC-03.1)
+    # Colunas complementares idempotentes de schema para PostgreSQL (SPEC-03 e SPEC-03.1, Migração 006)
     if pg:
         colunas_extras = [
             "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
@@ -548,8 +568,28 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS filial_id TEXT;",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresas_autorizadas TEXT;",
+            "ALTER TABLE folha_itens ALTER COLUMN referencia TYPE NUMERIC(15,2);",
+            "ALTER TABLE folha_itens ALTER COLUMN valor_unitario TYPE NUMERIC(15,2);",
+            "ALTER TABLE folha_itens ALTER COLUMN valor_total TYPE NUMERIC(15,2);",
+            "ALTER TABLE folha_parametros ADD COLUMN IF NOT EXISTS razao_social TEXT DEFAULT 'PORTAL DP & RH LTDA';",
+            "ALTER TABLE folha_parametros ADD COLUMN IF NOT EXISTS cnpj TEXT DEFAULT '12.345.678/0001-90';",
+            "ALTER TABLE folha_parametros ADD COLUMN IF NOT EXISTS endereco_empresa TEXT DEFAULT 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP';",
+            "ALTER TABLE folha_parametros ADD COLUMN IF NOT EXISTS telefone_empresa TEXT DEFAULT '(11) 3456-7890';",
+            "ALTER TABLE folha_parametros ADD COLUMN IF NOT EXISTS email_empresa TEXT DEFAULT 'contato@portaldprh.com.br';",
         ]
         for col_sql in colunas_extras:
+            try:
+                cursor.execute(col_sql)
+            except Exception:
+                pass
+    else:
+        for col_sql in [
+            "ALTER TABLE folha_parametros ADD COLUMN razao_social TEXT DEFAULT 'PORTAL DP & RH LTDA';",
+            "ALTER TABLE folha_parametros ADD COLUMN cnpj TEXT DEFAULT '12.345.678/0001-90';",
+            "ALTER TABLE folha_parametros ADD COLUMN endereco_empresa TEXT DEFAULT 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP';",
+            "ALTER TABLE folha_parametros ADD COLUMN telefone_empresa TEXT DEFAULT '(11) 3456-7890';",
+            "ALTER TABLE folha_parametros ADD COLUMN email_empresa TEXT DEFAULT 'contato@portaldprh.com.br';",
+        ]:
             try:
                 cursor.execute(col_sql)
             except Exception:
@@ -568,14 +608,18 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                     horas_mensais_padrao, dias_mes_padrao, percentual_he_padrao,
                     percentual_he_extra, percentual_adicional_noturno, aplicar_reducao_noturna,
                     fator_reducao_noturna, aplicar_inss, aplicar_irrf, aliquota_fgts,
-                    teto_inss, deducao_dependente_irrf, ativo, validado_por_profissional,
+                    teto_inss, deducao_dependente_irrf, razao_social, cnpj, endereco_empresa,
+                    telefone_empresa, email_empresa, ativo, validado_por_profissional,
                     criado_em, atualizado_em
-                ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark});
+                ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark});
             """, (
                 "PADRAO_CLT_2026", "Parâmetros Gerais CLT 220h / Vigência 2026 (Padrão)",
                 "2026-01-01", None,
                 220.0, 30, 50.0, 100.0, 20.0, 0, 1.142857,
-                1, 1, 8.0, 8157.41, 189.59, 1, 1,
+                1, 1, 8.0, 8157.41, 189.59,
+                "PORTAL DP & RH LTDA", "12.345.678/0001-90",
+                "Av. Paulista, 1000 - Bela Vista, São Paulo - SP", "(11) 3456-7890", "contato@portaldprh.com.br",
+                1, 1,
                 agora, agora
             ))
     except Exception:
@@ -583,6 +627,8 @@ def init_db(db_path: str = None, auto_provision: bool = True):
 
     conn.commit()
     conn.close()
+
+    _INITIALIZED_TARGETS.add(target_key)
 
     if auto_provision:
         try:
@@ -600,11 +646,16 @@ def init_db(db_path: str = None, auto_provision: bool = True):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def row_to_dict(cursor, row, db_path: str = None) -> dict:
-    """Converte uma linha em dicionario independente do driver."""
+    """Converte uma linha em dicionario independente do driver e serializa Decimals como float."""
     if _usar_postgres(db_path):
         cols = [desc[0] for desc in cursor.description]
-        return dict(zip(cols, row))
-    return dict(row)  # SQLite row_factory=sqlite3.Row
+        d = dict(zip(cols, row))
+    else:
+        d = dict(row)  # SQLite row_factory=sqlite3.Row
+    for k, v in list(d.items()):
+        if isinstance(v, Decimal):
+            d[k] = float(v)
+    return d
 
 
 def fetchone_dict(cursor, db_path: str = None):

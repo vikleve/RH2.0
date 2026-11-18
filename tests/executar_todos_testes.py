@@ -22,7 +22,9 @@ from tests.test_colaboradores import TestModuloColaboradores
 from tests.test_folha_api import TestFolhaApi
 from tests.test_folha_calculos import TestFolhaCalculos
 from tests.test_folha_service import TestFolhaService
+from tests.test_persistencia_postgres import TestConfiguracaoBanco
 from tests.test_rate_limit_csrf import TestAutenticacaoRH20
+from tests.test_responsividade_mobile import TestResponsividadeMobile
 
 
 def executar():
@@ -49,7 +51,13 @@ def executar():
     # 4. Testes de API In-Memory da Folha (Endpoints REST protegidos)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaApi))
 
-    # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
+    # 5. Testes de Persistência Dual-Mode e Neon PostgreSQL (SPEC-02, SPEC-03)
+    suite.addTests(carregador.loadTestsFromTestCase(TestConfiguracaoBanco))
+
+    # 6. Testes de Responsividade Mobile e UX em Dispositivos Móveis
+    suite.addTests(carregador.loadTestsFromTestCase(TestResponsividadeMobile))
+
+    # 7. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"
     if executar_sockets:
         try:
