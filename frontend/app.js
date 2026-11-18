@@ -1889,12 +1889,8 @@ const FolhaManager = {
       const isPendente = evCat && evCat.situacao === 'PENDENTE_VALIDACAO';
 
       tr.innerHTML = `
-        <td>
-          <select class="form-control select-control rub-tipo" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.35rem 0.5rem; font-weight: 600;">
-            <option value="provento" ${rub.tipo === 'provento' ? 'selected' : ''}>Provento (+)</option>
-            <option value="desconto" ${rub.tipo === 'desconto' ? 'selected' : ''}>Desconto (-)</option>
-            <option value="informativo" ${rub.tipo === 'informativo' ? 'selected' : ''}>Informativo (não altera o líquido)</option>
-          </select>
+        <td style="font-size: 0.78rem; font-weight: 700; color: #1e3a8a; text-align: center; vertical-align: middle;">
+          ${rub.codigo ? `<span style="background:#e0e7ff;padding:2px 6px;border-radius:4px;">${rub.codigo}</span>` : '<span style="color:#94a3b8;">—</span>'}
         </td>
         <td>
           <div style="display: flex; flex-direction: column; gap: 0.35rem;">
@@ -1915,7 +1911,10 @@ const FolhaManager = {
           <input type="number" class="form-control rub-ref" data-idx="${idx}" value="${rub.referencia ?? 1}" min="0" step="0.5" style="font-size: 0.82rem; padding: 0.35rem; text-align: center;">
         </td>
         <td>
-          <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total ?? 0}" min="0" step="0.01" style="font-size: 0.82rem; padding: 0.35rem; font-weight: 600;">
+          ${rub.tipo !== 'desconto' ? `<input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total ?? 0}" min="0" step="0.01" style="font-size: 0.82rem; padding: 0.35rem; font-weight: 600; color: #15803d;">` : `<span style="color:#94a3b8;font-size:0.82rem;display:block;text-align:center;">—</span>`}
+        </td>
+        <td>
+          ${rub.tipo === 'desconto' ? `<input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total ?? 0}" min="0" step="0.01" style="font-size: 0.82rem; padding: 0.35rem; font-weight: 600; color: #dc2626;">` : `<span style="color:#94a3b8;font-size:0.82rem;display:block;text-align:center;">—</span>`}
         </td>
         <td style="text-align: center;">
           <button type="button" class="btn-remover-rubrica rub-remover" data-idx="${idx}" title="Excluir este evento">
@@ -1930,26 +1929,8 @@ const FolhaManager = {
       corpo.appendChild(tr);
     });
 
-    corpo.querySelectorAll('.rub-tipo').forEach(el => {
-      el.addEventListener('change', (e) => {
-        const idx = Number(e.target.dataset.idx);
-        const novoTipo = e.target.value;
-        this.rubricasManuais[idx].tipo = novoTipo;
-        if (!this.rubricasManuais[idx].isCustom) {
-          if (novoTipo === 'desconto') {
-            this.rubricasManuais[idx].codigo = '0520';
-            this.rubricasManuais[idx].descricao = 'Adiantamento salarial';
-          } else {
-            this.rubricasManuais[idx].codigo = '0010';
-            this.rubricasManuais[idx].descricao = 'Horas extras 50%';
-          }
-          const vAuto = this.calcularValorAutomaticoEvento(this.rubricasManuais[idx].codigo, this.rubricasManuais[idx].referencia, novoTipo);
-          if (vAuto > 0) this.rubricasManuais[idx].valor_total = vAuto;
-        }
-        this.renderizarRubricasManuais();
-        this.atualizarPreviaCalculo();
-      });
-    });
+    // O tipo do evento é derivado automaticamente do catálogo ao selecionar o evento
+    // (o select de "Tipo" foi removido da UI — o tipo é inferido do catálogo)
 
     corpo.querySelectorAll('.rub-evento').forEach(el => {
       el.addEventListener('change', (e) => {
