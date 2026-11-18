@@ -1525,7 +1525,7 @@ body {
 /* Prévia da Folha */
 .folha-preview-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.75rem;
   background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
   color: #ffffff;

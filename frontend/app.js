@@ -2082,10 +2082,11 @@ const FolhaManager = {
       if (resp.ok) {
         const json = await resp.json();
         const d = json.dados;
-        document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_proporcional);
-        document.getElementById('preview-total-proventos').textContent = formatarMoeda(d.total_proventos);
-        document.getElementById('preview-total-descontos').textContent = formatarMoeda(d.total_descontos);
-        document.getElementById('preview-salario-liquido').textContent = formatarMoeda(d.salario_liquido);
+        document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_contratual || d.salario_base_proporcional);
+        document.getElementById('preview-base-inss').textContent = formatarMoeda(d.base_inss);
+        document.getElementById('preview-base-fgts').textContent = formatarMoeda(d.base_fgts);
+        document.getElementById('preview-fgts-mes').textContent = formatarMoeda(d.valor_fgts_informativo);
+        document.getElementById('preview-base-irrf').textContent = formatarMoeda(d.base_irrf);
         if (exibirAviso) {
           exibirToast('Simulação executada com sucesso pelo motor oficial do backend!', 'success');
         }
@@ -2139,10 +2140,11 @@ const FolhaManager = {
 
       exibirToast(`Folha #${folhaId} recalculada e persistida com sucesso no banco de dados!`, 'success');
       const d = resJson.dados;
-      document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_proporcional);
-      document.getElementById('preview-total-proventos').textContent = formatarMoeda(d.total_proventos);
-      document.getElementById('preview-total-descontos').textContent = formatarMoeda(d.total_descontos);
-      document.getElementById('preview-salario-liquido').textContent = formatarMoeda(d.salario_liquido);
+      document.getElementById('preview-salario-prop').textContent = formatarMoeda(d.salario_base_contratual || d.salario_base_proporcional);
+      document.getElementById('preview-base-inss').textContent = formatarMoeda(d.base_inss);
+      document.getElementById('preview-base-fgts').textContent = formatarMoeda(d.base_fgts);
+      document.getElementById('preview-fgts-mes').textContent = formatarMoeda(d.valor_fgts_informativo);
+      document.getElementById('preview-base-irrf').textContent = formatarMoeda(d.base_irrf);
       await this.carregarFolhas();
     } catch (e) {
       console.error('Erro ao recalcular folha:', e);
@@ -2213,11 +2215,17 @@ const FolhaManager = {
     totDescontos += estInss;
 
     const liquido = Math.max(0, totProventos - totDescontos);
+    // Estimativa local das bases (usada apenas quando o backend está indisponível)
+    const baseInssEst = totProventos;
+    const baseFgtsEst = totProventos;
+    const fgtsMesEst = baseFgtsEst * 0.08;
+    const baseIrrfEst = Math.max(0, baseInssEst - estInss);
 
-    document.getElementById('preview-salario-prop').textContent = formatarMoeda(sbProp);
-    document.getElementById('preview-total-proventos').textContent = formatarMoeda(totProventos);
-    document.getElementById('preview-total-descontos').textContent = formatarMoeda(totDescontos);
-    document.getElementById('preview-salario-liquido').textContent = formatarMoeda(liquido);
+    document.getElementById('preview-salario-prop').textContent = formatarMoeda(sb);
+    document.getElementById('preview-base-inss').textContent = formatarMoeda(baseInssEst);
+    document.getElementById('preview-base-fgts').textContent = formatarMoeda(baseFgtsEst);
+    document.getElementById('preview-fgts-mes').textContent = formatarMoeda(fgtsMesEst);
+    document.getElementById('preview-base-irrf').textContent = formatarMoeda(baseIrrfEst);
   },
 
   atualizarPreviaCalculo() {
