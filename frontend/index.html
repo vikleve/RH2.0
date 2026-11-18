@@ -1346,6 +1346,416 @@
             </div>
           </section>
         </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 18: INTEGRAÇÕES & BANCOS (RF-097, RF-178)    -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-integracoes" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Integrações Bancárias — Remessa CNAB 240</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Geração oficial de arquivo bancário padrão FEBRABAN para pagamento de salários em conta</p>
+            </div>
+          </div>
+
+          <div class="filters-card">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem;">Gerador de Remessa de Salários</h3>
+            <div class="filters-row">
+              <div class="form-group">
+                <label for="cnab-banco-select">Banco do Convênio</label>
+                <select id="cnab-banco-select" class="form-control">
+                  <option value="001">001 — Banco do Brasil</option>
+                  <option value="341">341 — Banco Itaú</option>
+                  <option value="237">237 — Banco Bradesco</option>
+                  <option value="033">033 — Santander Brasil</option>
+                  <option value="104">104 — Caixa Econômica Federal</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cnab-competencia-input">Competência da Folha</label>
+                <input type="month" id="cnab-competencia-input" class="form-control" value="2026-03">
+              </div>
+              <div class="form-group">
+                <label for="cnab-data-pagamento">Data de Pagamento</label>
+                <input type="date" id="cnab-data-pagamento" class="form-control" value="2026-04-05">
+              </div>
+              <div class="form-group" style="align-self: flex-end;">
+                <button id="btn-gerar-cnab240" class="btn btn-primary" type="button">Gerar Remessa CNAB 240</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="table-card mt-3">
+            <div class="table-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="font-size: 1.1rem; font-weight: 600;">Prévia do Lote de Pagamento Gerado</h3>
+              <button id="btn-download-cnab" class="btn btn-outline btn-sm hidden" type="button">Download Arquivo .REM</button>
+            </div>
+            <div class="p-3" style="padding: 1.25rem;">
+              <div id="cnab-resumo-lote" style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem;">
+                Selecione os parâmetros e clique em "Gerar Remessa CNAB 240" para consolidar as contas bancárias dos colaboradores.
+              </div>
+              <pre id="cnab-conteudo-preview" style="background: #0f172a; color: #38bdf8; padding: 1rem; border-radius: 6px; font-size: 0.75rem; overflow-x: auto; max-height: 280px; display: none;"></pre>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 20: AUDITORIA & RASTREABILIDADE (RT-01, RF-191)-->
+        <!-- ============================================================ -->
+        <div id="view-modulo-auditoria" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Trilha de Auditoria &amp; Rastreabilidade Geral</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Registro imutável de todas as operações, alterações, cálculos e acessos ao sistema (RT-01)</p>
+            </div>
+            <button id="btn-atualizar-auditoria" class="btn btn-outline" type="button">Atualizar Trilha</button>
+          </div>
+
+          <section class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-auditoria">
+                <thead>
+                  <tr>
+                    <th>Data / Hora</th>
+                    <th>Usuário Operador</th>
+                    <th>Ação</th>
+                    <th>Recurso</th>
+                    <th>IP Origem</th>
+                    <th>Detalhes da Operação</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-auditoria">
+                  <tr><td colspan="6" class="text-center text-muted" style="padding: 2rem;">Carregando registros de auditoria...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DO MÓDULO 17: MULTIEMPRESA & GOVERNANÇA (RF-171 A RF-180)-->
+        <!-- ============================================================ -->
+        <div id="view-modulo-multiempresa" class="platform-view hidden">
+          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Gestão Multiempresa, Filiais &amp; Centros de Custo</h2>
+              <p style="color: var(--text-muted); font-size: 0.88rem;">Estrutura corporativa, isolamento tenant e governança descentralizada</p>
+            </div>
+          </div>
+
+          <section class="table-card">
+            <div class="table-card-header">
+              <h3 style="font-size: 1.1rem; font-weight: 600;">Empresas do Grupo Econômico</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="tabela-multiempresa">
+                <thead>
+                  <tr>
+                    <th>Razão Social</th>
+                    <th>Nome Fantasia</th>
+                    <th>CNPJ</th>
+                    <th>CNAE</th>
+                    <th>Grau de Risco</th>
+                    <th>FAP</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-multiempresa">
+                  <tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Carregando empresas...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+
+    </main>
+    </div> <!-- /.platform-layout -->
+
+    <!-- ============================================================ -->
+    <!-- MODAL: FORMULÁRIO DE CADASTRO / EDIÇÃO                       -->
+    <!-- ============================================================ -->
+    <div id="modal-form" class="modal-overlay hidden" role="dialog" aria-modal="true"
+      aria-labelledby="form-modal-title">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <h2 id="form-modal-title" class="modal-title">Cadastrar Novo Colaborador</h2>
+            <p class="modal-subtitle">Preencha os dados cadastrais conforme a especificação do Departamento Pessoal.</p>
+          </div>
+          <button class="btn-close" id="btn-fechar-form-modal" aria-label="Fechar">&times;</button>
+        </div>
+
+        <form id="colaborador-form" novalidate>
+          <input type="hidden" id="colaborador-id">
+
+          <div class="modal-body modal-scroll">
+            <!-- Alerta de Erro Geral -->
+            <div id="form-alerta-erro" class="alert alert-danger hidden"></div>
+
+            <!-- SEÇÃO A: DADOS PESSOAIS -->
+            <fieldset class="form-section">
+              <legend class="section-legend">
+                <span class="section-number">A</span>
+                Dados Pessoais
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-8">
+                  <label for="campo-nome">Nome Completo <span class="required">*</span></label>
+                  <input type="text" id="campo-nome" class="form-control" placeholder="Ex: Maria da Silva Souza"
+                    required>
+                  <span class="field-error" id="erro-nome_completo"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-cpf">CPF <span class="required">*</span></label>
+                  <input type="text" id="campo-cpf" class="form-control" placeholder="000.000.000-00" maxlength="14"
+                    required>
+                  <span class="field-error" id="erro-cpf"></span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="campo-rg">RG <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-rg" class="form-control" placeholder="Ex: 12.345.678-9">
+                  <span class="field-error" id="erro-rg"></span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="campo-data-nasc">Data de Nascimento <span class="required">*</span></label>
+                  <input type="date" id="campo-data-nasc" class="form-control" required>
+                  <span class="field-error" id="erro-data_nascimento"></span>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO B: DADOS DE CONTATO E ENDEREÇO -->
+            <fieldset class="form-section">
+              <legend class="section-legend">
+                <span class="section-number">B</span>
+                Dados de Contato &amp; Endereço
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-6">
+                  <label for="campo-email">E-mail Corporativo/Pessoal <span class="required">*</span></label>
+                  <input type="email" id="campo-email" class="form-control" placeholder="colaborador@empresa.com.br"
+                    required>
+                  <span class="field-error" id="erro-email"></span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="campo-telefone">Telefone / WhatsApp <span class="text-muted">(Opcional)</span></label>
+                  <input type="tel" id="campo-telefone" class="form-control" placeholder="(00) 00000-0000">
+                  <span class="field-error" id="erro-telefone"></span>
+                </div>
+
+                <div class="form-group col-span-8">
+                  <label for="campo-logradouro">Logradouro / Rua <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-logradouro" class="form-control" placeholder="Av. Brasil">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-numero">Número <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-numero" class="form-control" placeholder="Ex: 120">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-bairro">Bairro <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-bairro" class="form-control" placeholder="Centro">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-cidade">Cidade <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-cidade" class="form-control" placeholder="São Paulo">
+                </div>
+
+                <div class="form-group col-span-2">
+                  <label for="campo-uf">UF <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-uf" class="form-control" placeholder="SP" maxlength="2">
+                </div>
+
+                <div class="form-group col-span-2">
+                  <label for="campo-cep">CEP <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-cep" class="form-control" placeholder="00000-000" maxlength="9">
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO C: DADOS PROFISSIONAIS -->
+            <fieldset class="form-section">
+              <legend class="section-legend">
+                <span class="section-number">C</span>
+                Dados Profissionais &amp; Vínculo
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-4">
+                  <label for="campo-matricula">Matrícula (ID Único) <span class="required">*</span></label>
+                  <input type="text" id="campo-matricula" class="form-control" placeholder="Ex: RH-2024" required>
+                  <span class="field-error" id="erro-matricula"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-data-adm">Data de Admissão <span class="required">*</span></label>
+                  <input type="date" id="campo-data-adm" class="form-control" required>
+                  <span class="field-error" id="erro-data_admissao"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-situacao">Situação do Vínculo <span class="required">*</span></label>
+                  <select id="campo-situacao" class="form-control select-control" required>
+                    <option value="ativo" selected>Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                  <span class="field-error" id="erro-situacao"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-cargo">Cargo ou Função <span class="required">*</span></label>
+                  <input type="text" id="campo-cargo" class="form-control"
+                    placeholder="Ex: Analista de Recursos Humanos" required>
+                  <span class="field-error" id="erro-cargo"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-setor">Setor / Departamento <span class="required">*</span></label>
+                  <select id="campo-setor" class="form-control select-control" required>
+                    <option value="">Selecione um setor...</option>
+                    <option value="Recursos Humanos">Recursos Humanos</option>
+                    <option value="Departamento Pessoal">Departamento Pessoal</option>
+                    <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+                    <option value="Financeiro">Financeiro</option>
+                    <option value="Operações">Operações</option>
+                    <option value="Comercial">Comercial</option>
+                    <option value="Administrativo">Administrativo</option>
+                  </select>
+                  <span class="field-error" id="erro-setor"></span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label for="campo-salario">Salário-base (R$) <span class="required">*</span></label>
+                  <input type="text" id="campo-salario" class="form-control" placeholder="0,00" required>
+                  <span class="field-error" id="erro-salario_base"></span>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO D: DEPENDENTES -->
+            <fieldset class="form-section">
+              <div class="section-legend-row">
+                <legend class="section-legend">
+                  <span class="section-number">D</span>
+                  Dependentes (Para Fins Cadastrais e Futuro IRRF/Salário-família)
+                </legend>
+                <button type="button" id="btn-adicionar-dependente" class="btn btn-outline btn-sm">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  + Adicionar Dependente
+                </button>
+              </div>
+
+              <div id="container-dependentes" class="dependentes-list">
+                <!-- Linhas de dependentes inseridas dinamicamente -->
+              </div>
+              <div id="dependentes-vazio" class="dependentes-empty-hint">
+                Nenhum dependente informado para este colaborador.
+              </div>
+            </fieldset>
+
+            <!-- SEÇÃO E: CONTROLE DE ALTERAÇÕES CADASTRAIS (RF-003) -->
+            <fieldset id="secao-controle-alteracoes" class="form-section hidden">
+              <legend class="section-legend">
+                <span class="section-number">E</span>
+                Controle de Alterações Cadastrais (RF-003)
+              </legend>
+              <div class="form-grid">
+                <div class="form-group col-span-12">
+                  <label for="campo-justificativa-alteracao">Justificativa / Motivo da Alteração Cadastral <span class="text-muted">(Opcional — Registrado na Trilha de Auditoria)</span></label>
+                  <input type="text" id="campo-justificativa-alteracao" class="form-control" placeholder="Ex: Promoção de cargo, atualização de endereço comprovada, retificação contratual...">
+                </div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-cancelar-form">Cancelar</button>
+            <button type="submit" class="btn btn-primary" id="btn-salvar-colaborador">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              Salvar Colaborador
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: VISUALIZAÇÃO DE DETALHES COMPLETOS E AUDITORIA       -->
+    <!-- ============================================================ -->
+    <div id="modal-detalhes" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="detalhes-nome">Ficha Cadastral do Colaborador</h2>
+            <p class="modal-subtitle" id="detalhes-matricula-sub">Matrícula: --</p>
+          </div>
+          <button class="btn-close" id="btn-fechar-detalhes">&times;</button>
+        </div>
+
+        <div class="modal-tabs">
+          <button class="modal-tab active" data-tab="tab-ficha">Ficha Cadastral</button>
+          <button class="modal-tab" data-tab="tab-dependentes">Dependentes (<span
+              id="detalhes-qtd-dep">0</span>)</button>
+          <button class="modal-tab" data-tab="tab-historico">Histórico de Alterações / Auditoria (<span id="detalhes-qtd-hist">0</span>)</button>
+        </div>
+
+        <div class="modal-body modal-scroll">
+          <!-- Aba 1: Ficha Cadastral -->
+          <div id="tab-ficha" class="tab-content active">
+            <div class="details-grid">
+              <div class="details-card">
+                <h4>Dados Pessoais</h4>
+                <p><strong>Nome:</strong> <span id="view-nome">--</span></p>
+                <p><strong>CPF:</strong> <span id="view-cpf">--</span></p>
+                <p><strong>RG:</strong> <span id="view-rg">--</span></p>
+                <p><strong>Data de Nascimento:</strong> <span id="view-nasc">--</span></p>
+              </div>
+
+              <div class="details-card">
+                <h4>Dados de Contato</h4>
+                <p><strong>E-mail:</strong> <span id="view-email">--</span></p>
+                <p><strong>Telefone:</strong> <span id="view-telefone">--</span></p>
+                <p><strong>Endereço:</strong> <span id="view-endereco">--</span></p>
+              </div>
+
+              <div class="details-card col-span-2">
+                <h4>Dados Profissionais &amp; Vínculo</h4>
+                <div class="details-subgrid">
+                  <p><strong>Matrícula:</strong> <span id="view-matricula">--</span></p>
+                  <p><strong>Data de Admissão:</strong> <span id="view-admissao">--</span></p>
+                  <p><strong>Cargo:</strong> <span id="view-cargo">--</span></p>
+                  <p><strong>Setor:</strong> <span id="view-setor">--</span></p>
+                  <p><strong>Salário-base:</strong> <span id="view-salario" class="text-money">--</span></p>
+                  <p><strong>Situação:</strong> <span id="view-situacao">--</span></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aba 2: Dependentes -->
+          <div id="tab-dependentes" class="tab-content">
+            <div id="detalhes-lista-dependentes" class="dependentes-view-list">
+              <!-- Renderizado dinamicamente -->
+            </div>
+          </div>
+
+          <!-- Aba 3: Histórico de Alterações -->
+          <div id="tab-historico" class="tab-content">
+            <div class="timeline" id="detalhes-timeline">
+              <!-- Linhas de auditoria renderizadas dinamicamente -->
             </div>
           </div>
         </div>
