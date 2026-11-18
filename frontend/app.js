@@ -1468,7 +1468,7 @@ const FolhaManager = {
       });
 
       if (resp.status === 401) {
-        AuthManager.exibirTelaLogin();
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         return;
       }
 
@@ -1847,6 +1847,7 @@ const FolhaManager = {
       return Number((vh * r).toFixed(2)); // Atrasos
     }
     return 0;
+  },
 
   montarOpcoesEventos(rub) {
     const eventos = this.catalogoEventos.filter(c => c.tipo === rub.tipo);

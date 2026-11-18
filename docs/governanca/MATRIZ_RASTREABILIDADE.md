@@ -301,6 +301,11 @@ Relação completa de todos os 64 testes automatizados em código que compõem o
 | `tests/test_autenticacao.py` | `test_ca_login_17_regressao_colaboradores` | RF-01, RF-02 (Operação sob Sessão) | **100% SUCESSO (PASS)** |
 | `tests/test_autenticacao.py` | `test_criptografia_pbkdf2_com_salt` | RNF-01, RN-03 (PBKDF2 com Salt Único) | **100% SUCESSO (PASS)** |
 | `tests/test_autenticacao.py` | `test_gov_002_02_bloqueio_inicializacao_sem_senha_segura` | GOV-002-02, RNF-01 (Bloqueio sem Senha Segura) | **100% SUCESSO (PASS)** |
+| `tests/test_frontend_integridade.py` | `test_app_js_tem_sintaxe_valida` | RF-40 (Login operante — INC-LOGIN-001) | **100% SUCESSO (PASS)** |
+| `tests/test_frontend_integridade.py` | `test_todo_id_usado_pelo_js_existe_no_html` | RF-40 (Inicialização do formulário de login — INC-LOGIN-001) | **100% SUCESSO (PASS)** |
+| `tests/test_frontend_integridade.py` | `test_index_html_balanceado_e_sem_ids_duplicados` | RF-40 (Integridade da interface — INC-LOGIN-001) | **100% SUCESSO (PASS)** |
+| `tests/test_frontend_integridade.py` | `test_elementos_do_login_existem` | RF-40 (Elementos da tela de login) | **100% SUCESSO (PASS)** |
+| `tests/e2e/login.e2e.js` (executado por `tests/e2e/run_login_e2e.sh`) | 16 verificações de ponta a ponta (login válido/inválido, token, `/me`, recarga, 2 usuários, logout, sessão expirada, 401 sem autenticação) | RF-40, RF-41, RF-43, RNF-01, RNF-03 | **16/16 OK** (execução manual com Playwright; não faz parte do `unittest`) |
 
 ---
 
