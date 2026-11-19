@@ -4,11 +4,13 @@ Atende aos requisitos de autenticação real (RF-40, RF-41, RF-43, RNF-01 a RNF-
 persistência durável e controle de acesso a endpoints protegidos.
 Executa de forma autônoma (localmente) e como Handler Serverless (Vercel).
 """
+from datetime import datetime, timedelta
 import http.cookies
 import http.server
 import json
 import os
 import socketserver
+from typing import Any
 import urllib.parse
 
 # Carrega variaveis de ambiente do arquivo .env (se existir)
@@ -80,8 +82,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         """Garante acesso ao ColaboradorService tanto em TCPServer quanto em Serverless Functions."""
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "colab_service"):
-                self.server.colab_service = ColaboradorService()
-            return self.server.colab_service
+                setattr(self.server, "colab_service", ColaboradorService())
+            return getattr(self.server, "colab_service")
 
         if getattr(self, "_local_colab_service", None) is None:
             global _global_colab_service
@@ -96,8 +98,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "auth_service"):
                 db_path = getattr(self.service, "db_path", None)
-                self.server.auth_service = AuthService(db_path=db_path)
-            return self.server.auth_service
+                setattr(self.server, "auth_service", AuthService(db_path=db_path))
+            return getattr(self.server, "auth_service")
 
         if getattr(self, "_local_auth_service", None) is None:
             global _global_auth_service
@@ -113,8 +115,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "folha_service"):
                 db_path = getattr(self.service, "db_path", None)
-                self.server.folha_service = FolhaService(db_path=db_path)
-            return self.server.folha_service
+                setattr(self.server, "folha_service", FolhaService(db_path=db_path))
+            return getattr(self.server, "folha_service")
 
         if getattr(self, "_local_folha_service", None) is None:
             global _global_folha_service
@@ -130,8 +132,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "plataforma_service"):
                 db_path = getattr(self.service, "db_path", None)
-                self.server.plataforma_service = PlataformaService(db_path=db_path)
-            return self.server.plataforma_service
+                setattr(self.server, "plataforma_service", PlataformaService(db_path=db_path))
+            return getattr(self.server, "plataforma_service")
 
         if getattr(self, "_local_plataforma_service", None) is None:
             global _global_plataforma_service
@@ -241,7 +243,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return True
 
-    def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None, extra_headers: dict = None):
+    def _enviar_json(
+        self,
+        status_code: int,
+        dados: dict[str, Any] | list[Any],
+        set_cookie: str | None = None,
+        delete_cookie: str | None = None,
+        extra_headers: dict[str, Any] | None = None,
+    ):
         """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store e suporte a cookies HttpOnly."""
         corpo = json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status_code)
@@ -1241,14 +1250,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
-def run_server(port: int = PORT, db_path: str = None):
+def run_server(port: int = PORT, db_path: str | None = None):
     """Inicia o servidor HTTP."""
     server_address = ("", port)
     httpd = socketserver.TCPServer(server_address, ApiColaboradorHandler)
-    httpd.colab_service = ColaboradorService(db_path=db_path)
-    httpd.auth_service = AuthService(db_path=db_path)
-    httpd.folha_service = FolhaService(db_path=db_path)
-    httpd.plataforma_service = PlataformaService(db_path=db_path)
+    setattr(httpd, "colab_service", ColaboradorService(db_path=db_path))
+    setattr(httpd, "auth_service", AuthService(db_path=db_path))
+    setattr(httpd, "folha_service", FolhaService(db_path=db_path))
+    setattr(httpd, "plataforma_service", PlataformaService(db_path=db_path))
     print(f"Servidor rodando em http://localhost:{port}")
     try:
         httpd.serve_forever()
