@@ -274,6 +274,7 @@ class AuthService:
             "usuario":       usuario["usuario"],
             "nome_completo": usuario["nome_completo"],
             "perfil":        usuario["perfil"],
+            "empresa_id":    usuario.get("empresa_id") or "a0000000-0000-0000-0000-000000000001",
         }, token
 
     # ──────────────────────────────────────────────────────────
@@ -310,6 +311,8 @@ class AuthService:
 
         usuario = self._row(cursor, row)
         conn.close()
+        if usuario and "empresa_id" not in usuario:
+            usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
         return usuario
 
     def encerrar_sessao(self, token: str, ip_origem: str = None) -> bool:
@@ -335,3 +338,117 @@ class AuthService:
             )
 
         return alterados > 0
+
+
+# ──────────────────────────────────────────────────────────
+# Matriz de Controle de Acesso RBAC Enterprise (8 Perfis)
+# ──────────────────────────────────────────────────────────
+
+PERFIS_ENTERPRISE = {
+    "superadmin": "Superadministrador Global da Plataforma",
+    "admin_empresa": "Administrador da Empresa / Organização",
+    "gestor_rh": "Gestor de Recursos Humanos e Pessoas",
+    "analista_dp": "Analista Especialista de Departamento Pessoal",
+    "financeiro": "Gestor Financeiro e Custos de Pessoal",
+    "contabilidade": "Contabilidade e Controladoria Fiscal",
+    "gestor_departamento": "Gestor de Departamento / Liderança de Equipe",
+    "colaborador": "Colaborador (Autoatendimento e Portal Próprio)",
+    # Perfis adicionais / legados para compatibilidade total
+    "administrador": "Administrador de Sistema (Legado)",
+    "analista_rh": "Analista de RH (Legado)",
+    "operador_dp": "Operador de DP (Legado)",
+    "gestor": "Gestor Departamental (Legado)",
+    "medico_sst": "Médico do Trabalho / SST (Legado)",
+    "auditor": "Auditor Fiscal e de Compliance (Legado)",
+}
+
+PERMISSOES_RBAC = {
+    # 1. Superadministrador e Administrador da Empresa
+    "superadmin": ["*"],
+    "administrador": ["*"],
+    "admin_empresa": ["*"],
+
+    # 2. Gestor de RH
+    "gestor_rh": [
+        "colaboradores:*", "admissoes:*", "ponto:*", "ferias:*", "afastamentos:*",
+        "beneficios:*", "sst:*", "pendencias:*", "metricas:*", "folha:visualizar",
+        "esocial:visualizar", "portal_gestor:*"
+    ],
+    "analista_rh": [
+        "colaboradores:*", "admissoes:*", "ponto:*", "ferias:*", "afastamentos:*",
+        "beneficios:*", "sst:*", "pendencias:*", "metricas:*", "folha:visualizar",
+        "portal_gestor:*"
+    ],
+
+    # 3. Analista de Departamento Pessoal
+    "analista_dp": [
+        "folha:*", "colaboradores:*", "admissoes:*", "ponto:*", "ferias:*",
+        "afastamentos:*", "rescisoes:*", "esocial:*", "cnab:*", "pendencias:*",
+        "metricas:*", "portal_gestor:*"
+    ],
+    "operador_dp": [
+        "folha:calcular", "folha:visualizar", "colaboradores:visualizar", "ponto:*",
+        "ferias:*", "afastamentos:*", "rescisoes:calcular", "rescisoes:visualizar",
+        "pendencias:*"
+    ],
+
+    # 4. Financeiro
+    "financeiro": [
+        "folha:visualizar", "rescisoes:visualizar", "metricas:*", "cnab:*",
+        "pendencias:visualizar"
+    ],
+
+    # 5. Contabilidade
+    "contabilidade": [
+        "folha:visualizar", "rescisoes:visualizar", "metricas:visualizar",
+        "esocial:visualizar", "relatorios:contabilidade"
+    ],
+
+    # 6. Gestor de Departamento
+    "gestor_departamento": [
+        "portal_gestor:*", "ponto:aprovar", "ponto:visualizar", "ferias:aprovar",
+        "ferias:visualizar", "colaboradores:equipe", "pendencias:equipe"
+    ],
+    "gestor": [
+        "portal_gestor:*", "ponto:aprovar", "ponto:visualizar", "ferias:aprovar",
+        "ferias:visualizar", "colaboradores:equipe", "pendencias:equipe"
+    ],
+
+    # 7. Colaborador (Portal do Colaborador)
+    "colaborador": [
+        "portal_colaborador:*", "holerite:meu", "ponto:meu", "ferias:minhas",
+        "informe:meu", "solicitacoes:minhas"
+    ],
+
+    # 8. Especialistas
+    "medico_sst": [
+        "sst:*", "afastamentos:*", "colaboradores:visualizar", "pendencias:visualizar"
+    ],
+    "auditor": [
+        "auditoria:*", "folha:visualizar", "colaboradores:visualizar", "ponto:visualizar",
+        "ferias:visualizar", "esocial:visualizar", "metricas:visualizar"
+    ],
+}
+
+
+def checar_permissao(perfil: str, permissao_requerida: str) -> bool:
+    """
+    Verifica se o perfil possui a permissão requerida no modelo RBAC.
+    Suporta wildcard '*' para acesso total ou prefixos como 'folha:*'.
+    """
+    if not perfil:
+        return False
+    permissoes = PERMISSOES_RBAC.get(perfil, [])
+    if "*" in permissoes:
+        return True
+    if permissao_requerida in permissoes:
+        return True
+
+    # Checar prefixo curinga ex: "folha:*" cobre "folha:visualizar"
+    if ":" in permissao_requerida:
+        modulo = permissao_requerida.split(":")[0]
+        if f"{modulo}:*" in permissoes:
+            return True
+
+    return False
+

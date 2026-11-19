@@ -425,6 +425,28 @@
               </button>
             </div>
           </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Portais Enterprise</div>
+            <div class="sidebar-menu">
+              <button class="sidebar-btn" data-view="portal-colaborador" id="btn-menu-portal-colaborador" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <span>Portal do Colaborador</span>
+              </button>
+              <button class="sidebar-btn" data-view="portal-gestor" id="btn-menu-portal-gestor" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Portal do Gestor</span>
+              </button>
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -1643,6 +1665,445 @@
               </table>
             </div>
           </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO PORTAL DO COLABORADOR (ENTERPRISE AUTOATENDIMENTO)      -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-portal-colaborador" class="platform-view">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Autoatendimento &bull; RH2.0 Enterprise</span>
+              <h2 class="view-title">Portal do Colaborador</h2>
+              <p class="view-subtitle">Consulte holerites, espelho de ponto eletrônico, recibos de férias e informes de rendimento.</p>
+            </div>
+            <div class="view-header-actions">
+              <button id="btn-colab-bater-ponto" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Registrar Ponto Web
+              </button>
+              <button id="btn-colab-solicitar-ferias" class="btn btn-outline" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                </svg>
+                Solicitar Férias
+              </button>
+            </div>
+          </div>
+
+          <!-- Card de Resumo do Colaborador -->
+          <div class="colab-profile-card">
+            <div class="colab-profile-header">
+              <div class="colab-avatar" id="colab-avatar">👤</div>
+              <div class="colab-details">
+                <h3 id="colab-nome-display">Colaborador Conectado</h3>
+                <p id="colab-cargo-display">Analista Operacional &bull; Matrícula: <strong id="colab-matricula-display">MAT-2026-001</strong></p>
+                <div class="colab-tags">
+                  <span class="badge-status badge-calculada" id="colab-situacao-badge">Ativo (CLT)</span>
+                  <span class="colab-tag-info" id="colab-admissao-display">Admissão: 01/02/2024</span>
+                  <span class="colab-tag-info" id="colab-departamento-display">Departamento: Operações Industriais</span>
+                </div>
+              </div>
+            </div>
+            <div class="colab-kpis-row">
+              <div class="colab-kpi-item">
+                <span class="colab-kpi-label">Saldo Banco de Horas</span>
+                <span class="colab-kpi-value text-success" id="colab-saldo-banco">+04:30h</span>
+              </div>
+              <div class="colab-kpi-item">
+                <span class="colab-kpi-label">Dias de Férias Disponíveis</span>
+                <span class="colab-kpi-value" id="colab-ferias-saldo">30 dias</span>
+              </div>
+              <div class="colab-kpi-item">
+                <span class="colab-kpi-label">Último Holerite</span>
+                <span class="colab-kpi-value text-primary" id="colab-ultimo-holerite">Competência 10/2026</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs do Portal do Colaborador -->
+          <div class="portal-tabs-wrap mt-3">
+            <div class="portal-nav-tabs">
+              <button class="portal-tab-btn active" data-tab="holerites" id="tab-btn-holerites">Meus Holerites</button>
+              <button class="portal-tab-btn" data-tab="espelho" id="tab-btn-espelho">Espelho de Ponto</button>
+              <button class="portal-tab-btn" data-tab="ferias" id="tab-btn-ferias">Minhas Férias</button>
+              <button class="portal-tab-btn" data-tab="informes" id="tab-btn-informes">Informe de Rendimentos IRPF</button>
+            </div>
+
+            <!-- Tab Content: Holerites -->
+            <div class="portal-tab-pane active" id="pane-holerites">
+              <div class="card p-3">
+                <div class="card-header-flex">
+                  <div>
+                    <h3 style="font-size: 1.05rem; font-weight: 600;">Histórico de Contracheques e Holerites</h3>
+                    <p class="text-muted" style="font-size: 0.82rem;">Holerites mensais, adiantamentos e 13º salário com demonstrativo de proventos e descontos.</p>
+                  </div>
+                </div>
+                <div class="table-responsive mt-2">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Competência</th>
+                        <th>Tipo</th>
+                        <th>Salário Base</th>
+                        <th>Total Proventos</th>
+                        <th>Total Descontos</th>
+                        <th>Salário Líquido</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-meus-holerites">
+                      <tr>
+                        <td><strong>10/2026</strong></td>
+                        <td>Folha Mensal</td>
+                        <td>R$ 4.500,00</td>
+                        <td class="text-success">R$ 5.125,00</td>
+                        <td class="text-danger">R$ 1.025,40</td>
+                        <td><strong class="text-primary">R$ 4.099,60</strong></td>
+                        <td>
+                          <button class="btn btn-outline btn-sm" onclick="alert('Visualização do holerite oficial 10/2026 gerada com sucesso.');">
+                            Visualizar / Imprimir
+                          </button>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>09/2026</strong></td>
+                        <td>Folha Mensal</td>
+                        <td>R$ 4.500,00</td>
+                        <td class="text-success">R$ 4.800,00</td>
+                        <td class="text-danger">R$ 960,00</td>
+                        <td><strong class="text-primary">R$ 3.840,00</strong></td>
+                        <td>
+                          <button class="btn btn-outline btn-sm" onclick="alert('Visualização do holerite oficial 09/2026 gerada com sucesso.');">
+                            Visualizar / Imprimir
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Content: Espelho de Ponto -->
+            <div class="portal-tab-pane hidden" id="pane-espelho">
+              <div class="card p-3">
+                <div class="card-header-flex">
+                  <div>
+                    <h3 style="font-size: 1.05rem; font-weight: 600;">Espelho de Ponto Eletrônico (Portaria 671/MTP)</h3>
+                    <p class="text-muted" style="font-size: 0.82rem;">Registro diário de marcações, intervalos e divergências.</p>
+                  </div>
+                  <button class="btn btn-sm btn-outline" id="btn-solicitar-ajuste-ponto">Solicitar Ajuste / Justificativa</button>
+                </div>
+                <div class="table-responsive mt-2">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Entrada 1</th>
+                        <th>Saída 1</th>
+                        <th>Entrada 2</th>
+                        <th>Saída 2</th>
+                        <th>Total Horas</th>
+                        <th>Horas Extras</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-meu-espelho-ponto">
+                      <tr>
+                        <td>18/11/2026 (Hoje)</td>
+                        <td>08:00</td>
+                        <td>12:00</td>
+                        <td>13:00</td>
+                        <td>17:00</td>
+                        <td><strong>08:00h</strong></td>
+                        <td>00:00</td>
+                        <td><span class="badge-status badge-calculada">Regular</span></td>
+                      </tr>
+                      <tr>
+                        <td>17/11/2026</td>
+                        <td>08:02</td>
+                        <td>12:05</td>
+                        <td>13:00</td>
+                        <td>18:30</td>
+                        <td><strong>09:23h</strong></td>
+                        <td class="text-success">+01:23h</td>
+                        <td><span class="badge-status badge-calculada">Regular</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Content: Minhas Férias -->
+            <div class="portal-tab-pane hidden" id="pane-ferias">
+              <div class="card p-3">
+                <div class="card-header-flex">
+                  <div>
+                    <h3 style="font-size: 1.05rem; font-weight: 600;">Programação e Recibos de Férias</h3>
+                    <p class="text-muted" style="font-size: 0.82rem;">Acompanhamento de períodos aquisitivos e recibos com 1/3 constitucional.</p>
+                  </div>
+                </div>
+                <div class="table-responsive mt-2">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Período Aquisitivo</th>
+                        <th>Limite Concessivo</th>
+                        <th>Dias Adquiridos</th>
+                        <th>Dias Gozados</th>
+                        <th>Saldo Restante</th>
+                        <th>Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-minhas-ferias">
+                      <tr>
+                        <td>01/02/2024 a 31/01/2025</td>
+                        <td>31/12/2025</td>
+                        <td>30 dias</td>
+                        <td>20 dias (Abono 10d)</td>
+                        <td>0 dias</td>
+                        <td><span class="badge-status badge-paga">Quitadas</span></td>
+                      </tr>
+                      <tr>
+                        <td>01/02/2025 a 31/01/2026</td>
+                        <td>31/12/2026</td>
+                        <td>30 dias</td>
+                        <td>0 dias</td>
+                        <td><strong>30 dias</strong></td>
+                        <td><span class="badge-status badge-aberta">Disponíveis</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Content: Informes de Rendimentos -->
+            <div class="portal-tab-pane hidden" id="pane-informes">
+              <div class="card p-3">
+                <h3 style="font-size: 1.05rem; font-weight: 600;">Comprovantes de Rendimentos Pagos e de Retenção do IRPF</h3>
+                <p class="text-muted" style="font-size: 0.82rem;">Documento oficial para declaração anual de ajuste do Imposto de Renda Pessoa Física.</p>
+                <div class="table-responsive mt-2">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Ano Calendário</th>
+                        <th>Exercício Fiscal</th>
+                        <th>Rendimentos Tributáveis</th>
+                        <th>IRRF Retido na Fonte</th>
+                        <th>Download</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><strong>2025</strong></td>
+                        <td>2026</td>
+                        <td>R$ 58.400,00</td>
+                        <td>R$ 4.210,50</td>
+                        <td>
+                          <button class="btn btn-outline btn-sm" onclick="alert('Download do Informe de Rendimentos IRPF 2026/2025 iniciado.');">
+                            Baixar Informe (PDF)
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO PORTAL DO GESTOR (ENTERPRISE TEAM MANAGEMENT)           -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-portal-gestor" class="platform-view">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Gestão Descentralizada &bull; RH2.0 Enterprise</span>
+              <h2 class="view-title">Portal do Gestor</h2>
+              <p class="view-subtitle">Gestão da equipe subordinada, aprovação de ocorrências de ponto, férias e indicadores de departamento.</p>
+            </div>
+            <div class="view-header-actions">
+              <button id="btn-gestor-aprovar-lote" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Aprovar Pendências Selecionadas
+              </button>
+            </div>
+          </div>
+
+          <!-- Cards de Métricas da Equipe -->
+          <section class="metrics-grid" aria-label="Indicadores da equipe">
+            <div class="metric-card">
+              <div class="metric-icon metric-icon-blue">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Equipe Sob Gestão</span>
+                <span class="metric-value" id="kpi-gestor-equipe-total">18</span>
+                <span class="metric-trend text-muted">Colaboradores ativos</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon metric-icon-green">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Presentes Hoje</span>
+                <span class="metric-value text-success" id="kpi-gestor-presentes">16</span>
+                <span class="metric-trend text-success">88,8% de assiduidade</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon metric-icon-amber">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Em Férias</span>
+                <span class="metric-value text-warning" id="kpi-gestor-ferias">1</span>
+                <span class="metric-trend text-muted">Retorno previsto: 25/11</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon metric-icon-purple">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Aprovações Pendentes</span>
+                <span class="metric-value text-danger" id="kpi-gestor-aprovacoes-pendentes">3</span>
+                <span class="metric-trend text-danger">Requer atenção do gestor</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Central de Aprovações Pendentes do Gestor -->
+          <div class="card p-3 mt-3">
+            <div class="card-header-flex">
+              <div>
+                <h3 style="font-size: 1.1rem; font-weight: 600;">Fila de Aprovações de Ponto e Solicitações de Férias</h3>
+                <p class="text-muted" style="font-size: 0.85rem;">Homologue ajustes de ponto, abonos de faltas e programações de férias de seus liderados.</p>
+              </div>
+            </div>
+            <div class="table-responsive mt-2">
+              <table class="data-table" id="tabela-aprovacoes-gestor">
+                <thead>
+                  <tr>
+                    <th style="width: 30px;"><input type="checkbox" id="chk-gestor-select-all" aria-label="Selecionar todas as aprovações"></th>
+                    <th>Colaborador</th>
+                    <th>Tipo</th>
+                    <th>Data / Período</th>
+                    <th>Motivo / Justificativa</th>
+                    <th>Status</th>
+                    <th>Ações Imediatas</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-aprovacoes-gestor">
+                  <tr>
+                    <td><input type="checkbox" class="chk-gestor-item" checked></td>
+                    <td><strong>Carlos Eduardo Mendes</strong><br><small class="text-muted">Operador de Moenda</small></td>
+                    <td><span class="badge-status badge-aberta">Ajuste de Ponto</span></td>
+                    <td>14/11/2026</td>
+                    <td>Esquecimento de registro no retorno do almoço (trabalho ininterrupto com supervisor)</td>
+                    <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
+                    <td>
+                      <div class="btn-group-actions">
+                        <button class="btn btn-primary btn-sm" onclick="alert('Solicitação de ajuste de ponto aprovada com sucesso.');">Aprovar</button>
+                        <button class="btn btn-outline btn-sm text-danger" onclick="alert('Solicitação rejeitada.');">Rejeitar</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><input type="checkbox" class="chk-gestor-item" checked></td>
+                    <td><strong>Mariana Silva Costa</strong><br><small class="text-muted">Técnica de Laboratório</small></td>
+                    <td><span class="badge-status badge-calculada">Programação Férias</span></td>
+                    <td>01/12/2026 a 20/12/2026 (20d + Abono 10d)</td>
+                    <td>Programação de férias conforme escala departamental</td>
+                    <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
+                    <td>
+                      <div class="btn-group-actions">
+                        <button class="btn btn-primary btn-sm" onclick="alert('Férias aprovadas pelo gestor e enviadas para DP.');">Aprovar</button>
+                        <button class="btn btn-outline btn-sm text-danger" onclick="alert('Solicitação rejeitada.');">Rejeitar</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Equipe Subordinada -->
+          <div class="card p-3 mt-3">
+            <div class="card-header-flex">
+              <div>
+                <h3 style="font-size: 1.1rem; font-weight: 600;">Colaboradores da Equipe Departamental</h3>
+                <p class="text-muted" style="font-size: 0.85rem;">Membros ativos vinculados à sua gerência.</p>
+              </div>
+            </div>
+            <div class="table-responsive mt-2">
+              <table class="data-table" id="tabela-equipe-gestor">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Matrícula</th>
+                    <th>Cargo</th>
+                    <th>Jornada</th>
+                    <th>Situação Hoje</th>
+                    <th>Banco de Horas</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-equipe-gestor">
+                  <tr>
+                    <td><strong>Carlos Eduardo Mendes</strong></td>
+                    <td>MAT-00104</td>
+                    <td>Operador de Moenda</td>
+                    <td>220h (44h semanais)</td>
+                    <td><span class="badge-status badge-calculada">Presente</span></td>
+                    <td class="text-success">+02:15h</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Mariana Silva Costa</strong></td>
+                    <td>MAT-00112</td>
+                    <td>Técnica de Laboratório</td>
+                    <td>220h (44h semanais)</td>
+                    <td><span class="badge-status badge-calculada">Presente</span></td>
+                    <td class="text-success">+05:40h</td>
+                  </tr>
+                  <tr>
+                    <td><strong>João Paulo Rocha</strong></td>
+                    <td>MAT-00120</td>
+                    <td>Mecânico Industrial</td>
+                    <td>220h (44h semanais)</td>
+                    <td><span class="badge-status badge-aberta">Em Férias</span></td>
+                    <td>00:00h</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
 

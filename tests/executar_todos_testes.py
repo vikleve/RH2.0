@@ -25,6 +25,7 @@ from tests.test_folha_service import TestFolhaService
 from tests.test_rate_limit_csrf import TestAutenticacaoRH20
 from tests.test_rn_oficiais_2026 import TestRegrasNegocioOficiais2026
 from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhista
+from tests.test_rbac_enterprise import TestRBACEnterprise
 from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
 
 
@@ -54,6 +55,9 @@ def executar():
 
     # 4b. Testes de Responsividade Desktop & Mobile (360px a 1920px, UI Corporativa e Gráficos)
     suite.addTests(carregador.loadTestsFromTestCase(TestResponsividadeDesktopMobile))
+
+    # 4c. Testes de RBAC Enterprise e Portais do Colaborador e do Gestor
+    suite.addTests(carregador.loadTestsFromTestCase(TestRBACEnterprise))
 
     # 5. Testes de Serviço e Persistência da Folha (Ciclo de Vida e Auditoria)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))

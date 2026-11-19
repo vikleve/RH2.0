@@ -318,9 +318,23 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            perfil = usuario.get("perfil", "colaborador")
+            from .auth import PERMISSOES_RBAC
+            permissoes = PERMISSOES_RBAC.get(perfil, [])
             return self._enviar_json(200, {
                 "sucesso": True,
-                "usuario": usuario
+                "usuario": {
+                    **usuario,
+                    "permissoes": permissoes
+                }
+            })
+
+        # Rota de metadados: Listar perfis RBAC da plataforma GET /api/auth/perfis
+        if path == "/api/auth/perfis":
+            from .auth import PERFIS_ENTERPRISE
+            return self._enviar_json(200, {
+                "sucesso": True,
+                "perfis": PERFIS_ENTERPRISE
             })
 
         # Rota protegida: Listar colaboradores GET /api/colaboradores
