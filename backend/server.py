@@ -453,6 +453,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if path.startswith("/api/admissoes/"):
             partes = path.strip("/").split("/")
+            if len(partes) == 4 and partes[2] == "checklist" and partes[3].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                adm_id = int(partes[3])
+                try:
+                    adm = self.plataforma_service.obter_admissao(adm_id)
+                    return self._enviar_json(200, {"sucesso": True, "dados": adm.get("checklist", [])})
+                except PlataformaRecursoNaoEncontradoException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             if len(partes) == 3 and partes[2].isdigit():
                 usuario = self._exigir_autenticacao()
                 if not usuario:
@@ -469,7 +479,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not usuario:
                 return
             colab_id = query.get("colaborador_id", [None])[0]
-            periodo = (query.get("periodo") or [datetime.now().strftime("%Y-%m")])[0]
+            periodo = (query.get("periodo") or query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
             if not colab_id or not colab_id.isdigit():
                 return self._enviar_json(400, {"sucesso": False, "mensagem": "Parâmetro 'colaborador_id' obrigatório."})
             espelho = self.plataforma_service.obter_espelho_ponto(int(colab_id), periodo)
@@ -519,7 +529,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not usuario:
                 return
             status = query.get("status", [None])[0]
-            pendencias = self.plataforma_service.listar_pendencias(status=status)
+            severidade = query.get("severidade", [None])[0]
+            pendencias = self.plataforma_service.listar_pendencias(status=status, severidade=severidade)
             return self._enviar_json(200, {"sucesso": True, "total": len(pendencias), "dados": pendencias})
 
         if path == "/api/bi/indicadores":
@@ -806,11 +817,17 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return
             try:
                 dados = self._ler_json_body()
+                dt_str = dados.get("data")
+                hr_str = dados.get("hora")
+                if not dt_str and dados.get("data_hora"):
+                    dh = str(dados["data_hora"]).replace(" ", "T").split("T")
+                    dt_str = dh[0]
+                    hr_str = dh[1][:5] if len(dh) > 1 else "08:00"
                 resp = self.plataforma_service.registrar_marcacao_ponto(
                     colaborador_id=int(dados["colaborador_id"]),
-                    data=dados["data"],
-                    hora=dados["hora"],
-                    tipo_registro=dados.get("tipo_registro", "manual"),
+                    data=dt_str or datetime.now().strftime("%Y-%m-%d"),
+                    hora=hr_str or datetime.now().strftime("%H:%M"),
+                    tipo_registro=dados.get("tipo_registro") or dados.get("tipo_marcacao", "manual"),
                     coletor_id=dados.get("coletor_id")
                 )
                 return self._enviar_json(200 if resp.get("sucesso") else 400, resp)
@@ -825,10 +842,10 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 dados = self._ler_json_body()
                 resp = self.plataforma_service.solicitar_ajuste_ponto(
                     colaborador_id=int(dados["colaborador_id"]),
-                    data=dados["data"],
-                    hora_ajustada=dados["hora_ajustada"],
+                    data=dados.get("data") or dados.get("data_ocorrencia") or datetime.now().strftime("%Y-%m-%d"),
+                    hora_ajustada=dados.get("hora_ajustada") or dados.get("horario_proposto") or "08:00",
                     tipo_marcacao=dados.get("tipo_marcacao", "entrada"),
-                    motivo=dados["motivo"],
+                    motivo=dados.get("motivo") or dados.get("justificativa") or "",
                     solicitante=usuario_auth["nome_completo"],
                     hora_original=dados.get("hora_original")
                 )
@@ -862,12 +879,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return
             try:
                 dados = self._ler_json_body()
+                abono_flag = bool(dados.get("abono_pecuniario", False)) or int(dados.get("dias_abono") or 0) > 0
+                adiantar_flag = bool(dados.get("adiantar_13", False) or dados.get("adiantamento_decimo_terceiro", False))
                 resp = self.plataforma_service.programar_ferias(
                     colaborador_id=int(dados["colaborador_id"]),
-                    data_inicio=dados["data_inicio"],
+                    data_inicio=dados.get("data_inicio") or dados.get("data_inicio_gozo"),
                     dias_gozo=int(dados["dias_gozo"]),
-                    abono_pecuniario=bool(dados.get("abono_pecuniario", False)),
-                    adiantar_13=bool(dados.get("adiantar_13", False)),
+                    abono_pecuniario=abono_flag,
+                    adiantar_13=adiantar_flag,
                     solicitante=usuario_auth["nome_completo"]
                 )
                 return self._enviar_json(201, resp)
@@ -882,12 +901,25 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return
             try:
                 dados = self._ler_json_body()
+                tipo_raw = str(dados.get("tipo") or dados.get("motivo") or "doenca").lower()
+                if "acidente" in tipo_raw or "b91" in tipo_raw:
+                    tipo_val = "acidente_trabalho"
+                elif "maternidade" in tipo_raw:
+                    tipo_val = "maternidade"
+                elif "paternidade" in tipo_raw:
+                    tipo_val = "paternidade"
+                elif "doenca" in tipo_raw or "b31" in tipo_raw:
+                    tipo_val = "doenca"
+                else:
+                    tipo_val = dados.get("tipo") or dados.get("motivo") or "doenca"
+                dt_ini_af = dados["data_inicio"]
+                dt_fim_af = dados.get("data_fim_prevista") or (datetime.strptime(dt_ini_af, "%Y-%m-%d") + timedelta(days=15)).strftime("%Y-%m-%d")
                 resp = self.plataforma_service.registrar_afastamento(
                     colaborador_id=int(dados["colaborador_id"]),
-                    tipo=dados["tipo"],
-                    data_inicio=dados["data_inicio"],
-                    data_fim_prevista=dados["data_fim_prevista"],
-                    cid=dados.get("cid"),
+                    tipo=tipo_val,
+                    data_inicio=dt_ini_af,
+                    data_fim_prevista=dt_fim_af,
+                    cid=dados.get("cid") or dados.get("codigo_cid"),
                     usuario=usuario_auth["nome_completo"]
                 )
                 return self._enviar_json(201, resp)
@@ -905,15 +937,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 resp = self.plataforma_service.registrar_rescisao(
                     colaborador_id=int(dados["colaborador_id"]),
                     tipo_rescisao=dados["tipo_rescisao"],
-                    data_afastamento=dados["data_afastamento"],
+                    data_afastamento=dados.get("data_afastamento") or dados.get("data_desligamento"),
                     tipo_aviso=dados.get("tipo_aviso", "indenizado"),
                     saldo_salario_dias=int(dados.get("saldo_salario_dias", 0)),
                     ferias_vencidas_dias=int(dados.get("ferias_vencidas_dias", 0)),
                     meses_trabalhados_ano=int(dados.get("meses_trabalhados_ano", 0)),
                     saldo_fgts=dados.get("saldo_fgts", 0.0),
-                    usuario=usuario_auth["nome_completo"]
+                    usuario=usuario_auth["nome_completo"],
+                    simular=bool(dados.get("simular", False))
                 )
-                return self._enviar_json(201, resp)
+                return self._enviar_json(200 if dados.get("simular") else 201, resp)
             except PlataformaValidacaoException as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
@@ -927,13 +960,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 dados = self._ler_json_body()
                 resp = self.plataforma_service.registrar_aso(
                     colaborador_id=int(dados["colaborador_id"]),
-                    tipo_aso=dados["tipo_aso"],
-                    data_emissao=dados["data_emissao"],
+                    tipo_aso=dados.get("tipo_aso") or dados.get("tipo_exame") or "PERIODICO",
+                    data_emissao=dados.get("data_emissao") or dados.get("data_exame"),
                     data_validade=dados["data_validade"],
-                    resultado=dados["resultado"],
-                    medico_nome=dados["medico_nome"],
-                    medico_crm=dados["medico_crm"],
-                    medico_uf=dados["medico_uf"],
+                    resultado=dados.get("resultado") or dados.get("resultado_aptidao") or "APTO",
+                    medico_nome=dados.get("medico_nome") or dados.get("medico_examinador_nome") or "Médico do Trabalho",
+                    medico_crm=dados.get("medico_crm") or dados.get("medico_examinador_crm") or "CRM 12345",
+                    medico_uf=dados.get("medico_uf", "SP"),
                     usuario=usuario_auth["nome_completo"]
                 )
                 return self._enviar_json(201, resp)
@@ -964,12 +997,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return
             try:
                 dados = self._ler_json_body()
+                desc_cat = dados.get("descricao") or f"{dados.get('parte_corpo_atingida', 'Ocorrência')} - CID {dados.get('codigo_cid', 'N/A')}"
                 resp = self.plataforma_service.registrar_cat(
                     colaborador_id=int(dados["colaborador_id"]),
                     tipo_acidente=dados["tipo_acidente"],
-                    data_hora=dados["data_hora"],
+                    data_hora=dados.get("data_hora") or dados.get("data_hora_acidente") or datetime.now().strftime("%Y-%m-%d %H:%M"),
                     local_acidente=dados["local_acidente"],
-                    descricao=dados["descricao"],
+                    descricao=desc_cat,
                     houve_obito=bool(dados.get("houve_obito", False)),
                     usuario=usuario_auth["nome_completo"]
                 )
@@ -1009,7 +1043,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 dados = self._ler_json_body()
                 comp = dados.get("competencia", datetime.now().strftime("%Y-%m"))
-                banco = dados.get("banco_codigo", "001")
+                banco = dados.get("banco_codigo") or dados.get("codigo_banco") or "001"
                 resp = self.plataforma_service.gerar_arquivo_cnab240(comp, banco_codigo=banco, usuario=usuario_auth["nome_completo"])
                 return self._enviar_json(200, resp)
             except PlataformaValidacaoException as e:
@@ -1187,9 +1221,26 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             item_id = int(partes[3])
             try:
                 dados = self._ler_json_body()
-                status = dados.get("status", "validado")
+                st_raw = str(dados.get("status", "validado")).lower()
+                if st_raw in ("aprovado", "entregue", "validado"):
+                    status = "validado"
+                elif st_raw in ("dispensado",):
+                    status = "dispensado"
+                else:
+                    status = st_raw
                 just = dados.get("justificativa_dispensa")
                 resp = self.plataforma_service.atualizar_item_checklist(item_id, status=status, usuario=usuario_auth["nome_completo"], justificativa=just)
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes) == 4 and partes[1] == "pendencias" and partes[2].isdigit() and partes[3] == "resolver":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            pend_id = int(partes[2])
+            try:
+                resp = self.plataforma_service.resolver_pendencia(pend_id, usuario=usuario_auth["nome_completo"])
                 return self._enviar_json(200, resp)
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
