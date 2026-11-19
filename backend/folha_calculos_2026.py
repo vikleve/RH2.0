@@ -6,8 +6,8 @@ Implementa as Regras de Negócio RN-001 a RN-083 (Volume 4) e Casos de Teste Ofi
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
-def to_d(val: Any) -> Decimal:
-    """Converte para Decimal com precisão estrita."""
+def to_d(val: Any, estrito: bool = False) -> Decimal:
+    """Converte para Decimal com precisão estrita, sem silenciar valores malformados (RF-FIN-001)."""
     if val is None or val == "":
         return Decimal("0.00")
     if isinstance(val, Decimal):
@@ -19,8 +19,9 @@ def to_d(val: Any) -> Decimal:
         elif "," in s and "." in s:
             s = s.replace(".", "").replace(",", ".")
         return Decimal(s)
-    except Exception:
-        return Decimal("0.00")
+    except Exception as e:
+        from .tabelas_legais import ConversaoFinanceiraException
+        raise ConversaoFinanceiraException(f"Erro de conversão numérica para Decimal no valor '{val}'") from e
 
 def round2(val: Any) -> Decimal:
     """Arredonda para 2 casas decimais no padrão financeiro (ROUND_HALF_UP)."""
