@@ -395,7 +395,7 @@ async function requisitarApi(url, opcoes) {
   }
   if (resp.status === 503) {
     let msg = 'Banco de dados indisponível: a operação não foi realizada.';
-    try { const j = await resp.json(); if (j && j.mensagem) msg = j.mensagem; } catch (_) {}
+    try { const j = await resp.json(); if (j && j.mensagem) msg = j.mensagem; } catch (_) { }
     throw new Error(msg);
   }
   return resp;
@@ -2337,9 +2337,152 @@ const PlataformaManager = {
 
   inicializar() {
     this.configurarNavegacaoSidebar();
+    this.configurarMenuMobile();
+    this.configurarNotificacoesHeader();
     this.configurarEventosModais();
     this.configurarSSTTabs();
     this.configurarBotoesAcao();
+  },
+
+  abrirDrawerMobile() {
+    const sidebar = document.getElementById('platform-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    const btnHamb = document.getElementById('btn-mobile-menu');
+    if (sidebar) sidebar.classList.add('sidebar-open');
+    if (backdrop) backdrop.classList.remove('hidden');
+    if (btnHamb) btnHamb.setAttribute('aria-expanded', 'true');
+  },
+
+  fecharDrawerMobile() {
+    const sidebar = document.getElementById('platform-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    const btnHamb = document.getElementById('btn-mobile-menu');
+    if (sidebar) sidebar.classList.remove('sidebar-open');
+    if (backdrop) backdrop.classList.add('hidden');
+    if (btnHamb) btnHamb.setAttribute('aria-expanded', 'false');
+  },
+
+  configurarMenuMobile() {
+    const btnHamb = document.getElementById('btn-mobile-menu');
+    const btnClose = document.getElementById('btn-close-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    const btnBnavMenu = document.getElementById('btn-bnav-menu');
+
+    if (btnHamb) {
+      btnHamb.addEventListener('click', () => {
+        const sidebar = document.getElementById('platform-sidebar');
+        if (sidebar && sidebar.classList.contains('sidebar-open')) {
+          this.fecharDrawerMobile();
+        } else {
+          this.abrirDrawerMobile();
+        }
+      });
+    }
+    if (btnClose) {
+      btnClose.addEventListener('click', () => this.fecharDrawerMobile());
+    }
+    if (backdrop) {
+      backdrop.addEventListener('click', () => this.fecharDrawerMobile());
+    }
+    if (btnBnavMenu) {
+      btnBnavMenu.addEventListener('click', () => this.abrirDrawerMobile());
+    }
+
+    // Botões de navegação inferior mobile
+    document.querySelectorAll('.bottom-nav-item[data-view]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const viewName = btn.getAttribute('data-view');
+        if (viewName) {
+          this.navegarPara(viewName);
+        }
+      });
+    });
+  },
+
+  configurarNotificacoesHeader() {
+    const btnBell = document.getElementById('btn-header-notificacoes');
+    const dropdown = document.getElementById('header-notif-dropdown');
+    const btnIrCentral = document.getElementById('btn-ir-central-pendencias');
+
+    if (btnBell && dropdown) {
+      btnBell.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const isHidden = dropdown.classList.contains('hidden');
+        if (isHidden) {
+          dropdown.classList.remove('hidden');
+          await this.carregarPreviewNotificacoes();
+        } else {
+          dropdown.classList.add('hidden');
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('header-notif-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    if (btnIrCentral) {
+      btnIrCentral.addEventListener('click', () => {
+        if (dropdown) dropdown.classList.add('hidden');
+        this.navegarPara('pendencias');
+      });
+    }
+  },
+
+  async carregarPreviewNotificacoes() {
+    const listEl = document.getElementById('notif-dropdown-list');
+    const countLabel = document.getElementById('notif-dropdown-count-label');
+    if (!listEl) return;
+
+    try {
+      const resp = await fetch(`${API_BASE}/pendencias?status=pendente`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (!resp.ok) return;
+      const json = await resp.json();
+      const pendencias = json.dados || [];
+      this.atualizarBadgesPendencias(pendencias.length);
+      if (countLabel) countLabel.textContent = `${pendencias.length} abertas`;
+
+      if (pendencias.length === 0) {
+        listEl.innerHTML = '<div class="notif-empty">Nenhuma pendência operacional em aberto.</div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      pendencias.slice(0, 5).forEach(p => {
+        const sev = String(p.severidade || 'media').toUpperCase();
+        const item = document.createElement('div');
+        item.className = 'notif-item';
+        item.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="color:var(--inst-navy);">${p.titulo}</strong>
+            <span class="badge-severidade-${sev.toLowerCase()}">${sev}</span>
+          </div>
+          <span class="text-xs text-muted">${p.modulo || p.tipo_pendencia} &bull; Prazo: ${p.prazo_limite || 'Imediato'}</span>
+        `;
+        item.addEventListener('click', () => {
+          document.getElementById('header-notif-dropdown')?.classList.add('hidden');
+          this.navegarPara('pendencias');
+        });
+        listEl.appendChild(item);
+      });
+    } catch (e) {
+      console.warn('Erro ao carregar preview de notificações:', e);
+    }
+  },
+
+  atualizarBadgesPendencias(qtd) {
+    const n = Number(qtd || 0);
+    ['badge-pendencias-count', 'header-notif-badge', 'bnav-badge-pendencias'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = n;
+    });
   },
 
   configurarNavegacaoSidebar() {
@@ -2367,9 +2510,19 @@ const PlataformaManager = {
 
   async navegarPara(viewName) {
     this.visaoAtual = viewName;
+    this.fecharDrawerMobile();
 
     // Atualiza classe active nos botões da sidebar
     document.querySelectorAll('.sidebar-btn').forEach(b => {
+      if (b.getAttribute('data-view') === viewName) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+
+    // Atualiza classe active na barra inferior mobile
+    document.querySelectorAll('.bottom-nav-item[data-view]').forEach(b => {
       if (b.getAttribute('data-view') === viewName) {
         b.classList.add('active');
       } else {
@@ -2423,7 +2576,7 @@ const PlataformaManager = {
       else if (viewName === 'rescisoes') await this.carregarRescisoes();
       else if (viewName === 'sst') await this.carregarSST();
       else if (viewName === 'esocial') await this.carregarESocial();
-      else if (viewName === 'integracoes') {}
+      else if (viewName === 'integracoes') { }
       else if (viewName === 'auditoria') await this.carregarAuditoria();
       else if (viewName === 'multiempresa') await this.carregarMultiempresa();
     } catch (err) {
@@ -2459,8 +2612,12 @@ const PlataformaManager = {
   },
 
   // --------------------------------------------------------------------------
-  // DASHBOARD & BI (RF-181 A RF-190)
+  // DASHBOARD & BI (RF-181 A RF-190) — CARDS FINANCEIROS E GRÁFICOS
   // --------------------------------------------------------------------------
+  formatarMoedaBRL(val) {
+    return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  },
+
   async carregarDashboard() {
     try {
       const resp = await fetch(`${API_BASE}/bi/indicadores`, {
@@ -2470,20 +2627,97 @@ const PlataformaManager = {
       if (resp.ok) {
         const json = await resp.json();
         const d = json.dados || {};
+        const ativos = d.total_colaboradores_ativos ?? d.efetivo?.ativos ?? 0;
+        const turnover = d.taxa_turnover ?? d.turnover?.taxa_percentual ?? 0;
+        const absenteismo = d.taxa_absenteismo ?? d.absenteismo?.taxa_percentual ?? 0;
+        const pendAbertas = d.pendencias_abertas ?? d.central_pendencias?.abertas ?? 0;
+        const pendCriticas = d.pendencias_criticas ?? d.central_pendencias?.criticas ?? 0;
+
         const elAtivos = document.getElementById('kpi-total-ativos');
         const elTurnover = document.getElementById('kpi-turnover');
         const elAbsenteismo = document.getElementById('kpi-absenteismo');
         const elPendAbertas = document.getElementById('kpi-pendencias-abertas');
         const elPendCriticas = document.getElementById('kpi-pendencias-criticas');
 
-        if (elAtivos) elAtivos.textContent = d.total_colaboradores_ativos || 0;
-        if (elTurnover) elTurnover.textContent = `${(d.taxa_turnover || 0).toFixed(2)}%`;
-        if (elAbsenteismo) elAbsenteismo.textContent = `${(d.taxa_absenteismo || 0).toFixed(2)}%`;
-        if (elPendAbertas) elPendAbertas.textContent = d.pendencias_abertas || 0;
-        if (elPendCriticas) elPendCriticas.textContent = `${d.pendencias_criticas || 0} críticas`;
+        if (elAtivos) elAtivos.textContent = ativos;
+        if (elTurnover) elTurnover.textContent = `${Number(turnover).toFixed(2)}%`;
+        if (elAbsenteismo) elAbsenteismo.textContent = `${Number(absenteismo).toFixed(2)}%`;
+        if (elPendAbertas) elPendAbertas.textContent = pendAbertas;
+        if (elPendCriticas) elPendCriticas.textContent = `${pendCriticas} críticas`;
 
-        const badgeNav = document.getElementById('badge-pendencias-count');
-        if (badgeNav) badgeNav.textContent = d.pendencias_abertas || 0;
+        this.atualizarBadgesPendencias(pendAbertas);
+
+        // Cards Financeiros
+        const folha = d.folha || {};
+        const prov = Number(folha.prov || d.massa_salarial_ativa || 0);
+        const liq = Number(folha.liq || prov * 0.84);
+        const fgts = Number(folha.fgts || prov * 0.08);
+        const inss = Number(folha.inss || prov * 0.095);
+        const irrf = Number(folha.irrf || Math.max(0, prov - liq - inss));
+        const descTot = Number(folha.desc_tot || (inss + irrf));
+
+        const elFinComp = document.getElementById('kpi-fin-competencia');
+        const elFinProv = document.getElementById('kpi-fin-proventos');
+        const elFinLiq = document.getElementById('kpi-fin-liquido');
+        const elFinFgts = document.getElementById('kpi-fin-fgts');
+        const elFinDesc = document.getElementById('kpi-fin-descontos');
+
+        if (elFinComp) elFinComp.textContent = `Comp. ${folha.competencia || '2026'}`;
+        if (elFinProv) elFinProv.textContent = this.formatarMoedaBRL(prov);
+        if (elFinLiq) elFinLiq.textContent = this.formatarMoedaBRL(liq);
+        if (elFinFgts) elFinFgts.textContent = this.formatarMoedaBRL(fgts);
+        if (elFinDesc) elFinDesc.textContent = this.formatarMoedaBRL(descTot);
+
+        // Gráfico 1: Composição Financeira da Folha
+        const baseTotal = Math.max(1, liq + inss + irrf + fgts);
+        const pLiq = Math.round((liq / baseTotal) * 100);
+        const pInss = Math.round((inss / baseTotal) * 100);
+        const pIrrf = Math.round((irrf / baseTotal) * 100);
+        const pFgts = Math.max(1, 100 - pLiq - pInss - pIrrf);
+
+        const setBar = (segId, fillId, valId, valor, pct) => {
+          const seg = document.getElementById(segId);
+          const fill = document.getElementById(fillId);
+          const val = document.getElementById(valId);
+          if (seg) seg.style.width = `${Math.max(2, pct)}%`;
+          if (fill) fill.style.width = `${Math.min(100, Math.max(4, pct))}%`;
+          if (val) val.textContent = `${this.formatarMoedaBRL(valor)} (${pct}%)`;
+        };
+
+        setBar('seg-bar-liquido', 'chart-fill-liquido', 'chart-val-liquido', liq, pLiq);
+        setBar('seg-bar-inss', 'chart-fill-inss', 'chart-val-inss', inss, pInss);
+        setBar('seg-bar-irrf', 'chart-fill-irrf', 'chart-val-irrf', irrf, pIrrf);
+        setBar('seg-bar-fgts', 'chart-fill-fgts', 'chart-val-fgts', fgts, pFgts);
+
+        // Gráfico 2: Distribuição do Efetivo por Departamento
+        const chartSetores = document.getElementById('chart-distribuicao-setores');
+        if (chartSetores) {
+          const setores = d.distribuicao_setores || [];
+          if (setores.length === 0) {
+            chartSetores.innerHTML = '<div class="text-sm text-muted">Nenhum setor ativo cadastrado.</div>';
+          } else {
+            const totalColabs = Math.max(1, setores.reduce((acc, s) => acc + Number(s.total || 0), 0));
+            const cores = ['seg-liquido', 'seg-inss', 'seg-fgts', 'seg-irrf'];
+            chartSetores.innerHTML = '';
+            setores.forEach((s, idx) => {
+              const qtd = Number(s.total || 0);
+              const pct = Math.round((qtd / totalColabs) * 100);
+              const corClass = cores[idx % cores.length];
+              const item = document.createElement('div');
+              item.className = 'chart-bar-item';
+              item.innerHTML = `
+                <div class="chart-bar-meta">
+                  <span class="chart-bar-name"><span class="legend-dot ${corClass}"></span>${s.setor || 'Geral'}</span>
+                  <strong class="chart-bar-val">${qtd} colab. (${pct}%) &bull; ${this.formatarMoedaBRL(s.massa || 0)}</strong>
+                </div>
+                <div class="chart-bar-track">
+                  <div class="chart-bar-fill ${corClass}" style="width: ${Math.max(6, pct)}%;"></div>
+                </div>
+              `;
+              chartSetores.appendChild(item);
+            });
+          }
+        }
       }
     } catch (e) {
       console.warn('Erro ao carregar BI:', e);
@@ -2510,12 +2744,12 @@ const PlataformaManager = {
       const json = await resp.json();
       const lista = json.dados || [];
 
-      // Atualiza badge
-      const badgeNav = document.getElementById('badge-pendencias-count');
-      if (badgeNav) {
-        const abertas = lista.filter(p => p.status === 'PENDENTE' || p.status === 'EM_ANALISE').length;
-        badgeNav.textContent = abertas;
-      }
+      // Atualiza badges de pendências
+      const abertas = lista.filter(p => {
+        const st = String(p.status || '').toUpperCase();
+        return st === 'PENDENTE' || st === 'EM_ANALISE';
+      }).length;
+      this.atualizarBadgesPendencias(abertas);
 
       if (lista.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Nenhuma pendência operacional encontrada para os filtros.</td></tr>';
@@ -2525,25 +2759,27 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(p => {
         const tr = document.createElement('tr');
-        const sevClass = p.severidade === 'CRITICA' ? 'badge-severidade-critica' :
-                         p.severidade === 'ALTA' ? 'badge-severidade-alta' :
-                         p.severidade === 'MEDIA' ? 'badge-severidade-media' : 'badge-severidade-baixa';
+        const sevUp = String(p.severidade || 'MEDIA').toUpperCase();
+        const stUp = String(p.status || 'PENDENTE').toUpperCase();
+        const sevClass = sevUp === 'CRITICA' ? 'badge-severidade-critica' :
+          sevUp === 'ALTA' ? 'badge-severidade-alta' :
+            sevUp === 'MEDIA' ? 'badge-severidade-media' : 'badge-severidade-baixa';
 
         tr.innerHTML = `
-          <td><span class="${sevClass}">${p.severidade}</span></td>
-          <td><strong style="font-size: 0.85rem;">${p.tipo_pendencia}</strong></td>
+          <td><span class="${sevClass}">${sevUp}</span></td>
+          <td><strong style="font-size: 0.85rem;">${p.tipo_pendencia || p.modulo || '-'}</strong></td>
           <td>
             <div style="font-weight: 600; font-size: 0.88rem;">${p.titulo}</div>
             <div class="text-xs text-muted">${p.descricao || ''}</div>
           </td>
-          <td>${p.nome_colaborador || p.recurso_afetado || '-'}</td>
-          <td>${p.data_limite_sla || p.data_vencimento || 'Imediato'}</td>
-          <td><span class="badge-status badge-calculada">${p.status}</span></td>
+          <td>${p.nome_colaborador || p.responsavel || p.recurso_afetado || '-'}</td>
+          <td>${p.prazo_limite || p.data_limite_sla || p.data_vencimento || 'Imediato'}</td>
+          <td><span class="badge-status ${stUp.startsWith('RESOLVID') ? 'badge-fechada' : 'badge-calculada'}">${stUp}</span></td>
           <td>
-            ${p.status === 'PENDENTE' || p.status === 'EM_ANALISE' ?
-              `<button class="btn btn-outline btn-sm btn-resolver-pendencia" data-id="${p.id}">Tratar / Resolver</button>` :
-              '<span class="text-xs text-muted">Resolvido</span>'
-            }
+            ${stUp === 'PENDENTE' || stUp === 'EM_ANALISE' ?
+            `<button class="btn btn-outline btn-sm btn-resolver-pendencia" data-id="${p.id}">Tratar / Resolver</button>` :
+            '<span class="text-xs text-muted">Resolvido</span>'
+          }
           </td>
         `;
         tbody.appendChild(tr);
@@ -2608,21 +2844,25 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(a => {
         const tr = document.createElement('tr');
-        const salarioFmt = (a.salario_proposto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const aprovados = a.documentos_aprovados || 0;
-        const totalDocs = a.total_documentos || 8;
+        const salarioFmt = Number(a.salario_proposto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const nomeCand = a.candidato_nome || a.nome_candidato || '-';
+        const cpfCand = a.candidato_cpf || a.cpf || '';
+        const cargoCand = a.cargo || a.cargo_proposto || '-';
+        const dtAdm = a.data_prevista_admissao || a.data_admissao_prevista || '-';
+        const stUp = String(a.status || 'em_andamento').toUpperCase();
+        const resumoChk = a.checklist_resumo || `${a.documentos_aprovados || 0}/${a.total_documentos || 6} docs`;
 
         tr.innerHTML = `
-          <td><strong>${a.nome_candidato}</strong></td>
-          <td>${formatarCpf(a.cpf)}</td>
-          <td>${a.cargo_proposto || '-'}</td>
+          <td><strong>${nomeCand}</strong></td>
+          <td>${formatarCpf(cpfCand)}</td>
+          <td>${cargoCand}</td>
           <td>${salarioFmt}</td>
-          <td>${a.data_admissao_prevista || '-'}</td>
-          <td><span class="badge-status ${aprovados === totalDocs ? 'badge-fechada' : 'badge-calculada'}">${aprovados}/${totalDocs} docs</span></td>
-          <td><span class="badge-status badge-calculada">${a.status}</span></td>
+          <td>${dtAdm}</td>
+          <td><span class="badge-status badge-calculada">${resumoChk}</span></td>
+          <td><span class="badge-status ${stUp === 'APROVADA' ? 'badge-fechada' : 'badge-calculada'}">${stUp}</span></td>
           <td style="display: flex; gap: 0.35rem;">
             <button class="btn btn-outline btn-sm btn-ver-checklist" data-id="${a.id}">Checklist</button>
-            ${a.status !== 'APROVADA' ? `<button class="btn btn-primary btn-sm btn-aprovar-admissao" data-id="${a.id}">Aprovar</button>` : ''}
+            ${stUp !== 'APROVADA' ? `<button class="btn btn-primary btn-sm btn-aprovar-admissao" data-id="${a.id}">Aprovar</button>` : ''}
           </td>
         `;
         tbody.appendChild(tr);
@@ -2711,19 +2951,20 @@ const PlataformaManager = {
 
       container.innerHTML = '';
       itens.forEach(item => {
+        const stItem = String(item.status || 'pendente').toLowerCase();
+        const nomeDoc = item.item_descricao || item.nome_documento || 'Documento Obrigatório';
         const itemDiv = document.createElement('div');
-        itemDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 6px;';
+        itemDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.85rem; border: 1px solid var(--border-color); border-radius: 8px; background: #fff;';
         itemDiv.innerHTML = `
           <div>
-            <strong style="font-size: 0.85rem;">${item.nome_documento}</strong>
-            <span class="text-xs text-muted" style="display: block;">Tipo: ${item.tipo_documento}</span>
+            <strong style="font-size: 0.85rem;">${nomeDoc}</strong>
+            <span class="text-xs text-muted" style="display: block;">${item.obrigatorio ? 'Obrigatório (RF-012)' : 'Complementar'}</span>
           </div>
           <div>
-            <select class="form-control form-control-sm select-status-item" data-id="${item.id}" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">
-              <option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option>
-              <option value="ENTREGUE" ${item.status === 'ENTREGUE' ? 'selected' : ''}>Entregue</option>
-              <option value="APROVADO" ${item.status === 'APROVADO' ? 'selected' : ''}>Aprovado</option>
-              <option value="REJEITADO" ${item.status === 'REJEITADO' ? 'selected' : ''}>Rejeitado</option>
+            <select class="form-control form-control-sm select-status-item" data-id="${item.id}" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; min-width: 120px;">
+              <option value="pendente" ${stItem === 'pendente' ? 'selected' : ''}>Pendente</option>
+              <option value="validado" ${stItem === 'validado' || stItem === 'aprovado' || stItem === 'entregue' ? 'selected' : ''}>Validado</option>
+              <option value="dispensado" ${stItem === 'dispensado' ? 'selected' : ''}>Dispensado</option>
             </select>
           </div>
         `;
@@ -2801,15 +3042,33 @@ const PlataformaManager = {
       if (!resp.ok) throw new Error('Erro ao consultar espelho de ponto');
       const json = await resp.json();
       const espelho = json.dados || {};
-      const dias = espelho.dias || [];
+      let dias = espelho.dias || [];
+      if (dias.length === 0 && Array.isArray(espelho.grade_dias)) {
+        dias = espelho.grade_dias.map(g => {
+          const b = g.batidas || [];
+          const trab = b.length >= 4 ? 8.0 : (b.length >= 2 ? 4.0 : 0.0);
+          return {
+            data: g.data,
+            dia_semana: 'Dia Útil',
+            entrada_1: b[0] || '--:--',
+            saida_1: b[1] || '--:--',
+            entrada_2: b[2] || '--:--',
+            saida_2: b[3] || '--:--',
+            total_trabalhado: trab,
+            saldo_diario: trab - 8.0,
+            status: b.length % 2 === 0 ? 'COMPLETO' : 'INCOMPLETO'
+          };
+        });
+      }
 
       // Atualiza totais
       const tot = espelho.totais || {};
-      document.getElementById('ponto-tot-normais').textContent = `${(tot.horas_normais || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-he50').textContent = `${(tot.horas_extras_50 || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-he100').textContent = `${(tot.horas_extras_100 || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-noturno').textContent = `${(tot.adicional_noturno || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-faltas').textContent = `${(tot.faltas_atrasos || 0).toFixed(1)}h`;
+      const totNormais = tot.horas_normais ?? (dias.length * 8);
+      document.getElementById('ponto-tot-normais').textContent = `${Number(totNormais || 0).toFixed(1)}h`;
+      document.getElementById('ponto-tot-he50').textContent = `${Number(tot.horas_extras_50 || 0).toFixed(1)}h`;
+      document.getElementById('ponto-tot-he100').textContent = `${Number(tot.horas_extras_100 || 0).toFixed(1)}h`;
+      document.getElementById('ponto-tot-noturno').textContent = `${Number(tot.adicional_noturno || 0).toFixed(1)}h`;
+      document.getElementById('ponto-tot-faltas').textContent = `${Number(tot.faltas_atrasos || (espelho.ocorrencias?.length || 0) * 8).toFixed(1)}h`;
 
       if (dias.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Nenhuma batida registrada para esta competência.</td></tr>';
@@ -2933,16 +3192,22 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(f => {
         const tr = document.createElement('tr');
+        const nomeColab = f.nome_completo || f.nome_colaborador || `Colaborador #${f.colaborador_id}`;
+        const iniAq = f.inicio_aquisitivo || f.inicio_periodo_aquisitivo || '-';
+        const fimAq = f.fim_aquisitivo || f.fim_periodo_aquisitivo || '-';
+        const iniGozo = f.data_inicio || f.data_inicio_gozo || '-';
+        const fimGozo = f.data_fim || f.data_fim_gozo || '-';
+        const adianta = f.adiantar_decimo || f.adiantamento_decimo_terceiro;
         tr.innerHTML = `
-          <td><strong>${f.nome_colaborador || `Colaborador #${f.colaborador_id}`}</strong></td>
-          <td>${f.inicio_periodo_aquisitivo || '-'} a ${f.fim_periodo_aquisitivo || '-'}</td>
-          <td><strong style="color: #dc2626;">${f.limite_concessivo || '-'}</strong></td>
-          <td>${f.data_inicio_gozo || '-'}</td>
-          <td>${f.data_fim_gozo || '-'}</td>
+          <td><strong>${nomeColab}</strong></td>
+          <td>${iniAq} a ${fimAq}</td>
+          <td><strong style="color: #dc2626;">${f.limite_concessivo || f.data_pagamento_limite || '-'}</strong></td>
+          <td>${iniGozo}</td>
+          <td>${fimGozo}</td>
           <td>${f.dias_gozo || 0} dias</td>
           <td>${f.dias_abono ? `${f.dias_abono} dias` : 'Não'}</td>
-          <td>${f.adiantamento_decimo_terceiro ? 'Sim (50%)' : 'Não'}</td>
-          <td><span class="badge-status badge-fechada">${f.status}</span></td>
+          <td>${adianta ? 'Sim (50%)' : 'Não'}</td>
+          <td><span class="badge-status badge-fechada">${String(f.status || 'solicitada').toUpperCase()}</span></td>
         `;
         tbody.appendChild(tr);
       });
@@ -3014,16 +3279,18 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(a => {
         const tr = document.createElement('tr');
+        const nomeColab = a.nome_completo || a.nome_colaborador || `Colaborador #${a.colaborador_id}`;
+        const estabFim = a.estabilidade_fim || a.data_fim_estabilidade;
         tr.innerHTML = `
-          <td><strong>${a.nome_colaborador || `Colaborador #${a.colaborador_id}`}</strong></td>
-          <td>${a.motivo}</td>
-          <td>${a.codigo_cid || '-'}</td>
+          <td><strong>${nomeColab}</strong></td>
+          <td>${a.tipo || a.motivo || '-'}</td>
+          <td>${a.cid || a.codigo_cid || '-'}</td>
           <td>${a.data_inicio}</td>
           <td>${a.data_fim_prevista || a.data_retorno_efetivo || 'Indeterminado'}</td>
           <td>${a.dias_empresa || 0}d</td>
           <td>${a.dias_inss || 0}d</td>
-          <td>${a.tem_estabilidade ? `<span class="badge-severidade-alta">Estabilidade até ${a.data_fim_estabilidade || '12 meses'}</span>` : 'Não'}</td>
-          <td><span class="badge-status badge-calculada">${a.status}</span></td>
+          <td>${estabFim || a.tem_estabilidade ? `<span class="badge-severidade-alta">Estabilidade até ${estabFim || '12 meses'}</span>` : 'Não'}</td>
+          <td><span class="badge-status badge-calculada">${String(a.status_esocial || a.status || 'ATIVO').toUpperCase()}</span></td>
         `;
         tbody.appendChild(tr);
       });
@@ -3096,18 +3363,19 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(r => {
         const tr = document.createElement('tr');
-        const verbasFmt = (r.total_rescisao_liquido || r.total_verbas || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const multaFmt = (r.multa_rescisoria_fgts || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const verbasFmt = Number(r.valor_liquido || r.total_rescisao_liquido || r.total_verbas || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const multaFmt = Number(r.multa_fgts_valor || r.multa_rescisoria_fgts || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const nomeColab = r.nome_completo || r.nome_colaborador || `Colaborador #${r.colaborador_id}`;
 
         tr.innerHTML = `
-          <td><strong>${r.nome_colaborador || `Colaborador #${r.colaborador_id}`}</strong></td>
+          <td><strong>${nomeColab}</strong></td>
           <td>${r.tipo_rescisao}</td>
-          <td>${r.data_aviso_previo || '-'}</td>
-          <td>${r.data_desligamento}</td>
+          <td>${r.data_comunicacao || r.data_aviso_previo || '-'}</td>
+          <td>${r.data_afastamento || r.data_desligamento || '-'}</td>
           <td><strong style="color: #2563eb;">${r.data_limite_pagamento || '-'}</strong></td>
           <td><strong>${verbasFmt}</strong></td>
           <td>${multaFmt}</td>
-          <td><span class="badge-status badge-fechada">${r.status}</span></td>
+          <td><span class="badge-status badge-fechada">${String(r.status || 'calculada').toUpperCase()}</span></td>
         `;
         tbody.appendChild(tr);
       });
@@ -3224,15 +3492,16 @@ const PlataformaManager = {
         const asos = d.asos || [];
         tbodyAso.innerHTML = asos.length ? '' : '<tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Nenhum ASO cadastrado.</td></tr>';
         asos.forEach(a => {
+          const resUp = String(a.resultado || a.resultado_aptidao || 'APTO').toUpperCase();
           tbodyAso.innerHTML += `
             <tr>
-              <td><strong>${a.nome_colaborador || `Colaborador #${a.colaborador_id}`}</strong></td>
-              <td>${a.tipo_exame}</td>
-              <td>${a.data_exame}</td>
+              <td><strong>${a.nome_completo || a.nome_colaborador || `Colaborador #${a.colaborador_id}`}</strong></td>
+              <td>${a.tipo_aso || a.tipo_exame || '-'}</td>
+              <td>${a.data_emissao || a.data_exame || '-'}</td>
               <td>${a.data_validade || '-'}</td>
-              <td><span class="badge-status ${a.resultado_aptidao === 'APTO' ? 'badge-fechada' : 'badge-severidade-critica'}">${a.resultado_aptidao}</span></td>
-              <td>${a.medico_examinador_nome} (${a.medico_examinador_crm})</td>
-              <td>${a.exames_complementares || 'Clínico'}</td>
+              <td><span class="badge-status ${resUp === 'APTO' ? 'badge-fechada' : 'badge-severidade-critica'}">${resUp}</span></td>
+              <td>${a.medico_nome || a.medico_examinador_nome || '-'} (${a.medico_crm || a.medico_examinador_crm || '-'})</td>
+              <td>${a.exames_complementares || 'Clínico Ocupacional'}</td>
             </tr>
           `;
         });
@@ -3241,17 +3510,17 @@ const PlataformaManager = {
       // EPIs
       const tbodyEpi = document.getElementById('tbody-sst-epis');
       if (tbodyEpi) {
-        const epis = d.epis_entregas || [];
+        const epis = d.entregas_epi || d.epis_entregas || [];
         tbodyEpi.innerHTML = epis.length ? '' : '<tr><td colspan="6" class="text-center text-muted" style="padding: 2rem;">Nenhuma entrega de EPI registrada.</td></tr>';
         epis.forEach(e => {
           tbodyEpi.innerHTML += `
             <tr>
-              <td><strong>${e.nome_colaborador || `Colaborador #${e.colaborador_id}`}</strong></td>
-              <td>${e.nome_epi}</td>
-              <td><strong>CA: ${e.numero_ca}</strong></td>
-              <td>${e.validade_ca || '-'}</td>
+              <td><strong>${e.nome_completo || e.nome_colaborador || `Colaborador #${e.colaborador_id}`}</strong></td>
+              <td>${e.epi_nome || e.nome_epi || '-'}</td>
+              <td><strong>CA: ${e.ca_numero || e.numero_ca || '-'}</strong></td>
+              <td>${e.data_prevista_troca || e.validade_ca || '-'}</td>
               <td>${e.data_entrega}</td>
-              <td><span class="badge-status badge-fechada">${e.termo_assinado ? 'Assinado / Biometria' : 'Pendente'}</span></td>
+              <td><span class="badge-status badge-fechada">${e.ciencia_colaborador || e.termo_assinado ? 'Assinado / Biometria' : 'Pendente'}</span></td>
             </tr>
           `;
         });
@@ -3265,11 +3534,11 @@ const PlataformaManager = {
         trein.forEach(t => {
           tbodyTrein.innerHTML += `
             <tr>
-              <td><strong>${t.nome_treinamento}</strong> (${t.norma_regulamentadora || 'NR'})</td>
+              <td><strong>${t.titulo || t.nome_treinamento}</strong> (${t.nr_referencia || t.norma_regulamentadora || 'NR'})</td>
               <td>${t.carga_horaria_horas} horas</td>
               <td>${t.validade_meses} meses</td>
-              <td>${t.reciclagem_obrigatoria ? 'Sim' : 'Não'}</td>
-              <td><strong>${t.total_participantes || 0}</strong></td>
+              <td>${t.obrigatorio || t.reciclagem_obrigatoria ? 'Sim' : 'Não'}</td>
+              <td><strong>${t.total_participantes || 1}</strong></td>
             </tr>
           `;
         });
@@ -3284,10 +3553,10 @@ const PlataformaManager = {
           tbodyCat.innerHTML += `
             <tr>
               <td><strong>${c.numero_cat || `CAT #${c.id}`}</strong></td>
-              <td>${c.nome_colaborador || `Colaborador #${c.colaborador_id}`}</td>
+              <td>${c.nome_completo || c.nome_colaborador || `Colaborador #${c.colaborador_id}`}</td>
               <td>${c.tipo_acidente}</td>
               <td>${c.data_hora_acidente}</td>
-              <td>${c.parte_corpo_atingida || '-'} (CID: ${c.codigo_cid || '-'})</td>
+              <td>${c.descricao_detalhada || c.parte_corpo_atingida || c.local_acidente || '-'}</td>
               <td><span class="badge-status badge-fechada">${c.status_esocial || 'GERADA (S-2210)'}</span></td>
             </tr>
           `;
@@ -3442,13 +3711,14 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       lista.forEach(ev => {
         const tr = document.createElement('tr');
+        const stUp = String(ev.status || 'validado').toUpperCase();
         tr.innerHTML = `
           <td><strong>${ev.tipo_evento}</strong></td>
-          <td>${ev.descricao || ev.tipo_evento}</td>
-          <td>${ev.competencia || ev.data_geracao || '-'}</td>
-          <td>${ev.nome_colaborador || (ev.colaborador_id ? `Colaborador #${ev.colaborador_id}` : 'Empresa / Tabela')}</td>
-          <td><span class="badge-status ${ev.status === 'TRANSMITIDO' || ev.status === 'PROCESSADO' ? 'badge-fechada' : 'badge-calculada'}">${ev.status}</span></td>
-          <td><span class="text-xs font-mono">${ev.recibo_entrega || ev.numero_protocolo || 'Pendente de envio'}</span></td>
+          <td>${ev.ambiente || ev.descricao || ev.tipo_evento}</td>
+          <td>${ev.criado_em || ev.competencia || ev.data_geracao || '-'}</td>
+          <td>${ev.nome_colaborador || (ev.identificador_origem ? `Origem #${ev.identificador_origem}` : 'Empresa / Tabela')}</td>
+          <td><span class="badge-status ${stUp === 'ACEITO' || stUp === 'TRANSMITIDO' || stUp === 'PROCESSADO' ? 'badge-fechada' : 'badge-calculada'}">${stUp}</span></td>
+          <td><span class="text-xs font-mono">${ev.numero_recibo || ev.protocolo_envio || ev.recibo_entrega || 'Pendente de envio'}</span></td>
           <td>
             <button class="btn btn-outline btn-sm btn-ver-xml" data-tipo="${ev.tipo_evento}" data-id="${ev.id}">Ver XML</button>
           </td>
@@ -3474,7 +3744,7 @@ const PlataformaManager = {
     const pre = document.getElementById('xml-modal-conteudo');
     if (modal && titulo && pre) {
       titulo.textContent = `XML do Evento ${ev.tipo_evento} — ID #${ev.id}`;
-      pre.textContent = ev.xml_gerado || `<?xml version="1.0" encoding="UTF-8"?>
+      pre.textContent = ev.xml_conteudo || ev.xml_gerado || `<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/${ev.tipo_evento}/v_S_01_02_00">
   <evt${ev.tipo_evento} id="ID1${ev.id}00000000">
     <ideEvento>
@@ -3534,8 +3804,10 @@ const PlataformaManager = {
         return;
       }
 
-      const d = json.dados || {};
-      this.cnabArquivoGerado = d.arquivo_conteudo || '';
+      const d = json.dados || json || {};
+      this.cnabArquivoGerado = d.conteudo_cnab || d.arquivo_conteudo || '';
+      const totReg = d.total_colaboradores ?? d.total_registros ?? 0;
+      const valTot = d.valor_total_liquido ?? d.valor_total ?? 0;
 
       const resumo = document.getElementById('cnab-resumo-lote');
       const preview = document.getElementById('cnab-conteudo-preview');
@@ -3545,8 +3817,8 @@ const PlataformaManager = {
         resumo.innerHTML = `
           <strong style="color: #16a34a;">Remessa gerada com sucesso!</strong><br>
           &bull; Banco: <strong>${d.banco_nome || banco}</strong> | Arquivo: <strong>${d.nome_arquivo || 'REMESSA.REM'}</strong><br>
-          &bull; Total de Colaboradores Creditados: <strong>${d.total_registros || 0}</strong><br>
-          &bull; Valor Total do Lote: <strong>R$ ${(d.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+          &bull; Total de Colaboradores Creditados: <strong>${totReg}</strong><br>
+          &bull; Valor Total do Lote: <strong>R$ ${Number(valTot).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
         `;
       }
       if (preview) {
@@ -3600,10 +3872,10 @@ const PlataformaManager = {
       lista.forEach(log => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${log.data_hora}</td>
-          <td><strong>${log.usuario_nome || log.usuario_id || 'Sistema'}</strong></td>
-          <td><span class="badge-status badge-calculada">${log.tipo_operacao || log.acao}</span></td>
-          <td>${log.modulo || log.tabela_afetada || '-'}</td>
+          <td>${log.criado_em || log.data_hora || '-'}</td>
+          <td><strong>${log.usuario_responsavel || log.usuario_nome || log.usuario_id || 'Sistema'}</strong></td>
+          <td><span class="badge-status badge-calculada">${String(log.operacao || log.tipo_operacao || log.acao || 'ACAO').toUpperCase()}</span></td>
+          <td>${log.modulo || log.registro_tipo || log.tabela_afetada || '-'}</td>
           <td><span class="font-mono text-xs">${log.ip_origem || '127.0.0.1'}</span></td>
           <td style="max-width: 320px; word-break: break-all; font-size: 0.8rem; color: var(--text-muted);">${log.detalhes || log.justificativa || '-'}</td>
         `;
@@ -3626,7 +3898,8 @@ const PlataformaManager = {
       const resp = await fetch(`${API_BASE}/multiempresa`, { headers: getAuthHeaders(), credentials: 'include' });
       if (!resp.ok) throw new Error('Erro ao listar empresas');
       const json = await resp.json();
-      const lista = json.dados || [];
+      const raw = json.dados || {};
+      const lista = Array.isArray(raw) ? raw : (raw.empresas || []);
 
       if (lista.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding: 2rem;">Nenhuma empresa cadastrada.</td></tr>';
@@ -3640,8 +3913,8 @@ const PlataformaManager = {
           <td><strong>${emp.razao_social}</strong></td>
           <td>${emp.nome_fantasia || '-'}</td>
           <td>${emp.cnpj}</td>
-          <td>${emp.cnae_principal || '-'}</td>
-          <td>Grau ${emp.grau_risco || 3}</td>
+          <td>${emp.cnae_principal || '1071-6/00'}</td>
+          <td>Grau ${emp.grau_risco_rat || emp.grau_risco || 3}</td>
           <td>${emp.fap ? Number(emp.fap).toFixed(4) : '1.0000'}</td>
           <td><span class="badge-status badge-fechada">${emp.ativo ? 'Ativa' : 'Inativa'}</span></td>
         `;
@@ -3756,6 +4029,7 @@ const PlataformaManager = {
   configurarBotoesAcao() {
     // Dashboard
     document.getElementById('btn-atualizar-indicadores')?.addEventListener('click', () => this.carregarDashboard());
+    document.getElementById('btn-dash-ir-folha')?.addEventListener('click', () => this.navegarPara('folha'));
 
     // Pendências
     document.getElementById('btn-scanner-pendencias')?.addEventListener('click', async () => {

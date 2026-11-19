@@ -25,6 +25,7 @@ from tests.test_folha_service import TestFolhaService
 from tests.test_rate_limit_csrf import TestAutenticacaoRH20
 from tests.test_rn_oficiais_2026 import TestRegrasNegocioOficiais2026
 from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhista
+from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
 
 
 def executar():
@@ -50,6 +51,9 @@ def executar():
 
     # 4. Testes da Plataforma Completa do Ciclo Trabalhista (Módulos 01 a 20)
     suite.addTests(carregador.loadTestsFromTestCase(TestPlataformaCicloTrabalhista))
+
+    # 4b. Testes de Responsividade Desktop & Mobile (360px a 1920px, UI Corporativa e Gráficos)
+    suite.addTests(carregador.loadTestsFromTestCase(TestResponsividadeDesktopMobile))
 
     # 5. Testes de Serviço e Persistência da Folha (Ciclo de Vida e Auditoria)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))

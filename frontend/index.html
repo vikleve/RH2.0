@@ -168,44 +168,85 @@
   <!-- SISTEMA INTERNO / PROTEGIDO (RF-40, RF-41, RF-43)           -->
   <!-- ============================================================ -->
   <div id="tela-sistema" class="app-layout hidden">
-    <!-- Cabeçalho Principal -->
+    <!-- Cabeçalho Principal Corporativo (Desktop & Mobile) -->
     <header class="app-header">
       <div class="header-container">
-        <div class="brand">
-          <div class="brand-icon" style="background: transparent; box-shadow: none; padding: 0;">
-            <img src="assets/logo-emblema.png" alt="ForçaVerde Usina" style="width: 44px; height: 44px; object-fit: contain;">
-          </div>
-          <div>
-            <h1 class="brand-title">ForçaVerde Usina <span style="font-weight: 500; font-size: 0.9rem; color: #15803d;">&bull; RH2.0</span></h1>
-            <p class="brand-subtitle">Portal de Folha de Pagamento &amp; Gestão de Colaboradores</p>
+        <div class="header-left-group">
+          <button id="btn-mobile-menu" class="btn-hamburger" type="button" aria-label="Abrir menu de navegação" aria-expanded="false" aria-controls="platform-sidebar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="brand">
+            <div class="brand-icon">
+              <img src="assets/logo-emblema.png" alt="ForçaVerde Usina" style="width: 38px; height: 38px; object-fit: contain;">
+            </div>
+            <div class="brand-text-wrap">
+              <div class="brand-title-row">
+                <h1 class="brand-title">RH 2.0</h1>
+                <span class="brand-corp-pill">ForçaVerde Usina</span>
+              </div>
+              <p class="brand-subtitle">Plataforma Corporativa de Gestão do Ciclo Trabalhista &amp; Folha</p>
+            </div>
           </div>
         </div>
+
         <div class="header-actions">
+          <!-- Central de Notificações no Cabeçalho -->
+          <div class="header-notif-wrapper" id="header-notif-wrapper">
+            <button id="btn-header-notificacoes" class="btn-notif-bell" type="button" aria-label="Notificações e alertas operacionais" title="Notificações e Pendências">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              <span class="notif-count-badge" id="header-notif-badge">0</span>
+            </button>
+            <div id="header-notif-dropdown" class="notif-dropdown hidden" role="region" aria-label="Painel de notificações recentes">
+              <div class="notif-dropdown-header">
+                <strong>Notificações &amp; Alertas</strong>
+                <span class="badge-status badge-calculada" id="notif-dropdown-count-label">0 abertas</span>
+              </div>
+              <div id="notif-dropdown-list" class="notif-dropdown-list">
+                <div class="notif-empty">Nenhuma pendência crítica no momento.</div>
+              </div>
+              <div class="notif-dropdown-footer">
+                <button type="button" id="btn-ir-central-pendencias" class="btn btn-primary btn-sm btn-block">
+                  Abrir Central de Pendências
+                </button>
+              </div>
+            </div>
+          </div>
+
           <span class="user-badge" id="user-badge">
             <span class="user-status-dot"></span>
-            Operador: <strong id="header-user-nome">Administrador (RH/DP)</strong>
+            <span class="user-operator-label">Operador:</span>
+            <strong id="header-user-nome">Administrador (RH/DP)</strong>
             <span class="profile-tag" id="header-user-perfil">administrador</span>
           </span>
+
           <button id="btn-novo-colaborador" class="btn btn-primary">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            Novo Colaborador
+            <span class="btn-label-text">Novo Colaborador</span>
           </button>
+
           <button id="btn-logout" class="btn btn-logout" title="Encerrar sessão de forma segura">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
               <polyline points="16 17 21 12 16 7"></polyline>
               <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
-            Sair
+            <span class="btn-logout-text">Sair</span>
           </button>
         </div>
       </div>
     </header>
 
-    <!-- Barra de Navegação entre Módulos do Sistema -->
+    <!-- Barra de Navegação entre Módulos do Sistema (Compatibilidade Legada) -->
     <nav class="nav-modules" aria-label="Navegação entre módulos" style="display: none;">
       <button id="nav-tab-colaboradores" class="nav-module-tab active" type="button">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -228,12 +269,20 @@
       </button>
     </nav>
 
-    <!-- Conteúdo Principal -->
-    
+    <!-- Backdrop Escuro para Menu Gaveta Mobile -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+
     <!-- Layout Unificado da Plataforma: Sidebar + Conteúdo -->
     <div class="platform-layout">
       <!-- Barra Lateral de Navegação da Plataforma (Módulos 01 a 20) -->
-      <aside class="platform-sidebar" id="platform-sidebar">
+      <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu principal de módulos">
+        <div class="sidebar-mobile-header">
+          <div class="sidebar-mobile-brand">
+            <span class="sidebar-corp-dot"></span>
+            <strong>RH 2.0 &bull; Navegação</strong>
+          </div>
+          <button type="button" id="btn-close-sidebar" class="btn-close-sidebar" aria-label="Fechar menu lateral">&times;</button>
+        </div>
         <div class="sidebar-nav">
           <div class="sidebar-section">
             <div class="sidebar-section-title">Estratégico & Indicadores</div>
@@ -386,22 +435,33 @@
         <!-- VISÃO DASHBOARD & BI (MÓDULOS 19 E 20)                        -->
         <!-- ============================================================ -->
         <div id="view-modulo-dashboard" class="platform-view">
-          <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <div>
-              <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Painel Executivo &amp; Indicadores BI</h2>
-              <p style="color: var(--text-muted); font-size: 0.88rem;">Métricas consolidadas em tempo real com fórmulas oficiais (RF-181 a RF-190)</p>
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Visão Executiva &bull; Vigência Legal 2026</span>
+              <h2 class="view-title">Painel Executivo &amp; Indicadores BI</h2>
+              <p class="view-subtitle">Métricas corporativas, indicadores financeiros e gráficos em tempo real (RF-181 a RF-190)</p>
             </div>
-            <button id="btn-atualizar-indicadores" class="btn btn-outline" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              Atualizar Indicadores
-            </button>
+            <div class="view-header-actions">
+              <button id="btn-dash-ir-folha" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <line x1="2" y1="10" x2="22" y2="10"></line>
+                </svg>
+                Gestão da Folha
+              </button>
+              <button id="btn-atualizar-indicadores" class="btn btn-outline" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Atualizar Indicadores
+              </button>
+            </div>
           </div>
 
-          <section class="metrics-grid">
+          <!-- 1. Cards de Indicadores de Capital Humano -->
+          <section class="metrics-grid" aria-label="Indicadores estratégicos de RH">
             <div class="metric-card">
               <div class="metric-icon metric-icon-blue">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -412,12 +472,12 @@
               <div class="metric-info">
                 <span class="metric-label">Colaboradores Ativos</span>
                 <span class="metric-value" id="kpi-total-ativos">--</span>
-                <span class="text-xs text-muted">Contratos CLT e Estágio</span>
+                <span class="text-xs text-muted">Contratos CLT e Efetivos</span>
               </div>
             </div>
 
             <div class="metric-card">
-              <div class="metric-icon" style="background-color: #fef3c7; color: #d97706;">
+              <div class="metric-icon metric-icon-navy">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
                   <polyline points="17 6 23 6 23 12"></polyline>
@@ -431,7 +491,7 @@
             </div>
 
             <div class="metric-card">
-              <div class="metric-icon" style="background-color: #fee2e2; color: #dc2626;">
+              <div class="metric-icon metric-icon-amber">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"></circle>
                   <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -441,12 +501,12 @@
               <div class="metric-info">
                 <span class="metric-label">Taxa de Absenteísmo</span>
                 <span class="metric-value" id="kpi-absenteismo">0.00%</span>
-                <span class="kpi-formula-tag">(Horas Não Trab / Previstas)*100</span>
+                <span class="kpi-formula-tag">(Horas Falta / Previstas)*100</span>
               </div>
             </div>
 
             <div class="metric-card">
-              <div class="metric-icon" style="background-color: #ede9fe; color: #7c3aed;">
+              <div class="metric-icon metric-icon-purple">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                 </svg>
@@ -459,15 +519,132 @@
             </div>
           </section>
 
+          <!-- 2. Cards com Informações Financeiras da Folha -->
+          <section class="financial-cards-grid mt-3" id="dashboard-financial-cards" aria-label="Resumo financeiro da folha de pagamento">
+            <div class="fin-card fin-card-primary">
+              <div class="fin-card-top">
+                <span class="fin-card-label">Folha Bruta (Total Proventos)</span>
+                <span class="fin-card-badge" id="kpi-fin-competencia">Comp. Atual</span>
+              </div>
+              <div class="fin-card-value" id="kpi-fin-proventos">R$ 0,00</div>
+              <div class="fin-card-footer">Remuneração base + variáveis apuradas</div>
+            </div>
+
+            <div class="fin-card fin-card-success">
+              <div class="fin-card-top">
+                <span class="fin-card-label">Líquido Total a Pagar</span>
+                <span class="fin-card-badge">Crédito Bancário</span>
+              </div>
+              <div class="fin-card-value" id="kpi-fin-liquido">R$ 0,00</div>
+              <div class="fin-card-footer">Valor líquido após deduções legais</div>
+            </div>
+
+            <div class="fin-card fin-card-info">
+              <div class="fin-card-top">
+                <span class="fin-card-label">Encargos FGTS (8%)</span>
+                <span class="fin-card-badge">GFIP / FGTS Digital</span>
+              </div>
+              <div class="fin-card-value" id="kpi-fin-fgts">R$ 0,00</div>
+              <div class="fin-card-footer">Provisão patronal obrigatória</div>
+            </div>
+
+            <div class="fin-card fin-card-warning">
+              <div class="fin-card-top">
+                <span class="fin-card-label">Retenções (INSS + IRRF)</span>
+                <span class="fin-card-badge">DARF / DCTFWeb</span>
+              </div>
+              <div class="fin-card-value" id="kpi-fin-descontos">R$ 0,00</div>
+              <div class="fin-card-footer">Tabela progressiva 2026 &amp; Lei 15.270</div>
+            </div>
+          </section>
+
+          <!-- 3. Gráficos Executivos Organizados e Responsivos -->
+          <section class="dashboard-charts-grid mt-3" id="dashboard-charts-grid" aria-label="Gráficos analíticos de folha e efetivo">
+            <!-- Gráfico 1: Composição Financeira da Folha -->
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">Composição Financeira da Folha &amp; Encargos</h3>
+                  <p class="chart-card-subtitle">Proporção entre Salário Líquido, INSS, IRRF e FGTS Patronal</p>
+                </div>
+                <span class="badge-status badge-calculada">Análise Financeira</span>
+              </div>
+              <div class="chart-card-body">
+                <!-- Barra Empilhada Geral -->
+                <div class="stacked-bar-container" id="chart-stacked-bar" aria-label="Gráfico de barra empilhada da folha">
+                  <div class="stacked-segment seg-liquido" id="seg-bar-liquido" style="width: 78%;" title="Salário Líquido"></div>
+                  <div class="stacked-segment seg-inss" id="seg-bar-inss" style="width: 10%;" title="INSS"></div>
+                  <div class="stacked-segment seg-irrf" id="seg-bar-irrf" style="width: 4%;" title="IRRF"></div>
+                  <div class="stacked-segment seg-fgts" id="seg-bar-fgts" style="width: 8%;" title="FGTS"></div>
+                </div>
+                <!-- Barras Horizontais Detalhadas -->
+                <div class="chart-bars-list" id="chart-composicao-folha">
+                  <div class="chart-bar-item">
+                    <div class="chart-bar-meta">
+                      <span class="chart-bar-name"><span class="legend-dot seg-liquido"></span>Salário Líquido</span>
+                      <strong class="chart-bar-val" id="chart-val-liquido">R$ 0,00 (78%)</strong>
+                    </div>
+                    <div class="chart-bar-track"><div class="chart-bar-fill seg-liquido" id="chart-fill-liquido" style="width: 78%;"></div></div>
+                  </div>
+                  <div class="chart-bar-item">
+                    <div class="chart-bar-meta">
+                      <span class="chart-bar-name"><span class="legend-dot seg-inss"></span>INSS Progressivo</span>
+                      <strong class="chart-bar-val" id="chart-val-inss">R$ 0,00 (10%)</strong>
+                    </div>
+                    <div class="chart-bar-track"><div class="chart-bar-fill seg-inss" id="chart-fill-inss" style="width: 10%;"></div></div>
+                  </div>
+                  <div class="chart-bar-item">
+                    <div class="chart-bar-meta">
+                      <span class="chart-bar-name"><span class="legend-dot seg-irrf"></span>IRRF Retido na Fonte</span>
+                      <strong class="chart-bar-val" id="chart-val-irrf">R$ 0,00 (4%)</strong>
+                    </div>
+                    <div class="chart-bar-track"><div class="chart-bar-fill seg-irrf" id="chart-fill-irrf" style="width: 4%;"></div></div>
+                  </div>
+                  <div class="chart-bar-item">
+                    <div class="chart-bar-meta">
+                      <span class="chart-bar-name"><span class="legend-dot seg-fgts"></span>FGTS Patronal (8%)</span>
+                      <strong class="chart-bar-val" id="chart-val-fgts">R$ 0,00 (8%)</strong>
+                    </div>
+                    <div class="chart-bar-track"><div class="chart-bar-fill seg-fgts" id="chart-fill-fgts" style="width: 8%;"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráfico 2: Distribuição do Efetivo e Massa Salarial por Setor -->
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">Distribuição do Efetivo por Departamento</h3>
+                  <p class="chart-card-subtitle">Lotação ativa e concentração salarial por centro de custo</p>
+                </div>
+                <span class="badge-status badge-fechada">Capital Humano</span>
+              </div>
+              <div class="chart-card-body">
+                <div id="chart-distribuicao-setores" class="chart-bars-list">
+                  <!-- Renderizado dinamicamente com dados reais do banco -->
+                  <div class="chart-bar-item">
+                    <div class="chart-bar-meta">
+                      <span class="chart-bar-name">Carregando distribuição setorial...</span>
+                      <strong class="chart-bar-val">--</strong>
+                    </div>
+                    <div class="chart-bar-track"><div class="chart-bar-fill seg-liquido" style="width: 50%;"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. Cards de Governança e Conformidade 2026 -->
           <section class="table-card mt-3">
             <div class="table-card-header">
-              <h3 style="font-size: 1.1rem; font-weight: 600;">Status Operacional da Plataforma — V1 &amp; Vigência 2026</h3>
+              <h3>Status Operacional da Plataforma — Conformidade Legal &amp; Vigência 2026</h3>
             </div>
-            <div class="p-3" style="padding: 1.25rem;">
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
-                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
-                  <strong style="color: var(--primary); display: block; margin-bottom: 0.25rem;">Parâmetros Legais 2026</strong>
-                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            <div class="p-3">
+              <div class="compliance-cards-grid">
+                <div class="compliance-info-card">
+                  <strong class="compliance-card-title text-primary-blue">Parâmetros Legais 2026</strong>
+                  <div class="compliance-card-list">
                     &bull; Salário Mínimo: <strong>R$ 1.621,00</strong><br>
                     &bull; Teto INSS: <strong>R$ 8.475,55</strong><br>
                     &bull; Dedução Dependente IRRF: <strong>R$ 189,59</strong><br>
@@ -475,18 +652,18 @@
                     &bull; Redução Lei 15.270/2025: <strong>Ativa</strong>
                   </div>
                 </div>
-                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
-                  <strong style="color: #16a34a; display: block; margin-bottom: 0.25rem;">Compliance eSocial &amp; SST</strong>
-                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                <div class="compliance-info-card">
+                  <strong class="compliance-card-title text-success-green">Compliance eSocial &amp; SST</strong>
+                  <div class="compliance-card-list">
                     &bull; Eventos Iniciais e Tabelas: <strong>S-1000 a S-1020</strong><br>
                     &bull; Eventos Não Periódicos: <strong>S-2190 a S-2299</strong><br>
                     &bull; Eventos SST: <strong>S-2210, S-2220, S-2240</strong><br>
                     &bull; Folha e Fechamento: <strong>S-1200, S-1210, S-1299</strong>
                   </div>
                 </div>
-                <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: var(--bg-card);">
-                  <strong style="color: #ea580c; display: block; margin-bottom: 0.25rem;">Segurança &amp; Governança</strong>
-                  <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                <div class="compliance-info-card">
+                  <strong class="compliance-card-title text-navy-dark">Segurança &amp; Governança</strong>
+                  <div class="compliance-card-list">
                     &bull; Segregação de Funções: <strong>RN-080 Ativa</strong><br>
                     &bull; Trilha de Auditoria Geral: <strong>RT-01 Ativa</strong><br>
                     &bull; Exclusão Lógica e LGPD: <strong>RF-009 / RT-02</strong><br>
@@ -1471,6 +1648,49 @@
 
     </main>
     </div> <!-- /.platform-layout -->
+
+    <!-- Barra de Navegação Inferior Mobile (Smartphones e Tablets) -->
+    <nav id="mobile-bottom-nav" class="mobile-bottom-nav" aria-label="Navegação rápida mobile">
+      <button type="button" class="bottom-nav-item active" data-view="dashboard" id="btn-bnav-dashboard">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="9"></rect>
+          <rect x="14" y="3" width="7" height="5"></rect>
+          <rect x="14" y="12" width="7" height="9"></rect>
+          <rect x="3" y="16" width="7" height="5"></rect>
+        </svg>
+        <span>Painel</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-view="colaboradores" id="btn-bnav-colaboradores">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+        </svg>
+        <span>Equipe</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-view="ponto" id="btn-bnav-ponto">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span>Ponto</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-view="folha" id="btn-bnav-folha">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+          <line x1="2" y1="10" x2="22" y2="10"></line>
+        </svg>
+        <span>Folha</span>
+      </button>
+      <button type="button" class="bottom-nav-item" id="btn-bnav-menu" aria-label="Abrir todos os módulos">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+        <span>Módulos</span>
+        <span class="bottom-nav-badge" id="bnav-badge-pendencias">0</span>
+      </button>
+    </nav>
 
     <!-- ============================================================ -->
     <!-- MODAL: FORMULÁRIO DE CADASTRO / EDIÇÃO                       -->
