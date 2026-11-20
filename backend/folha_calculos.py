@@ -75,28 +75,32 @@ def formatar_moeda(val: Any) -> str:
 # Sujeitos à parametrização por competência e validação pelo DP responsável.
 # ─────────────────────────────────────────────────────────────────────────────
 
-SALARIO_MINIMO_PADRAO_2026 = Decimal("1518.00")
-LIMITE_SALARIO_FAMILIA_2026 = Decimal("1906.00")
-VALOR_COTA_SALARIO_FAMILIA_2026 = Decimal("65.00")
+SALARIO_MINIMO_PADRAO_2026 = Decimal("1621.00")
+LIMITE_SALARIO_FAMILIA_2026 = Decimal("1980.38")
+VALOR_COTA_SALARIO_FAMILIA_2026 = Decimal("67.54")
 
+# Parâmetros oficiais da competência 2026, Portaria Interministerial MPS/MF nº 13/2026.
 TABELA_INSS_PADRAO_2026 = [
-    # (faixa_min, faixa_max, aliquota_percentual)
-    (Decimal("0.00"), Decimal("1518.00"), Decimal("7.5")),
-    (Decimal("1518.01"), Decimal("2793.88"), Decimal("9.0")),
-    (Decimal("2793.89"), Decimal("4190.83"), Decimal("12.0")),
-    (Decimal("4190.84"), Decimal("8157.41"), Decimal("14.0")),
+    # Limites superiores inclusivos: a base de cada faixa é calculada por diferença,
+    # sem lacunas artificiais de R$ 0,01 entre faixas.
+    (Decimal("0.00"), Decimal("1621.00"), Decimal("7.5")),
+    (Decimal("1621.00"), Decimal("2902.84"), Decimal("9.0")),
+    (Decimal("2902.84"), Decimal("4354.27"), Decimal("12.0")),
+    (Decimal("4354.27"), Decimal("8475.55"), Decimal("14.0")),
 ]
-TETO_INSS_PADRAO_2026 = Decimal("8157.41")
+TETO_INSS_PADRAO_2026 = Decimal("8475.55")
+TETO_CONTRIBUICAO_INSS_2026 = Decimal("988.09")
 
 TABELA_IRRF_PADRAO_2026 = [
-    # (faixa_min, faixa_max, aliquota_percentual, parcela_a_deduzir)
-    (Decimal("0.00"), Decimal("2259.20"), Decimal("0.0"), Decimal("0.00")),
-    (Decimal("2259.21"), Decimal("2826.65"), Decimal("7.5"), Decimal("169.44")),
-    (Decimal("2826.66"), Decimal("3751.05"), Decimal("15.0"), Decimal("381.44")),
-    (Decimal("3751.06"), Decimal("4664.68"), Decimal("22.5"), Decimal("662.77")),
-    (Decimal("4664.69"), None, Decimal("27.5"), Decimal("896.00")),
+    # (limite_inferior, limite_superior, alíquota, parcela a deduzir)
+    (Decimal("0.00"), Decimal("2428.80"), Decimal("0.0"), Decimal("0.00")),
+    (Decimal("2428.80"), Decimal("2826.65"), Decimal("7.5"), Decimal("182.16")),
+    (Decimal("2826.65"), Decimal("3751.05"), Decimal("15.0"), Decimal("394.16")),
+    (Decimal("3751.05"), Decimal("4664.68"), Decimal("22.5"), Decimal("675.49")),
+    (Decimal("4664.68"), None, Decimal("27.5"), Decimal("908.73")),
 ]
 DEDUCAO_DEPENDENTE_IRRF_PADRAO = Decimal("189.59")
+DESCONTO_SIMPLIFICADO_IRRF_PADRAO = Decimal("607.20")
 
 ALIQUOTA_FGTS_PADRAO = Decimal("8.0")
 ALIQUOTA_INSS_PATRONAL_PADRAO = Decimal("20.0")
