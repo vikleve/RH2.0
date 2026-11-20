@@ -16,8 +16,7 @@ from .database import _usar_postgres, get_connection, init_db, insert_returning_
 from .audit import AuditService
 
 ITERATIONS = 100_000
-SESSION_IDLE_TIMEOUT_HOURS = 12
-SESSION_ABSOLUTE_TIMEOUT_HOURS = 8
+# MODO TEMPORARIO DE APRESENTACAO: sessao permanece valida ate logout/revogacao.
 MENSAGEM_GENERICA_ERRO = "E-mail ou senha inválidos."
 
 
@@ -248,7 +247,8 @@ class AuthService:
 
         token = secrets.token_hex(32)
         agora_dt = datetime.now()
-        expira_dt = agora_dt + timedelta(hours=SESSION_IDLE_TIMEOUT_HOURS)
+        # Expiracao automatica temporariamente desativada para apresentacao.
+        expira_dt = datetime(9999, 12, 31, 23, 59, 59)
         agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
         expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -301,9 +301,8 @@ class AuthService:
             JOIN usuarios u ON u.id = s.usuario_id
             WHERE s.token = {P}
               AND s.revogado = 0
-              AND s.expira_em > {P}
               AND u.status = 'ativo'
-        """, (token, agora_str))
+        """, (token,))
 
         row = cursor.fetchone()
         if not row:
@@ -311,30 +310,6 @@ class AuthService:
             return None
 
         usuario = self._row(cursor, row)
-        criado_em = usuario.pop("criado_em", None)
-        if isinstance(criado_em, datetime):
-            criado_dt = criado_em
-        else:
-            criado_dt = datetime.strptime(str(criado_em), "%Y-%m-%d %H:%M:%S")
-        agora_dt = datetime.now()
-        limite_absoluto = criado_dt + timedelta(hours=SESSION_ABSOLUTE_TIMEOUT_HOURS)
-        proxima_expiracao = min(
-            agora_dt + timedelta(hours=SESSION_IDLE_TIMEOUT_HOURS),
-            limite_absoluto,
-        )
-        if proxima_expiracao <= agora_dt:
-            cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE token={P}", (token,))
-            conn.commit()
-            conn.close()
-            return None
-
-        # Renova a janela de inatividade em toda requisição autenticada.
-        # O limite absoluto de oito horas impede uma sessão sem fim.
-        cursor.execute(
-            f"UPDATE sessoes SET expira_em={P} WHERE token={P} AND revogado=0",
-            (proxima_expiracao.strftime("%Y-%m-%d %H:%M:%S"), token),
-        )
-        conn.commit()
         conn.close()
         if usuario and "empresa_id" not in usuario:
             usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
