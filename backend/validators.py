@@ -42,18 +42,10 @@ def validar_cpf(cpf: str) -> bool:
     if len(numeros) != 11:
         return False
 
-    # Modo de teste: aceita números sintéticos com 11 dígitos, mas nunca em produção.
-    # A unicidade do CPF no banco continua obrigatória.
-    ambiente_producao = (
-        os.environ.get("VERCEL_ENV", "").lower() == "production"
-        or os.environ.get("APP_ENV", "").lower() == "production"
-        or os.environ.get("ENVIRONMENT", "").lower() == "production"
-    )
-    modo_teste_cpf = (
-        os.environ.get("RH2_ALLOW_FAKE_CPFS") == "1"
-        and not ambiente_producao
-    )
-    if modo_teste_cpf:
+    # MODO TEMPORARIO DE APRESENTACAO:
+    # com RH2_ALLOW_FAKE_CPFS=1, aceita qualquer sequencia de 11 digitos.
+    # A unicidade do CPF no banco continua obrigatoria.
+    if os.environ.get("RH2_ALLOW_FAKE_CPFS") == "1":
         return True
 
     # Rejeita CPFs com todos os dígitos iguais (ex: 111.111.111-11)
