@@ -528,12 +528,12 @@ class TestFolhaCalculos(unittest.TestCase):
     def test_inss_oficial_2026_faixas_continuas_e_teto(self):
         """INSS progressivo 2026 não pode criar lacunas de um centavo entre faixas."""
         inss_3000, _, _, faixas = calcular_inss_progressivo(Decimal("3000.00"))
-        self.assertEqual(inss_3000, Decimal("248.60"))
+        self.assertEqual(inss_3000, Decimal("253.41"))
         self.assertEqual(len(faixas), 3)
-        self.assertEqual(faixas[1]["base_faixa"], 1379.0)
+        self.assertEqual(faixas[1]["base_faixa"], 1275.88)
 
         inss_teto, _, _, _ = calcular_inss_progressivo(Decimal("9000.00"))
-        self.assertEqual(inss_teto, Decimal("988.09"))
+        self.assertEqual(inss_teto, Decimal("951.63"))
 
     def test_irrf_2026_aplica_reducao_legal_e_desconto_simplificado(self):
         """A folha ativa deve usar a regra mensal da Lei 15.270/2025."""

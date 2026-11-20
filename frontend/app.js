@@ -2461,6 +2461,16 @@ const FolhaManager = {
         }
       }
 
+      // Preencher Cabeçalho da Empresa
+      const elRazao = document.getElementById('h-empresa-razao');
+      const elCnpjCidade = document.getElementById('h-empresa-cnpj-cidade');
+      if (elRazao) {
+        elRazao.textContent = f.empresa_nome || 'USINA CENTRAL DE BIOENERGIA S.A.';
+      }
+      if (elCnpjCidade) {
+        elCnpjCidade.textContent = f.empresa_cnpj ? `CNPJ: ${f.empresa_cnpj} • ${f.empresa_endereco || 'Sertãozinho / SP'}` : 'CNPJ: 54.321.987/0001-00 • Fazenda Boa Esperança, s/n - Zona Rural - Sertãozinho / SP';
+      }
+
       // Preencher Contracheque
       document.getElementById('h-competencia').textContent = f.competencia;
       document.getElementById('h-matricula').textContent = f.colaborador_matricula || '--';
@@ -4474,7 +4484,7 @@ const PlataformaManager = {
     if (btnAjustePonto && !btnAjustePonto.dataset.bound) {
       btnAjustePonto.dataset.bound = 'true';
       btnAjustePonto.addEventListener('click', () => {
-        document.getElementById('modal-solicitar-ajuste-ponto')?.classList.remove('hidden');
+        document.getElementById('modal-ajuste-ponto')?.classList.remove('hidden');
       });
     }
   },

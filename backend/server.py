@@ -144,6 +144,34 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             self._local_plataforma_service = _global_plataforma_service
         return self._local_plataforma_service
 
+    def _validar_escopo_empresa(self, usuario: dict, empresa_alvo: str = None) -> Optional[str]:
+        """
+        Valida isolamento multi-tenant por empresa (RT-12, RF-165, RF-166).
+        Retorna o empresa_id validado ou None se superadmin/administrador sem restrição.
+        Se usuário tentar acessar empresa não autorizada, envia 403 e retorna None.
+        """
+        if not usuario:
+            return None
+        perfil = usuario.get("perfil", "user")
+        empresa_usuario = usuario.get("empresa_id")
+
+        if perfil in ("superadmin", "administrador"):
+            return str(empresa_alvo).strip() if empresa_alvo else None
+
+        # Usuário regular só pode acessar sua própria empresa
+        if not empresa_usuario:
+            return None
+
+        if empresa_alvo and str(empresa_alvo).strip() != str(empresa_usuario).strip():
+            self._enviar_json(403, {
+                "sucesso": False,
+                "mensagem": "Acesso negado. Tentativa de acesso a dados de outra empresa (RT-12).",
+                "codigo": "ACESSO_NEGADO_EMPRESA"
+            })
+            return None
+
+        return str(empresa_usuario).strip()
+
     def _obter_caminho_e_query(self) -> tuple[str, dict]:
         """
         Extrai o caminho da requisição e os parâmetros de query.

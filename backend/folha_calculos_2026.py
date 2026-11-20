@@ -30,7 +30,7 @@ def round2(val: Any) -> Decimal:
 # ─────────────────────────────────────────────────────────────────────────────
 # Parâmetros Oficiais de 2026 (Portaria MPS/MF 13/2026 e Leis 15.191/25 e 15.270/25)
 # ─────────────────────────────────────────────────────────────────────────────
-SALARIO_MINIMO_2026 = Decimal("1621.00")
+SALARIO_MINIMO_2026 = Decimal("1518.00")
 TETO_INSS_2026 = Decimal("8475.55")
 TETO_CONTRIBUICAO_INSS_2026 = Decimal("988.09")
 LIMITE_SALARIO_FAMILIA_2026 = Decimal("1980.38")
@@ -41,10 +41,10 @@ ALIQUOTA_FGTS_PADRAO = Decimal("8.00")
 
 TABELA_INSS_2026 = [
     # Limites superiores inclusivos; cálculo por faixas contínuas.
-    (Decimal("0.00"), Decimal("1621.00"), Decimal("7.5")),
-    (Decimal("1621.00"), Decimal("2902.84"), Decimal("9.0")),
-    (Decimal("2902.84"), Decimal("4354.27"), Decimal("12.0")),
-    (Decimal("4354.27"), Decimal("8475.55"), Decimal("14.0")),
+    (Decimal("0.00"), Decimal("1518.00"), Decimal("7.5")),
+    (Decimal("1518.00"), Decimal("2793.88"), Decimal("9.0")),
+    (Decimal("2793.88"), Decimal("4190.83"), Decimal("12.0")),
+    (Decimal("4190.83"), Decimal("8475.55"), Decimal("14.0")),
 ]
 
 TABELA_IRRF_2026 = [

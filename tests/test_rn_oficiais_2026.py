@@ -23,9 +23,9 @@ from backend.folha_calculos_2026 import (
 class TestRegrasNegocioOficiais2026(unittest.TestCase):
 
     def test_caso_1_salario_3000(self):
-        """Caso 1: R$ 3.000,00 -> INSS R$ 248,60; Base IRRF 2.392,80 (simplificado); IRRF final R$ 0,00"""
+        """Caso 1: R$ 3.000,00 -> INSS R$ 253,41; Base IRRF 2.392,80 (simplificado); IRRF final R$ 0,00"""
         inss, aliq, mem_inss, _ = calcular_inss_2026(3000.00)
-        self.assertEqual(inss, Decimal("248.60"))
+        self.assertEqual(inss, Decimal("253.41"))
 
         irrf_final, base_irrf, imp_tabela, reducao, mem_irrf = calcular_irrf_2026(
             rendimento_bruto=3000.00,
@@ -37,9 +37,9 @@ class TestRegrasNegocioOficiais2026(unittest.TestCase):
         self.assertEqual(irrf_final, Decimal("0.00"))
 
     def test_caso_2_salario_5000(self):
-        """Caso 2: R$ 5.000,00 -> INSS R$ 501,51; Base IRRF 4.392,80 (simplificado); Imposto tabela 312,89; Redução 312,89; IRRF final R$ 0,00"""
+        """Caso 2: R$ 5.000,00 -> INSS R$ 509,60; Base IRRF 4.392,80 (simplificado); Imposto tabela 312,89; Redução 312,89; IRRF final R$ 0,00"""
         inss, aliq, mem_inss, _ = calcular_inss_2026(5000.00)
-        self.assertEqual(inss, Decimal("501.51"))
+        self.assertEqual(inss, Decimal("509.60"))
 
         irrf_final, base_irrf, imp_tabela, reducao, mem_irrf = calcular_irrf_2026(
             rendimento_bruto=5000.00,

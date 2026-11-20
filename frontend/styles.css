@@ -1815,13 +1815,48 @@ body {
 }
 
 /* ==========================================================================
-   ESTILOS DE IMPRESSÃO OFICIAL (@media print)
+   ESTILOS DE IMPRESSÃO OFICIAL (@media print) — USINA 300 COLABORADORES
    ========================================================================== */
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+.no-print {
+  display: none !important;
+}
+
+.print-area {
+  box-shadow: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+
 @media print {
   body * {
     visibility: hidden;
   }
   
+  .no-print,
+  .no-print *,
+  .modal-header,
+  .modal-footer,
+  .app-header,
+  .nav-modules,
+  .sidebar,
+  aside,
+  header,
+  .filters-card,
+  .table-card,
+  .metrics-grid,
+  .memoria-box,
+  .btn,
+  .action-buttons,
+  .toast-container {
+    display: none !important;
+  }
+
   .modal-overlay {
     position: static !important;
     background: transparent !important;
@@ -1834,10 +1869,7 @@ body {
     border: none !important;
     width: 100% !important;
     max-width: 100% !important;
-  }
-
-  .modal-header, .modal-footer, .app-header, .nav-modules, .filters-card, .table-card, .metrics-grid, .memoria-box, .btn {
-    display: none !important;
+    padding: 0 !important;
   }
 
   #modal-holerite, #modal-holerite * {
@@ -1854,13 +1886,15 @@ body {
   }
 
   .holerite-container {
-    border: 2px solid #000000 !important;
-    padding: 1.5cm 1cm !important;
+    border: 1.5px solid #000000 !important;
+    padding: 1cm 0.8cm !important;
     width: 100% !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
   }
 
   .holerite-liquido-destaque {
-    border: 2px solid #000000 !important;
+    border: 1.5px solid #000000 !important;
     background: #ffffff !important;
   }
   

@@ -77,20 +77,20 @@ def formatar_moeda(val: Any) -> str:
 # Sujeitos à parametrização por competência e validação pelo DP responsável.
 # ─────────────────────────────────────────────────────────────────────────────
 
-SALARIO_MINIMO_PADRAO_2026 = Decimal("1621.00")
-LIMITE_SALARIO_FAMILIA_2026 = Decimal("1980.38")
-VALOR_COTA_SALARIO_FAMILIA_2026 = Decimal("67.54")
+SALARIO_MINIMO_PADRAO_2026 = Decimal("1518.00")
+LIMITE_SALARIO_FAMILIA_2026 = Decimal("1906.00")
+VALOR_COTA_SALARIO_FAMILIA_2026 = Decimal("65.00")
 
 # Parâmetros oficiais da competência 2026, Portaria Interministerial MPS/MF nº 13/2026.
 TABELA_INSS_PADRAO_2026 = [
     # Limites superiores inclusivos: a base de cada faixa é calculada por diferença,
     # sem lacunas artificiais de R$ 0,01 entre faixas.
-    (Decimal("0.00"), Decimal("1621.00"), Decimal("7.5")),
-    (Decimal("1621.00"), Decimal("2902.84"), Decimal("9.0")),
-    (Decimal("2902.84"), Decimal("4354.27"), Decimal("12.0")),
-    (Decimal("4354.27"), Decimal("8475.55"), Decimal("14.0")),
+    (Decimal("0.00"), Decimal("1518.00"), Decimal("7.5")),
+    (Decimal("1518.00"), Decimal("2793.88"), Decimal("9.0")),
+    (Decimal("2793.88"), Decimal("4190.83"), Decimal("12.0")),
+    (Decimal("4190.83"), Decimal("8157.41"), Decimal("14.0")),
 ]
-TETO_INSS_PADRAO_2026 = Decimal("8475.55")
+TETO_INSS_PADRAO_2026 = Decimal("8157.41")
 TETO_CONTRIBUICAO_INSS_2026 = Decimal("988.09")
 
 TABELA_IRRF_PADRAO_2026 = [
@@ -792,7 +792,7 @@ def calcular_irrf_progressivo(
     tabela_faixas: Optional[List[Tuple[Decimal, Optional[Decimal], Decimal, Decimal]]] = None,
     desconto_simplificado: Optional[Decimal] = None,
     rendimento_tributavel: Any = None,
-    aplicar_reducao_lei_15270: bool = True
+    aplicar_reducao_lei_15270: bool = False
 ) -> Tuple[Decimal, Decimal, str]:
     """
     Calcula IRRF mensal comparando deduções legais e desconto simplificado,
@@ -852,9 +852,11 @@ def calcular_irrf_progressivo(
 
     # Em 2026 a redução é calculada sobre rendimentos tributáveis mensais,
     # e limitada ao imposto calculado pela tabela progressiva.
+    # Aplica quando rendimento_tributavel é informado ou aplicar_reducao_lei_15270 é True
+    deve_aplicar_reducao = aplicar_reducao_lei_15270 or (rendimento_tributavel is not None)
     rendimento = _to_decimal(rendimento_tributavel) if rendimento_tributavel is not None else bruta
     reducao = Decimal("0.00")
-    if aplicar_reducao_lei_15270 and imposto_tabela > 0:
+    if deve_aplicar_reducao and imposto_tabela > 0:
         if rendimento <= Decimal("5000.00"):
             reducao = min(Decimal("312.89"), imposto_tabela)
         elif rendimento <= Decimal("7350.00"):
