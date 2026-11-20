@@ -32,6 +32,17 @@ export class FolhaController {
     };
   }
 
+  @Post('simular')
+  @HttpCode(HttpStatus.OK)
+  async simular(@Body() body: any) {
+    const simulada = await this.service.simularFolha(body);
+    return {
+      sucesso: true,
+      mensagem: 'Simulação de folha executada com sucesso pelo motor oficial!',
+      dados: simulada,
+    };
+  }
+
   @Get()
   async listar(
     @Query('competencia') competencia?: string,
@@ -118,6 +129,24 @@ export class FolhaController {
       sucesso: true,
       mensagem: `Folha #${id} reaberta para edição.`,
       dados: reaberta,
+    };
+  }
+
+  @Post(':id/recalcular')
+  @HttpCode(HttpStatus.OK)
+  async recalcular(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    const nomeResp = req.user
+      ? `${req.user.nome_completo} (${req.user.perfil})`
+      : 'Sistema/Administrador';
+    const recalculada = await this.service.recalcularFolha(id, body, nomeResp);
+    return {
+      sucesso: true,
+      mensagem: `Folha #${id} recalculada e persistida com sucesso!`,
+      dados: recalculada,
     };
   }
 

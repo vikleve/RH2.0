@@ -12,6 +12,7 @@ import os
 import socketserver
 from typing import Any
 import urllib.parse
+from decimal import Decimal
 
 # Carrega variaveis de ambiente do arquivo .env (se existir)
 try:
@@ -243,16 +244,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return True
 
-    def _enviar_json(
-        self,
-        status_code: int,
-        dados: dict[str, Any] | list[Any],
-        set_cookie: str | None = None,
-        delete_cookie: str | None = None,
-        extra_headers: dict[str, Any] | None = None,
-    ):
-        """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store e suporte a cookies HttpOnly."""
-        corpo = json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
+    def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None, extra_headers: dict = None):
+        """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store, suporte a cookies HttpOnly e serialização segura de Decimais."""
+        def _json_serial(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            return str(obj)
+
+        corpo = json.dumps(dados, ensure_ascii=False, indent=2, default=_json_serial).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
