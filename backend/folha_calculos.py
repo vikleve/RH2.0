@@ -727,54 +727,59 @@ def calcular_inss_progressivo(
     teto_maximo: Optional[Decimal] = None
 ) -> Tuple[Decimal, Decimal, str, List[Dict[str, Any]]]:
     """
-    Calcula o INSS progressivo faixa a faixa (Emenda Constitucional 103/2019).
-    Retorna: (total_inss, aliquota_efetiva_percentual, memoria_calculo, detalhes_faixas)
+    Calcula o INSS progressivo por competência.
+    Os limites das faixas são superiores inclusivos; a base de cada faixa
+    é a diferença entre o limite atingido e o limite anterior.
     """
     base = _to_decimal(base_inss)
     if base <= Decimal("0.00"):
         return Decimal("0.00"), Decimal("0.00"), "Base de INSS zerada", []
 
     faixas = tabela_faixas if tabela_faixas is not None else TABELA_INSS_PADRAO_2026
-    teto = teto_maximo if teto_maximo is not None else TETO_INSS_PADRAO_2026
-
+    teto = _to_decimal(teto_maximo) if teto_maximo is not None else TETO_INSS_PADRAO_2026
     base_tributavel = min(base, teto)
     total_inss = Decimal("0.00")
     detalhes = []
     linhas_memoria = []
+    limite_inferior_anterior = Decimal("0.00")
 
-    for idx, (f_min, f_max, aliq) in enumerate(faixas, start=1):
-        if base_tributavel < f_min:
+    for idx, (limite_inferior_config, limite_superior, aliq) in enumerate(faixas, start=1):
+        # Aceita o formato histórico com limites mínimos separados por 0,01,
+        # mas calcula sobre a faixa contínua, sem criar lacuna ou sobreposição.
+        limite_superior = _to_decimal(limite_superior)
+        if base_tributavel <= limite_inferior_anterior:
             break
-
-        limite_superior = min(base_tributavel, f_max)
-        valor_tributavel_faixa = limite_superior - f_min
-        if idx == 1:
-            valor_tributavel_faixa = limite_superior
-
-        if valor_tributavel_faixa > Decimal("0.00"):
-            desc_faixa = arredondar_moeda(valor_tributavel_faixa * (aliq / Decimal("100.00")))
-            total_inss += desc_faixa
+        limite_aplicado = min(base_tributavel, limite_superior)
+        base_faixa = max(Decimal("0.00"), limite_aplicado - limite_inferior_anterior)
+        if base_faixa > 0:
+            valor_faixa = base_faixa * _to_decimal(aliq) / Decimal("100.00")
+            total_inss += valor_faixa
             detalhes.append({
                 "faixa": idx,
-                "de": float(f_min),
-                "ate": float(limite_superior),
-                "base_faixa": float(valor_tributavel_faixa),
+                "de": float(limite_inferior_anterior),
+                "ate": float(limite_aplicado),
+                "base_faixa": float(base_faixa),
                 "aliquota": float(aliq),
-                "desconto": float(desc_faixa)
+                "desconto": float(arredondar_moeda(valor_faixa))
             })
             linhas_memoria.append(
-                f"Faixa {idx} ({aliq}% sobre R$ {valor_tributavel_faixa:,.2f}) = R$ {desc_faixa:,.2f}"
+                f"Faixa {idx} ({aliq}% sobre R$ {base_faixa:.2f}) = R$ {arredondar_moeda(valor_faixa):.2f}"
             )
+        limite_inferior_anterior = limite_superior
+        if base_tributavel <= limite_superior:
+            break
 
     total_inss = arredondar_moeda(total_inss)
-    aliq_efetiva = Decimal("0.00")
-    if base > Decimal("0.00"):
-        aliq_efetiva = ((total_inss / base) * Decimal("100.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    memoria = " | ".join(linhas_memoria) + f" | Total INSS: R$ {total_inss:,.2f} (Efetiva: {aliq_efetiva}%)"
-    memoria = memoria.replace(".", ",")
-    return total_inss, aliq_efetiva, memoria, detalhes
-
+    if base_tributavel >= teto and teto == TETO_INSS_PADRAO_2026:
+        total_inss = min(total_inss, TETO_CONTRIBUICAO_INSS_2026)
+    aliquota_efetiva = (
+        (total_inss / base * Decimal("100.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if base > 0 else Decimal("0.00")
+    )
+    memoria = " | ".join(linhas_memoria) + (
+        f" | Total INSS: R$ {total_inss:.2f} (Efetiva: {aliquota_efetiva}%)"
+    )
+    return total_inss, aliquota_efetiva, memoria, detalhes
 
 def calcular_irrf_progressivo(
     base_bruta_irrf: Any,
