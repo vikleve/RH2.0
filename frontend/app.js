@@ -749,14 +749,21 @@ function adicionarLinhaDependente(dados = {}) {
   const emptyHint = document.getElementById('dependentes-vazio');
   emptyHint.classList.add('hidden');
 
+  const ehIrrf = dados.eh_dependente_irrf === undefined ? true : Boolean(Number(dados.eh_dependente_irrf));
+  const ehSf = Boolean(Number(dados.eh_elegivel_salario_familia || 0));
+
   const row = document.createElement('div');
   row.className = 'dependente-row';
+  row.style.flexWrap = 'wrap';
   row.innerHTML = `
     <div>
       <input type="text" class="form-control dep-nome" placeholder="Nome do Dependente *" value="${dados.nome || ''}" required>
     </div>
     <div>
       <input type="text" class="form-control dep-cpf" placeholder="CPF (Opcional)" maxlength="14" value="${dados.cpf || ''}">
+    </div>
+    <div>
+      <input type="date" class="form-control dep-data-nasc" title="Data de Nascimento" value="${dados.data_nascimento || ''}">
     </div>
     <div>
       <select class="form-control select-control dep-parentesco" required>
@@ -768,6 +775,10 @@ function adicionarLinhaDependente(dados = {}) {
         <option value="Irmão(ã)" ${dados.parentesco === 'Irmão(ã)' ? 'selected' : ''}>Irmão(ã)</option>
         <option value="Outro" ${dados.parentesco === 'Outro' ? 'selected' : ''}>Outro</option>
       </select>
+    </div>
+    <div style="display:flex; gap:0.6rem; align-items:center; font-size:0.78rem;">
+      <label title="Dependente para dedução de IRRF"><input type="checkbox" class="dep-irrf" ${ehIrrf ? 'checked' : ''}> IRRF</label>
+      <label title="Elegível ao Salário-Família"><input type="checkbox" class="dep-sf" ${ehSf ? 'checked' : ''}> Sal. Família</label>
     </div>
     <div>
       <button type="button" class="btn-icon text-danger btn-remover-dep" title="Remover Dependente">
@@ -795,9 +806,12 @@ function coletarDependentesDoFormulario() {
   rows.forEach(r => {
     const nome = r.querySelector('.dep-nome').value.trim();
     const cpf = r.querySelector('.dep-cpf').value.trim();
+    const data_nascimento = r.querySelector('.dep-data-nasc')?.value || '';
     const parentesco = r.querySelector('.dep-parentesco').value;
+    const eh_dependente_irrf = r.querySelector('.dep-irrf')?.checked ? 1 : 0;
+    const eh_elegivel_salario_familia = r.querySelector('.dep-sf')?.checked ? 1 : 0;
     if (nome || parentesco) {
-      deps.push({ nome, cpf, parentesco });
+      deps.push({ nome, cpf, data_nascimento, parentesco, eh_dependente_irrf, eh_elegivel_salario_familia });
     }
   });
   return deps;
@@ -845,6 +859,9 @@ async function abrirModalEditar(id) {
     document.getElementById('campo-nome').value = colab.nome_completo || '';
     document.getElementById('campo-cpf').value = colab.cpf || '';
     document.getElementById('campo-rg').value = colab.rg || '';
+    if (document.getElementById('campo-pis')) document.getElementById('campo-pis').value = colab.pis_pasep || '';
+    if (document.getElementById('campo-sexo')) document.getElementById('campo-sexo').value = colab.sexo || '';
+    if (document.getElementById('campo-estado-civil')) document.getElementById('campo-estado-civil').value = colab.estado_civil || '';
     document.getElementById('campo-data-nasc').value = colab.data_nascimento || '';
     document.getElementById('campo-email').value = colab.email || '';
     document.getElementById('campo-telefone').value = colab.telefone || '';
@@ -859,6 +876,10 @@ async function abrirModalEditar(id) {
     document.getElementById('campo-situacao').value = colab.situacao || 'ativo';
     document.getElementById('campo-cargo').value = colab.cargo || '';
     document.getElementById('campo-setor').value = colab.setor || '';
+    if (document.getElementById('campo-centro-custo')) document.getElementById('campo-centro-custo').value = colab.centro_custo || '';
+    if (document.getElementById('campo-tipo-contrato')) document.getElementById('campo-tipo-contrato').value = colab.tipo_contrato || 'CLT';
+    if (document.getElementById('campo-jornada-trabalho')) document.getElementById('campo-jornada-trabalho').value = colab.jornada_trabalho || '44h semanais';
+    if (document.getElementById('campo-carga-horaria')) document.getElementById('campo-carga-horaria').value = colab.carga_horaria_mensal || 220;
     document.getElementById('campo-salario').value = formatarMoeda(colab.salario_base);
 
     // Dependentes
@@ -896,6 +917,9 @@ async function salvarColaborador(e) {
     nome_completo: document.getElementById('campo-nome').value.trim(),
     cpf: document.getElementById('campo-cpf').value.trim(),
     rg: document.getElementById('campo-rg').value.trim(),
+    pis_pasep: (document.getElementById('campo-pis')?.value || '').trim(),
+    sexo: document.getElementById('campo-sexo')?.value || '',
+    estado_civil: document.getElementById('campo-estado-civil')?.value || '',
     data_nascimento: document.getElementById('campo-data-nasc').value,
     email: document.getElementById('campo-email').value.trim(),
     telefone: document.getElementById('campo-telefone').value.trim(),
@@ -910,6 +934,11 @@ async function salvarColaborador(e) {
     situacao: document.getElementById('campo-situacao').value,
     cargo: document.getElementById('campo-cargo').value.trim(),
     setor: document.getElementById('campo-setor').value,
+    departamento: document.getElementById('campo-setor').value,
+    centro_custo: (document.getElementById('campo-centro-custo')?.value || '').trim(),
+    tipo_contrato: document.getElementById('campo-tipo-contrato')?.value || 'CLT',
+    jornada_trabalho: (document.getElementById('campo-jornada-trabalho')?.value || '44h semanais').trim(),
+    carga_horaria_mensal: Number(document.getElementById('campo-carga-horaria')?.value || 220),
     salario_base: document.getElementById('campo-salario').value,
     justificativa: (document.getElementById('campo-justificativa-alteracao')?.value || '').trim(),
     dependentes: coletarDependentesDoFormulario()
@@ -981,9 +1010,12 @@ async function abrirModalDetalhes(id) {
     document.getElementById('detalhes-matricula-sub').textContent = `Matrícula: ${colab.matricula} • Situação: ${colab.situacao.toUpperCase()}`;
 
     // Ficha Cadastral
+    Estado.colaboradorEmDetalhesId = colab.id;
     document.getElementById('view-nome').textContent = colab.nome_completo;
     document.getElementById('view-cpf').textContent = colab.cpf;
     document.getElementById('view-rg').textContent = colab.rg || 'Não informado';
+    if (document.getElementById('view-pis')) document.getElementById('view-pis').textContent = colab.pis_pasep || 'Não informado';
+    if (document.getElementById('view-sexo-civil')) document.getElementById('view-sexo-civil').textContent = [colab.sexo, colab.estado_civil].filter(Boolean).join(' / ') || 'Não informado';
     document.getElementById('view-nasc').textContent = formatarDataBR(colab.data_nascimento);
 
     document.getElementById('view-email').textContent = colab.email;
@@ -995,10 +1027,12 @@ async function abrirModalDetalhes(id) {
     document.getElementById('view-admissao').textContent = formatarDataBR(colab.data_admissao);
     document.getElementById('view-cargo').textContent = colab.cargo;
     document.getElementById('view-setor').textContent = colab.setor;
+    if (document.getElementById('view-centro-custo')) document.getElementById('view-centro-custo').textContent = colab.centro_custo || 'Não informado';
+    if (document.getElementById('view-contrato-jornada')) document.getElementById('view-contrato-jornada').textContent = `${colab.tipo_contrato || 'CLT'} • ${colab.jornada_trabalho || '44h semanais'} (${colab.carga_horaria_mensal || 220}h)`;
     document.getElementById('view-salario').textContent = formatarMoeda(colab.salario_base);
     document.getElementById('view-situacao').innerHTML = colab.situacao === 'ativo'
       ? '<span class="badge badge-ativo">Ativo</span>'
-      : '<span class="badge badge-inativo">Inativo</span>';
+      : `<span class="badge badge-inativo">${(colab.situacao || 'inativo').toUpperCase()}</span>`;
 
     // Dependentes
     const listaDep = colab.dependentes || [];
@@ -1010,20 +1044,25 @@ async function abrirModalDetalhes(id) {
       containerDep.innerHTML = `
         <table class="data-table">
           <thead>
-            <tr><th>Nome do Dependente</th><th>CPF</th><th>Parentesco</th></tr>
+            <tr><th>Nome do Dependente</th><th>CPF</th><th>Nasc.</th><th>Parentesco</th><th>IRRF / Sal. Família</th></tr>
           </thead>
           <tbody>
             ${listaDep.map(d => `
               <tr>
                 <td><strong>${d.nome}</strong></td>
                 <td>${d.cpf || 'Não informado'}</td>
+                <td>${d.data_nascimento ? formatarDataBR(d.data_nascimento) : '--'}</td>
                 <td><span class="badge badge-dep">${d.parentesco}</span></td>
+                <td>${Number(d.eh_dependente_irrf ?? 1) ? 'IRRF ✓' : ''} ${Number(d.eh_elegivel_salario_familia || 0) ? '• Sal.Fam ✓' : ''}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
       `;
     }
+
+    // Documentos do colaborador
+    renderizarDocumentosColaborador(colab.id, colab.documentos || []);
 
     // Histórico de Alterações / Auditoria (RF-003)
     const timeline = document.getElementById('detalhes-timeline');
@@ -1065,6 +1104,75 @@ async function abrirModalDetalhes(id) {
     document.getElementById('modal-detalhes').classList.remove('hidden');
   } catch (e) {
     exibirToast(e.message || 'Erro ao carregar detalhes.', 'error');
+  }
+}
+
+function renderizarDocumentosColaborador(colabId, docs) {
+  const elQtd = document.getElementById('detalhes-qtd-docs');
+  if (elQtd) elQtd.textContent = docs.length;
+  const container = document.getElementById('detalhes-lista-documentos');
+  if (!container) return;
+  if (!docs.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:0.75rem;">Nenhum documento anexado para este colaborador.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Tipo</th><th>Arquivo</th><th>Tamanho</th><th>Enviado em</th><th class="text-right">Ações</th></tr></thead>
+      <tbody>
+        ${docs.map(d => `
+          <tr>
+            <td><span class="badge badge-dep">${d.tipo_documento}</span></td>
+            <td>${d.nome_arquivo}</td>
+            <td>${d.tamanho_bytes ? Math.round(d.tamanho_bytes / 1024) + ' KB' : '--'}</td>
+            <td>${d.criado_em || '--'}</td>
+            <td class="text-right"><button type="button" class="btn btn-outline btn-sm text-danger" onclick="removerDocumentoColaborador(${colabId}, ${d.id})">Excluir</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function enviarDocumentoColaborador() {
+  const colabId = Estado.colaboradorEmDetalhesId;
+  const tipo = document.getElementById('doc-tipo-input')?.value || 'Outros';
+  const inputArq = document.getElementById('doc-arquivo-input');
+  const file = inputArq?.files?.[0];
+  if (!colabId || !file) {
+    exibirToast('Selecione um arquivo para anexar.', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos`, {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo_documento: tipo,
+          nome_arquivo: file.name,
+          mime_type: file.type,
+          tamanho_bytes: file.size,
+          conteudo_base64: String(reader.result || '').slice(0, 500000)
+        })
+      });
+      exibirToast('Documento anexado com sucesso!', 'success');
+      if (inputArq) inputArq.value = '';
+      await abrirModalDetalhes(colabId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao enviar documento.', 'error');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function removerDocumentoColaborador(colabId, docId) {
+  try {
+    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos/${docId}`, { method: 'DELETE' });
+    exibirToast('Documento removido.', 'success');
+    await abrirModalDetalhes(colabId);
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao remover documento.', 'error');
   }
 }
 
@@ -1128,6 +1236,16 @@ function configurarEventos() {
   document.getElementById('btn-fechar-form-modal').addEventListener('click', fecharModalForm);
   document.getElementById('btn-cancelar-form').addEventListener('click', fecharModalForm);
   document.getElementById('colaborador-form').addEventListener('submit', salvarColaborador);
+  document.getElementById('btn-gerar-matricula')?.addEventListener('click', async () => {
+    try {
+      const res = await requisitarApi(`${getApiBase()}/colaboradores/proxima-matricula`);
+      if (res && res.matricula) {
+        document.getElementById('campo-matricula').value = res.matricula;
+      }
+    } catch (e) {
+      exibirToast('Não foi possível gerar matrícula automática.', 'error');
+    }
+  });
 
   // Dependentes
   document.getElementById('btn-adicionar-dependente').addEventListener('click', () => adicionarLinhaDependente());
@@ -1246,7 +1364,7 @@ function configurarEventos() {
   });
 }
 
-﻿// ============================================================================
+// ============================================================================
 // ============================================================================
 // CATÁLOGO OFICIAL DE RUBRICAS E EVENTOS DA FOLHA (CLT / eSocial)
 // ============================================================================
@@ -1505,6 +1623,14 @@ const FolhaManager = {
       });
     }
 
+    const selectTipo = document.getElementById('filtro-folha-tipo');
+    if (selectTipo) {
+      selectTipo.addEventListener('change', (e) => {
+        this.filtros.tipo_folha = e.target.value;
+        this.carregarFolhas();
+      });
+    }
+
     if (selectSetor) {
       selectSetor.addEventListener('change', (e) => {
         this.filtros.setor = e.target.value;
@@ -1563,6 +1689,7 @@ const FolhaManager = {
     const params = new URLSearchParams();
     if (this.filtros.competencia) params.append('competencia', this.filtros.competencia);
     if (this.filtros.situacao && this.filtros.situacao !== 'todos') params.append('situacao', this.filtros.situacao);
+    if (this.filtros.tipo_folha && this.filtros.tipo_folha !== 'todos') params.append('tipo_folha', this.filtros.tipo_folha);
     if (this.filtros.setor) params.append('setor', this.filtros.setor);
     if (this.filtros.termo) params.append('q', this.filtros.termo);
 
@@ -2152,7 +2279,7 @@ const FolhaManager = {
     this.rubricasManuais.forEach((r, i) => {
       if (r.valor_total > 0 && (r.descricao || r.codigo)) {
         eventos.push({
-          codigo: r.codigo || `MANUAL_${i+1}`,
+          codigo: r.codigo || `MANUAL_${i + 1}`,
           descricao: r.descricao,
           tipo: r.tipo,
           referencia: r.referencia,
@@ -2226,6 +2353,8 @@ const FolhaManager = {
     const payload = {
       colaborador_id: Number(colabId),
       competencia: competencia.trim(),
+      tipo_folha: tipoFolha,
+      salvar_como_rascunho: Boolean(salvarComoRascunho),
       periodo_inicio: inicio,
       periodo_fim: fim,
       data_pagamento: pagto || null,
@@ -2344,9 +2473,10 @@ const FolhaManager = {
     this.simularFolhaNoBackend(false);
   },
 
-  async salvarFolha() {
+  async salvarFolha(salvarComoRascunho = false) {
     const colabId = document.getElementById('folha-campo-colaborador').value;
     const competencia = document.getElementById('folha-campo-competencia').value;
+    const tipoFolha = document.getElementById('folha-campo-tipo')?.value || 'mensal';
     const inicio = document.getElementById('folha-campo-inicio').value;
     const fim = document.getElementById('folha-campo-fim').value;
     const pagto = document.getElementById('folha-campo-pagamento').value;
@@ -2383,6 +2513,8 @@ const FolhaManager = {
     const payload = {
       colaborador_id: Number(colabId),
       competencia: competencia.trim(),
+      tipo_folha: tipoFolha,
+      salvar_como_rascunho: Boolean(salvarComoRascunho),
       periodo_inicio: inicio,
       periodo_fim: fim,
       data_pagamento: pagto || null,
@@ -2475,7 +2607,10 @@ const FolhaManager = {
       document.getElementById('h-competencia').textContent = f.competencia;
       document.getElementById('h-matricula').textContent = f.colaborador_matricula || '--';
       document.getElementById('h-nome').textContent = f.colaborador_nome || '--';
-      document.getElementById('h-cpf').textContent = formatarCpf(f.colaborador_cpf || '');
+      const cpfBruto = formatarCpf(f.colaborador_cpf || '');
+      const cpfMascarado = cpfBruto.length === 14 ? `***.${cpfBruto.slice(4, 11)}-**` : cpfBruto;
+      document.getElementById('h-cpf').textContent = cpfMascarado;
+      document.getElementById('h-cpf').title = cpfBruto;
       document.getElementById('h-cargo').textContent = f.colaborador_cargo || '--';
       document.getElementById('h-setor').textContent = f.colaborador_setor || '--';
       document.getElementById('h-admissao').textContent = formatarDataBR(f.colaborador_data_admissao);
@@ -2552,12 +2687,15 @@ const FolhaManager = {
       });
 
       // Visibilidade de botões contextuais
+      const btnAprovarAcao = document.getElementById('btn-aprovar-folha-acao');
       const btnFecharAcao = document.getElementById('btn-fechar-folha-acao');
       const btnReabrirAcao = document.getElementById('btn-reabrir-folha-acao');
       if (f.situacao === 'fechada') {
+        if (btnAprovarAcao) btnAprovarAcao.style.display = 'none';
         if (btnFecharAcao) btnFecharAcao.style.display = 'none';
         if (btnReabrirAcao) btnReabrirAcao.style.display = 'inline-flex';
       } else {
+        if (btnAprovarAcao) btnAprovarAcao.style.display = f.situacao === 'calculada' ? 'inline-flex' : 'none';
         if (btnFecharAcao) btnFecharAcao.style.display = 'inline-flex';
         if (btnReabrirAcao) btnReabrirAcao.style.display = 'none';
       }
@@ -2567,6 +2705,378 @@ const FolhaManager = {
       console.error('Erro ao abrir demonstrativo da folha:', e);
       exibirToast('Erro ao carregar demonstrativo.', 'error');
     }
+  },
+
+  async aprovarFolhaAtual() {
+    if (!this.folhaParaFecharOuReabrir) return;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${this.folhaParaFecharOuReabrir.id}/aprovar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({})
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao aprovar folha.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem || 'Folha aprovada!', 'success');
+      await this.carregarFolhas();
+      await this.abrirModalHolerite(this.folhaParaFecharOuReabrir.id, false);
+    } catch (e) {
+      exibirToast('Erro de comunicação ao aprovar folha.', 'error');
+    }
+  },
+
+  // ── Catálogo Parametrizável de Rubricas ─────────────────────────────────
+  rubricasCatalogo: [],
+
+  async abrirCatalogoRubricas() {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/eventos-catalogo`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      this.rubricasCatalogo = json.dados || [];
+      this.renderizarRubricas();
+      document.getElementById('modal-catalogo-rubricas').classList.remove('hidden');
+    } catch (e) {
+      exibirToast('Erro ao carregar catálogo de rubricas.', 'error');
+    }
+  },
+
+  renderizarRubricas() {
+    const tbody = document.getElementById('corpo-tabela-rubricas');
+    if (!tbody) return;
+    const q = (document.getElementById('rub-filtro-q')?.value || '').trim().toLowerCase();
+    const tipo = document.getElementById('rub-filtro-tipo')?.value || 'todos';
+    const filtradas = (this.rubricasCatalogo || []).filter(r => {
+      if (tipo !== 'todos' && r.tipo !== tipo) return false;
+      if (q && !String(r.codigo).toLowerCase().includes(q) && !String(r.descricao || r.evento).toLowerCase().includes(q)) return false;
+      return true;
+    });
+    tbody.innerHTML = filtradas.map(r => `
+      <tr>
+        <td><strong>${r.codigo}</strong>${Number(r.sistema_legal) ? ' <span title="Rubrica Legal Protegida">🔒</span>' : ''}</td>
+        <td>${r.descricao || r.evento}</td>
+        <td><span class="badge badge-dep">${r.tipo}</span></td>
+        <td>${Number(r.incide_inss) ? '✓' : '—'}</td>
+        <td>${Number(r.incide_irrf) ? '✓' : '—'}</td>
+        <td>${Number(r.incide_fgts) ? '✓' : '—'}</td>
+        <td>${Number(r.ativo ?? 1) ? '<span class="badge badge-ativo">Ativa</span>' : '<span class="badge badge-inativo">Inativa</span>'}</td>
+        <td class="text-right">
+          <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.editarRubrica(${r.id})">Editar</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.alternarStatusRubrica(${r.id}, ${Number(r.ativo ?? 1) ? 'false' : 'true'})">${Number(r.ativo ?? 1) ? 'Inativar' : 'Ativar'}</button>
+        </td>
+      </tr>
+    `).join('');
+  },
+
+  limparFormRubrica() {
+    document.getElementById('rubrica-id').value = '';
+    document.getElementById('rub-codigo').value = '';
+    document.getElementById('rub-codigo').disabled = false;
+    document.getElementById('rub-descricao').value = '';
+    document.getElementById('rub-tipo').value = 'provento';
+    document.getElementById('rub-forma').value = 'valor_fixo';
+    ['rub-inss', 'rub-irrf', 'rub-fgts', 'rub-ref-ferias', 'rub-ref-13'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.checked = false;
+    });
+  },
+
+  editarRubrica(id) {
+    const r = (this.rubricasCatalogo || []).find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('rubrica-id').value = r.id;
+    document.getElementById('rub-codigo').value = r.codigo;
+    document.getElementById('rub-codigo').disabled = true;
+    document.getElementById('rub-descricao').value = r.descricao || r.evento;
+    document.getElementById('rub-tipo').value = r.tipo;
+    document.getElementById('rub-forma').value = r.forma_calculo || 'valor_fixo';
+    document.getElementById('rub-inss').checked = Boolean(Number(r.incide_inss));
+    document.getElementById('rub-irrf').checked = Boolean(Number(r.incide_irrf));
+    document.getElementById('rub-fgts').checked = Boolean(Number(r.incide_fgts));
+    document.getElementById('rub-ref-ferias').checked = Boolean(Number(r.reflexo_ferias));
+    document.getElementById('rub-ref-13').checked = Boolean(Number(r.reflexo_13));
+  },
+
+  async salvarRubrica() {
+    const id = document.getElementById('rubrica-id').value;
+    const payload = {
+      codigo: document.getElementById('rub-codigo').value.trim(),
+      descricao: document.getElementById('rub-descricao').value.trim(),
+      tipo: document.getElementById('rub-tipo').value,
+      forma_calculo: document.getElementById('rub-forma').value,
+      incide_inss: document.getElementById('rub-inss').checked ? 1 : 0,
+      incide_irrf: document.getElementById('rub-irrf').checked ? 1 : 0,
+      incide_fgts: document.getElementById('rub-fgts').checked ? 1 : 0,
+      reflexo_ferias: document.getElementById('rub-ref-ferias').checked ? 1 : 0,
+      reflexo_13: document.getElementById('rub-ref-13').checked ? 1 : 0,
+    };
+    const url = id ? `${API_BASE}/folha/eventos-catalogo/${id}` : `${API_BASE}/folha/eventos-catalogo`;
+    const method = id ? 'PUT' : 'POST';
+    try {
+      const resp = await fetch(url, { method, headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify(payload) });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao salvar rubrica.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem || 'Rubrica salva!', 'success');
+      this.limparFormRubrica();
+      await this.abrirCatalogoRubricas();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao salvar rubrica.', 'error');
+    }
+  },
+
+  async alternarStatusRubrica(id, ativo) {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/eventos-catalogo/${id}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ ativo })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao alterar status da rubrica.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem || 'Status atualizado!', 'success');
+      await this.abrirCatalogoRubricas();
+    } catch (e) {
+      exibirToast('Erro ao atualizar status da rubrica.', 'error');
+    }
+  },
+
+  // ── Processamento de Folha em Lote ──────────────────────────────────────
+  async abrirModalLote() {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/colaboradores`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      const colabs = json.dados || [];
+      const container = document.getElementById('lote-lista-colaboradores');
+      container.innerHTML = colabs.map(c => `
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.84rem; padding:0.3rem; border:1px solid #e2e8f0; border-radius:6px;">
+          <input type="checkbox" class="lote-colab-cb" value="${c.id}" checked onchange="FolhaManager.atualizarContadorLote()">
+          <span><strong>${c.matricula}</strong> — ${c.nome_completo}</span>
+        </label>
+      `).join('');
+      const comp = document.getElementById('filtro-folha-competencia')?.value;
+      if (comp) document.getElementById('lote-competencia').value = comp;
+      this.atualizarContadorLote();
+      document.getElementById('modal-processar-lote').classList.remove('hidden');
+    } catch (e) {
+      exibirToast('Erro ao carregar colaboradores para lote.', 'error');
+    }
+  },
+
+  toggleTodosLote(checked) {
+    document.querySelectorAll('.lote-colab-cb').forEach(cb => { cb.checked = checked; });
+    this.atualizarContadorLote();
+  },
+
+  atualizarContadorLote() {
+    const qtd = document.querySelectorAll('.lote-colab-cb:checked').length;
+    const el = document.getElementById('lote-qtd-selecionados');
+    if (el) el.textContent = String(qtd);
+  },
+
+  async executarProcessamentoLote() {
+    const competencia = document.getElementById('lote-competencia').value;
+    const tipo_folha = document.getElementById('lote-tipo-folha').value;
+    const data_pagamento = document.getElementById('lote-data-pagto').value;
+    const colaboradores_ids = Array.from(document.querySelectorAll('.lote-colab-cb:checked')).map(cb => Number(cb.value));
+    if (!competencia || colaboradores_ids.length === 0) {
+      exibirToast('Informe a competência e selecione ao menos um colaborador.', 'error');
+      return;
+    }
+    const [ano, mes] = competencia.split('-').map(Number);
+    const ultimoDia = new Date(ano, mes, 0).getDate();
+    try {
+      const resp = await fetch(`${API_BASE}/folha/processar-lote`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          competencia,
+          tipo_folha,
+          periodo_inicio: `${competencia}-01`,
+          periodo_fim: `${competencia}-${String(ultimoDia).padStart(2, '0')}`,
+          data_pagamento: data_pagamento || null,
+          colaboradores_ids
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro no processamento em lote.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem, 'success');
+      document.getElementById('modal-processar-lote').classList.add('hidden');
+      this.filtros.competencia = competencia;
+      const inputComp = document.getElementById('filtro-folha-competencia');
+      if (inputComp) inputComp.value = competencia;
+      await this.carregarFolhas();
+    } catch (e) {
+      exibirToast('Erro de comunicação no processamento em lote.', 'error');
+    }
+  },
+
+  // ── Emissão de Holerites em Lote (PDF / Impressão) ──────────────────────
+  async emitirHoleritesLote() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '';
+    try {
+      const params = new URLSearchParams();
+      if (comp) params.set('competencia', comp);
+      const resp = await fetch(`${API_BASE}/folha/holerites-lote?${params.toString()}`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      const lista = json.dados || [];
+      if (!lista.length) {
+        exibirToast('Nenhum holerite encontrado para os filtros atuais.', 'error');
+        return;
+      }
+      const win = window.open('', '_blank');
+      if (!win) {
+        exibirToast('Permita pop-ups para visualizar o lote de holerites.', 'error');
+        return;
+      }
+      const paginas = lista.map(f => {
+        const cpfStr = formatarCpf(f.colaborador_cpf || '');
+        const cpfMask = cpfStr.length === 14 ? `***.${cpfStr.slice(4, 11)}-**` : cpfStr;
+        const linhas = (f.itens || []).map(it => `
+          <tr>
+            <td>${it.codigo_evento}</td>
+            <td>${it.descricao}</td>
+            <td style="text-align:center;">${it.referencia > 0 ? it.referencia + ' ' + (it.unidade_referencia || '') : '--'}</td>
+            <td style="text-align:right;">${it.tipo === 'provento' ? formatarMoeda(it.valor_total) : ''}</td>
+            <td style="text-align:right;">${it.tipo === 'desconto' ? formatarMoeda(it.valor_total) : ''}</td>
+          </tr>
+        `).join('');
+        return `
+          <div style="page-break-after: always; border:1px solid #334155; padding:18px; margin-bottom:24px; font-family:Arial,sans-serif; font-size:12px;">
+            <div style="display:flex; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:8px; margin-bottom:10px;">
+              <div><strong>USINA CENTRAL DE BIOENERGIA S.A.</strong><br>CNPJ: 54.321.987/0001-00</div>
+              <div style="text-align:right;"><strong>RECIBO DE PAGAMENTO (${(f.tipo_folha || 'mensal').toUpperCase()})</strong><br>Competência: ${f.competencia}</div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 2fr 1fr; gap:6px; margin-bottom:10px; background:#f8fafc; padding:8px;">
+              <div><strong>Matrícula:</strong> ${f.colaborador_matricula}</div>
+              <div><strong>Nome:</strong> ${f.colaborador_nome}</div>
+              <div><strong>CPF:</strong> ${cpfMask}</div>
+              <div><strong>Cargo:</strong> ${f.colaborador_cargo}</div>
+              <div><strong>Setor:</strong> ${f.colaborador_setor}</div>
+              <div><strong>Admissão:</strong> ${formatarDataBR(f.colaborador_data_admissao)}</div>
+            </div>
+            <table style="width:100%; border-collapse:collapse; margin-bottom:10px;" border="1" cellpadding="4">
+              <thead><tr><th>Cód</th><th>Descrição</th><th>Ref.</th><th>Proventos</th><th>Descontos</th></tr></thead>
+              <tbody>${linhas}</tbody>
+            </table>
+            <div style="display:flex; justify-content:space-between; font-weight:bold; background:#f1f5f9; padding:8px;">
+              <span>Proventos: ${formatarMoeda(f.total_proventos)}</span>
+              <span>Descontos: ${formatarMoeda(f.total_descontos)}</span>
+              <span>Líquido: ${formatarMoeda(f.salario_liquido)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:8px;">
+              <span>Base INSS: ${formatarMoeda(f.base_inss)}</span>
+              <span>Base FGTS: ${formatarMoeda(f.base_fgts)}</span>
+              <span>FGTS Mês: ${formatarMoeda(f.valor_fgts_informativo)}</span>
+              <span>Base IRRF: ${formatarMoeda(f.base_irrf)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      win.document.write(`<html><head><title>Holerites em Lote - ${comp || 'Todos'}</title></head><body>${paginas}<script>window.print();<\/script></body></html>`);
+      win.document.close();
+    } catch (e) {
+      exibirToast('Erro ao gerar holerites em lote.', 'error');
+    }
+  },
+
+  // ── Relatórios Gerenciais & Financeiros ─────────────────────────────────
+  ultimoRelatorio: null,
+
+  async carregarRelatorios() {
+    const comp = document.getElementById('rel-folha-competencia')?.value || '';
+    const setor = document.getElementById('rel-folha-setor')?.value || '';
+    const params = new URLSearchParams();
+    if (comp) params.set('competencia', comp);
+    if (setor) params.set('setor', setor);
+    try {
+      const resp = await fetch(`${API_BASE}/folha/relatorios?${params.toString()}`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      const rel = json.dados || {};
+      this.ultimoRelatorio = rel;
+      const rf = rel.resumo_financeiro || {};
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      set('rel-kpi-bruto', formatarMoeda(rf.total_bruto || 0));
+      set('rel-kpi-descontos', formatarMoeda(rf.total_descontos || 0));
+      set('rel-kpi-liquido', formatarMoeda(rf.total_liquido || 0));
+      set('rel-kpi-tributos', `${formatarMoeda(rf.total_inss || 0)} / ${formatarMoeda(rf.total_irrf || 0)} / ${formatarMoeda(rf.total_fgts || 0)}`);
+      set('rel-kpi-encargos', formatarMoeda(rf.encargos_patronais || 0));
+      set('rel-kpi-custo', formatarMoeda(rf.custo_total_empresa || 0));
+
+      const depts = rel.por_departamento || [];
+      const maxCusto = Math.max(...depts.map(d => d.custo_total), 1);
+      const chartDept = document.getElementById('rel-chart-departamentos');
+      if (chartDept) {
+        chartDept.innerHTML = depts.length ? depts.map(d => `
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem;"><span>${d.grupo}</span><strong>${formatarMoeda(d.custo_total)}</strong></div>
+            <div style="background:#e2e8f0; border-radius:4px; height:8px; overflow:hidden;"><div style="background:#16a34a; height:100%; width:${Math.round((d.custo_total / maxCusto) * 100)}%;"></div></div>
+          </div>
+        `).join('') : '<span class="text-muted">Sem dados para os filtros informados.</span>';
+      }
+
+      const evs = rel.evolucao_mensal || [];
+      const maxEv = Math.max(...evs.map(e => e.bruto), 1);
+      const chartEv = document.getElementById('rel-chart-evolucao');
+      if (chartEv) {
+        chartEv.innerHTML = evs.length ? evs.map(e => `
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem;"><span>${e.competencia} (${e.qtd})</span><strong>Bruto: ${formatarMoeda(e.bruto)} | Líq: ${formatarMoeda(e.liquido)}</strong></div>
+            <div style="background:#e2e8f0; border-radius:4px; height:8px; overflow:hidden;"><div style="background:#2563eb; height:100%; width:${Math.round((e.bruto / maxEv) * 100)}%;"></div></div>
+          </div>
+        `).join('') : '<span class="text-muted">Sem competências processadas.</span>';
+      }
+
+      const tbody = document.getElementById('rel-tabela-departamentos');
+      if (tbody) {
+        tbody.innerHTML = depts.map(d => `
+          <tr>
+            <td><strong>${d.grupo}</strong></td>
+            <td>${d.qtd_folhas}</td>
+            <td>${formatarMoeda(d.bruto)}</td>
+            <td>${formatarMoeda(d.descontos)}</td>
+            <td>${formatarMoeda(d.liquido)}</td>
+            <td>${formatarMoeda(d.fgts)}</td>
+            <td>${formatarMoeda(d.encargos)}</td>
+            <td><strong>${formatarMoeda(d.custo_total)}</strong></td>
+          </tr>
+        `).join('') || '<tr><td colspan="8" class="text-center text-muted">Nenhum registro encontrado.</td></tr>';
+      }
+    } catch (e) {
+      exibirToast('Erro ao carregar relatórios da folha.', 'error');
+    }
+  },
+
+  exportarRelatorioExcel() {
+    const depts = (this.ultimoRelatorio && this.ultimoRelatorio.por_departamento) || [];
+    if (!depts.length) {
+      exibirToast('Gere o relatório antes de exportar para Excel.', 'error');
+      return;
+    }
+    const linhas = [
+      ['Departamento', 'Folhas', 'Bruto', 'Descontos', 'Liquido', 'FGTS', 'Encargos Patronais', 'Custo Total'],
+      ...depts.map(d => [d.grupo, d.qtd_folhas, d.bruto, d.descontos, d.liquido, d.fgts, d.encargos, d.custo_total])
+    ];
+    const csv = '\uFEFF' + linhas.map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `relatorio_folha_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    exibirToast('Relatório exportado para Excel/CSV com sucesso!', 'success');
   },
 
   configurarEventosHolerite() {

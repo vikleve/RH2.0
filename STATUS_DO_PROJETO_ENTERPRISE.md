@@ -91,4 +91,14 @@ O **RH2.0 ENTERPRISE** atingiu o status de **Pronto para Produção / Homologado
    - Executar as migrations: `migrations/001_inicial.sql` até `migrations/006_plataforma_completa_ciclo_trabalhista.sql`.
 
 ---
+
+## 6. ATUALIZAÇÃO ENTERPRISE — CADASTRO DE COLABORADORES E FOLHA COMPLETA (MIGRATION 008)
+
+- **Migration Incremental:** `migrations/008_folha_enterprise_completa.sql` (e suporte dual-mode automático em `backend/database.py`).
+- **Cadastro de Colaboradores:** Inclusão de `pis_pasep` (com validação de dígito verificador), `sexo`, `estado_civil`, `departamento`, `centro_custo`, `tipo_contrato`, `jornada_trabalho`, `carga_horaria_mensal`, situações ampliadas (`ativo`, `afastado`, `ferias`, `desligado`, `inativo`), geração automática de matrícula (`GET /api/colaboradores/proxima-matricula`), indicadores fiscais por dependente (`eh_dependente_irrf`, `eh_elegivel_salario_familia`, `data_nascimento`) e gestão de documentos anexados (`/api/colaboradores/<id>/documentos`).
+- **Catálogo Parametrizável de Rubricas:** Tabela `folha_rubricas` provisionada com os 82 eventos oficiais e endpoints `GET/POST/PUT/PATCH /api/folha/eventos-catalogo` com proteção contra alteração de incidências em rubricas legais (`sistema_legal = 1`).
+- **Ciclo Completo da Folha:** Suporte a tipos de folha (`mensal`, `adiantamento`, `13_primeira`, `13_segunda`, `complementar`, `ferias`, `rescisoria`), salvamento como rascunho, aprovação (`POST /api/folha/<id>/aprovar`), processamento em lote (`POST /api/folha/processar-lote`), FGTS Aprendiz (2%), Salário-Família automático, emissão de holerites em lote (`GET /api/folha/holerites-lote`) com CPF mascarado (LGPD), e relatórios gerenciais/financeiros consolidados (`GET /api/folha/relatorios`) com exportação Excel/CSV e impressão/PDF.
+- **Testes Automatizados:** Nova suíte `tests/test_folha_enterprise_completa.py` integrada ao `tests/executar_todos_testes.py`.
+
+---
 *Status homologado e assinado pela Engenharia de Software RH2.0 Enterprise.*

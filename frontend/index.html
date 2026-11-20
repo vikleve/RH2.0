@@ -1271,12 +1271,21 @@
             <p class="view-subtitle">Processamento mensal, encargos (INSS/IRRF/FGTS), memória de cálculo e histórico de competências (RF-060 a RF-105)</p>
           </div>
           <div class="view-header-actions">
+            <button type="button" class="btn btn-outline" id="btn-catalogo-rubricas" onclick="FolhaManager.abrirCatalogoRubricas()">
+              Catálogo de Rubricas
+            </button>
+            <button type="button" class="btn btn-outline" id="btn-holerites-lote" onclick="FolhaManager.emitirHoleritesLote()">
+              Holerites em Lote (PDF)
+            </button>
             <button type="button" class="btn btn-outline" onclick="document.getElementById('btn-parametros-folha')?.click()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
               Parâmetros Legais 2026
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-processar-lote" onclick="FolhaManager.abrirModalLote()">
+              Processar Lote
             </button>
             <button type="button" class="btn btn-primary" onclick="document.getElementById('btn-nova-folha')?.click()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1393,9 +1402,24 @@
               <label for="filtro-folha-situacao">Situação:</label>
               <select id="filtro-folha-situacao" class="form-control select-control">
                 <option value="todos" selected>Todas</option>
-                <option value="calculada">Calculadas</option>
-                <option value="fechada">Fechadas</option>
                 <option value="rascunho">Rascunhos</option>
+                <option value="calculada">Calculadas</option>
+                <option value="aprovada">Aprovadas</option>
+                <option value="fechada">Fechadas</option>
+              </select>
+            </div>
+
+            <div class="filter-item">
+              <label for="filtro-folha-tipo">Tipo:</label>
+              <select id="filtro-folha-tipo" class="form-control select-control">
+                <option value="todos" selected>Todos</option>
+                <option value="mensal">Mensal</option>
+                <option value="adiantamento">Adiantamento</option>
+                <option value="13_primeira">13º (1ª Parc.)</option>
+                <option value="13_segunda">13º (2ª Parc.)</option>
+                <option value="complementar">Complementar</option>
+                <option value="ferias">Férias</option>
+                <option value="rescisoria">Rescisória</option>
               </select>
             </div>
 
@@ -1937,6 +1961,70 @@
               <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('dashboard')">
                 Abrir Painel BI
               </button>
+            </div>
+          </section>
+
+          <!-- Painel Interativo de Relatórios Gerenciais & Financeiros da Folha -->
+          <section class="table-card" style="margin-top: 1.5rem; padding: 1.25rem;">
+            <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+              <div>
+                <h3 style="margin:0; font-size:1.05rem;">Relatórios Gerenciais &amp; Financeiros da Folha</h3>
+                <p class="text-muted" style="font-size:0.82rem; margin:0.2rem 0 0;">Dados consolidados diretamente do banco de dados da folha de pagamento.</p>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+                <input type="month" id="rel-folha-competencia" class="form-control" style="width:155px;" title="Filtrar competência">
+                <select id="rel-folha-setor" class="form-control select-control" style="width:170px;">
+                  <option value="">Todos os Departamentos</option>
+                  <option value="Recursos Humanos">Recursos Humanos</option>
+                  <option value="Departamento Pessoal">Departamento Pessoal</option>
+                  <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+                  <option value="Financeiro">Financeiro</option>
+                  <option value="Operações">Operações</option>
+                  <option value="Comercial">Comercial</option>
+                  <option value="Administrativo">Administrativo</option>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm" onclick="FolhaManager.carregarRelatorios()">Gerar Relatório</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.exportarRelatorioExcel()">Exportar Excel</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="window.print()">Imprimir / PDF</button>
+              </div>
+            </div>
+
+            <div class="metrics-grid" id="rel-folha-kpis" style="margin-bottom:1rem;">
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Total Bruto</span><span class="metric-value text-green" id="rel-kpi-bruto">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Total Descontos</span><span class="metric-value" id="rel-kpi-descontos">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Líquido a Pagar</span><span class="metric-value text-purple" id="rel-kpi-liquido">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">INSS / IRRF / FGTS</span><span class="metric-value" id="rel-kpi-tributos" style="font-size:0.95rem;">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Encargos Patronais</span><span class="metric-value" id="rel-kpi-encargos">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Custo Total Empresa</span><span class="metric-value text-blue" id="rel-kpi-custo">R$ 0,00</span></div></div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; margin-bottom:1rem;">
+              <div class="details-card">
+                <h4>Distribuição de Custos por Departamento</h4>
+                <div id="rel-chart-departamentos" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;"></div>
+              </div>
+              <div class="details-card">
+                <h4>Evolução Mensal da Folha (Bruto vs Líquido)</h4>
+                <div id="rel-chart-evolucao" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;"></div>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Departamento / Setor</th>
+                    <th>Folhas</th>
+                    <th>Bruto (R$)</th>
+                    <th>Descontos (R$)</th>
+                    <th>Líquido (R$)</th>
+                    <th>FGTS (R$)</th>
+                    <th>Encargos Patronais (R$)</th>
+                    <th>Custo Total (R$)</th>
+                  </tr>
+                </thead>
+                <tbody id="rel-tabela-departamentos"></tbody>
+              </table>
             </div>
           </section>
         </div>
@@ -2553,16 +2641,44 @@
                   <span class="field-error" id="erro-cpf"></span>
                 </div>
 
-                <div class="form-group col-span-6">
+                <div class="form-group col-span-4">
                   <label for="campo-rg">RG <span class="text-muted">(Opcional)</span></label>
                   <input type="text" id="campo-rg" class="form-control" placeholder="Ex: 12.345.678-9">
                   <span class="field-error" id="erro-rg"></span>
                 </div>
 
-                <div class="form-group col-span-6">
+                <div class="form-group col-span-4">
+                  <label for="campo-pis">PIS / PASEP / NIT <span class="text-muted">(Opcional)</span></label>
+                  <input type="text" id="campo-pis" class="form-control" placeholder="000.00000.00-0" maxlength="14">
+                  <span class="field-error" id="erro-pis_pasep"></span>
+                </div>
+
+                <div class="form-group col-span-4">
                   <label for="campo-data-nasc">Data de Nascimento <span class="required">*</span></label>
                   <input type="date" id="campo-data-nasc" class="form-control" required>
                   <span class="field-error" id="erro-data_nascimento"></span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="campo-sexo">Sexo <span class="text-muted">(Opcional)</span></label>
+                  <select id="campo-sexo" class="form-control select-control">
+                    <option value="">Não informado</option>
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                    <option value="O">Outro</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label for="campo-estado-civil">Estado Civil <span class="text-muted">(Opcional)</span></label>
+                  <select id="campo-estado-civil" class="form-control select-control">
+                    <option value="">Não informado</option>
+                    <option value="Solteiro(a)">Solteiro(a)</option>
+                    <option value="Casado(a)">Casado(a)</option>
+                    <option value="União Estável">União Estável</option>
+                    <option value="Divorciado(a)">Divorciado(a)</option>
+                    <option value="Viúvo(a)">Viúvo(a)</option>
+                  </select>
                 </div>
               </div>
             </fieldset>
@@ -2628,7 +2744,10 @@
               <div class="form-grid">
                 <div class="form-group col-span-4">
                   <label for="campo-matricula">Matrícula (ID Único) <span class="required">*</span></label>
-                  <input type="text" id="campo-matricula" class="form-control" placeholder="Ex: RH-2024" required>
+                  <div style="display: flex; gap: 0.4rem;">
+                    <input type="text" id="campo-matricula" class="form-control" placeholder="Ex: RH-2024" required>
+                    <button type="button" id="btn-gerar-matricula" class="btn btn-outline btn-sm" title="Gerar matrícula automática">Gerar</button>
+                  </div>
                   <span class="field-error" id="erro-matricula"></span>
                 </div>
 
@@ -2642,6 +2761,9 @@
                   <label for="campo-situacao">Situação do Vínculo <span class="required">*</span></label>
                   <select id="campo-situacao" class="form-control select-control" required>
                     <option value="ativo" selected>Ativo</option>
+                    <option value="afastado">Afastado</option>
+                    <option value="ferias">Férias</option>
+                    <option value="desligado">Desligado</option>
                     <option value="inativo">Inativo</option>
                   </select>
                   <span class="field-error" id="erro-situacao"></span>
@@ -2673,6 +2795,33 @@
                   <label for="campo-salario">Salário-base (R$) <span class="required">*</span></label>
                   <input type="text" id="campo-salario" class="form-control" placeholder="0,00" required>
                   <span class="field-error" id="erro-salario_base"></span>
+                </div>
+
+                <div class="form-group col-span-3">
+                  <label for="campo-centro-custo">Centro de Custo</label>
+                  <input type="text" id="campo-centro-custo" class="form-control" placeholder="Ex: CC-003">
+                </div>
+
+                <div class="form-group col-span-3">
+                  <label for="campo-tipo-contrato">Tipo de Contrato</label>
+                  <select id="campo-tipo-contrato" class="form-control select-control">
+                    <option value="CLT" selected>CLT Padrão</option>
+                    <option value="Aprendiz">Jovem Aprendiz (FGTS 2%)</option>
+                    <option value="Estagio">Estágio</option>
+                    <option value="Temporario">Temporário</option>
+                    <option value="Intermitente">Intermitente</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-3">
+                  <label for="campo-jornada-trabalho">Jornada de Trabalho</label>
+                  <input type="text" id="campo-jornada-trabalho" class="form-control" value="44h semanais" placeholder="Ex: 44h semanais">
+                </div>
+
+                <div class="form-group col-span-3">
+                  <label for="campo-carga-horaria">Carga Horária Mensal</label>
+                  <input type="number" id="campo-carga-horaria" class="form-control" value="220" min="1" max="360">
+                  <span class="field-error" id="erro-carga_horaria_mensal"></span>
                 </div>
               </div>
             </fieldset>
@@ -2749,6 +2898,7 @@
           <button class="modal-tab" data-tab="tab-dependentes">Dependentes (<span
               id="detalhes-qtd-dep">0</span>)</button>
           <button class="modal-tab" data-tab="tab-historico">Histórico de Alterações / Auditoria (<span id="detalhes-qtd-hist">0</span>)</button>
+          <button class="modal-tab" data-tab="tab-documentos">Documentos (<span id="detalhes-qtd-docs">0</span>)</button>
         </div>
 
         <div class="modal-body modal-scroll">
@@ -2760,6 +2910,8 @@
                 <p><strong>Nome:</strong> <span id="view-nome">--</span></p>
                 <p><strong>CPF:</strong> <span id="view-cpf">--</span></p>
                 <p><strong>RG:</strong> <span id="view-rg">--</span></p>
+                <p><strong>PIS/PASEP/NIT:</strong> <span id="view-pis">--</span></p>
+                <p><strong>Sexo / Est. Civil:</strong> <span id="view-sexo-civil">--</span></p>
                 <p><strong>Data de Nascimento:</strong> <span id="view-nasc">--</span></p>
               </div>
 
@@ -2777,6 +2929,8 @@
                   <p><strong>Data de Admissão:</strong> <span id="view-admissao">--</span></p>
                   <p><strong>Cargo:</strong> <span id="view-cargo">--</span></p>
                   <p><strong>Setor:</strong> <span id="view-setor">--</span></p>
+                  <p><strong>Centro de Custo:</strong> <span id="view-centro-custo">--</span></p>
+                  <p><strong>Contrato / Jornada:</strong> <span id="view-contrato-jornada">--</span></p>
                   <p><strong>Salário-base:</strong> <span id="view-salario" class="text-money">--</span></p>
                   <p><strong>Situação:</strong> <span id="view-situacao">--</span></p>
                 </div>
@@ -2796,6 +2950,33 @@
             <div class="timeline" id="detalhes-timeline">
               <!-- Linhas de auditoria renderizadas dinamicamente -->
             </div>
+          </div>
+
+          <!-- Aba 4: Documentos do Colaborador -->
+          <div id="tab-documentos" class="tab-content">
+            <div class="details-card" style="margin-bottom:1rem;">
+              <h4>Anexar Novo Documento</h4>
+              <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:0.5rem; align-items:end;">
+                <div>
+                  <label for="doc-tipo-input">Tipo de Documento</label>
+                  <select id="doc-tipo-input" class="form-control select-control">
+                    <option value="RG/CPF">RG / CPF</option>
+                    <option value="CTPS">CTPS Digital</option>
+                    <option value="Comprovante de Residência">Comprovante de Residência</option>
+                    <option value="Contrato de Trabalho">Contrato de Trabalho</option>
+                    <option value="ASO Admissional">ASO Admissional</option>
+                    <option value="Certidão Dependentes">Certidão de Dependentes</option>
+                    <option value="Outros">Outros</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="doc-arquivo-input">Arquivo</label>
+                  <input type="file" id="doc-arquivo-input" class="form-control">
+                </div>
+                <button type="button" id="btn-enviar-doc-colab" class="btn btn-primary btn-sm" onclick="enviarDocumentoColaborador()">Anexar</button>
+              </div>
+            </div>
+            <div id="detalhes-lista-documentos" class="dependentes-view-list"></div>
           </div>
         </div>
 
@@ -2873,7 +3054,7 @@
                 Colaborador &amp; Competência
               </legend>
               <div class="form-grid">
-                <div class="form-group col-span-8">
+                <div class="form-group col-span-5">
                   <label for="folha-campo-colaborador">Colaborador <span class="required">*</span></label>
                   <select id="folha-campo-colaborador" class="form-control" required>
                     <option value="">Selecione um colaborador ativo...</option>
@@ -2882,6 +3063,19 @@
                 </div>
 
                 <div class="form-group col-span-4">
+                  <label for="folha-campo-tipo">Tipo de Folha <span class="required">*</span></label>
+                  <select id="folha-campo-tipo" class="form-control select-control">
+                    <option value="mensal" selected>Folha Mensal</option>
+                    <option value="adiantamento">Adiantamento Salarial</option>
+                    <option value="13_primeira">13º Salário (1ª Parcela)</option>
+                    <option value="13_segunda">13º Salário (2ª Parcela)</option>
+                    <option value="complementar">Folha Complementar</option>
+                    <option value="ferias">Folha de Férias</option>
+                    <option value="rescisoria">Folha Rescisória</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-3">
                   <label for="folha-campo-competencia">Competência (AAAA-MM) <span class="required">*</span></label>
                   <input type="month" id="folha-campo-competencia" class="form-control" required value="2026-10">
                   <span class="field-error" id="erro-folha-competencia"></span>
@@ -3041,6 +3235,10 @@
               title="Atualiza os cálculos e valores intermediários">
               Simular / Recalcular
             </button>
+            <button type="button" class="btn btn-outline" id="btn-salvar-rascunho"
+              onclick="FolhaManager.salvarFolha(true)" title="Salvar como rascunho para revisão posterior">
+              Salvar Rascunho
+            </button>
             <button type="submit" class="btn btn-primary" id="btn-salvar-folha">
               Salvar &amp; Gerar Folha
             </button>
@@ -3188,12 +3386,148 @@
             </svg>
             Imprimir Demonstrativo
           </button>
+          <button class="btn btn-secondary" id="btn-aprovar-folha-acao" style="display: none;" onclick="FolhaManager.aprovarFolhaAtual()">
+            Aprovar Folha
+          </button>
           <button class="btn btn-warning" id="btn-fechar-folha-acao" style="display: none;">
             Fechar &amp; Homologar Folha
           </button>
           <button class="btn btn-secondary" id="btn-reabrir-folha-acao" style="display: none;">
             Reabrir Folha
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CATÁLOGO PARAMETRIZÁVEL DE RUBRICAS                   -->
+    <!-- ============================================================ -->
+    <div id="modal-catalogo-rubricas" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Catálogo Parametrizável de Eventos / Rubricas</h2>
+            <p class="modal-subtitle">Crie, edite e parametrize incidências de INSS, IRRF, FGTS e reflexos. Rubricas legais possuem proteção de incidências.</p>
+          </div>
+          <button class="btn-close" onclick="document.getElementById('modal-catalogo-rubricas').classList.add('hidden')">&times;</button>
+        </div>
+        <div class="modal-body modal-scroll">
+          <form id="form-rubrica" onsubmit="event.preventDefault(); FolhaManager.salvarRubrica();" class="details-card" style="margin-bottom:1rem;">
+            <input type="hidden" id="rubrica-id">
+            <h4 id="rubrica-form-titulo">Nova Rubrica / Editar Rubrica</h4>
+            <div class="form-grid">
+              <div class="form-group col-span-2">
+                <label for="rub-codigo">Código *</label>
+                <input type="text" id="rub-codigo" class="form-control" placeholder="Ex: 0080" required>
+              </div>
+              <div class="form-group col-span-5">
+                <label for="rub-descricao">Descrição *</label>
+                <input type="text" id="rub-descricao" class="form-control" placeholder="Ex: Auxílio Home Office" required>
+              </div>
+              <div class="form-group col-span-2">
+                <label for="rub-tipo">Tipo *</label>
+                <select id="rub-tipo" class="form-control select-control">
+                  <option value="provento">Provento</option>
+                  <option value="desconto">Desconto</option>
+                  <option value="informativo">Informativo</option>
+                </select>
+              </div>
+              <div class="form-group col-span-3">
+                <label for="rub-forma">Forma Cálculo</label>
+                <select id="rub-forma" class="form-control select-control">
+                  <option value="valor_fixo">Valor Fixo</option>
+                  <option value="percentual">Percentual</option>
+                  <option value="referencia">Por Referência</option>
+                  <option value="calculado">Calculado</option>
+                </select>
+              </div>
+              <div class="form-group col-span-12" style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">
+                <label><input type="checkbox" id="rub-inss"> Incide INSS</label>
+                <label><input type="checkbox" id="rub-irrf"> Incide IRRF</label>
+                <label><input type="checkbox" id="rub-fgts"> Incide FGTS</label>
+                <label><input type="checkbox" id="rub-ref-ferias"> Reflexo Férias</label>
+                <label><input type="checkbox" id="rub-ref-13"> Reflexo 13º</label>
+                <button type="submit" class="btn btn-primary btn-sm" style="margin-left:auto;">Salvar Rubrica</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.limparFormRubrica()">Limpar</button>
+              </div>
+            </div>
+          </form>
+
+          <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+            <input type="text" id="rub-filtro-q" class="form-control" placeholder="Filtrar rubrica por código ou descrição..." oninput="FolhaManager.renderizarRubricas()">
+            <select id="rub-filtro-tipo" class="form-control select-control" style="width:160px;" onchange="FolhaManager.renderizarRubricas()">
+              <option value="todos">Todos os Tipos</option>
+              <option value="provento">Proventos</option>
+              <option value="desconto">Descontos</option>
+              <option value="informativo">Informativos</option>
+            </select>
+          </div>
+          <div class="table-responsive" style="max-height:320px; overflow-y:auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cód.</th>
+                  <th>Descrição</th>
+                  <th>Tipo</th>
+                  <th>INSS</th>
+                  <th>IRRF</th>
+                  <th>FGTS</th>
+                  <th>Status</th>
+                  <th class="text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="corpo-tabela-rubricas"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: PROCESSAMENTO DE FOLHA EM LOTE                        -->
+    <!-- ============================================================ -->
+    <div id="modal-processar-lote" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Processamento de Folha em Lote</h2>
+            <p class="modal-subtitle">Processe todos os colaboradores ativos ou selecione os colaboradores desejados para a competência.</p>
+          </div>
+          <button class="btn-close" onclick="document.getElementById('modal-processar-lote').classList.add('hidden')">&times;</button>
+        </div>
+        <div class="modal-body modal-scroll">
+          <div class="form-grid">
+            <div class="form-group col-span-4">
+              <label for="lote-competencia">Competência *</label>
+              <input type="month" id="lote-competencia" class="form-control" value="2026-10">
+            </div>
+            <div class="form-group col-span-4">
+              <label for="lote-tipo-folha">Tipo de Folha *</label>
+              <select id="lote-tipo-folha" class="form-control select-control">
+                <option value="mensal" selected>Folha Mensal</option>
+                <option value="adiantamento">Adiantamento Salarial</option>
+                <option value="13_primeira">13º Salário (1ª Parcela)</option>
+                <option value="13_segunda">13º Salário (2ª Parcela)</option>
+                <option value="complementar">Folha Complementar</option>
+              </select>
+            </div>
+            <div class="form-group col-span-4">
+              <label for="lote-data-pagto">Data de Pagamento</label>
+              <input type="date" id="lote-data-pagto" class="form-control" value="2026-11-05">
+            </div>
+          </div>
+
+          <div class="details-card" style="margin-top:0.75rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+              <strong>Colaboradores Ativos Selecionados: <span id="lote-qtd-selecionados">0</span></strong>
+              <label><input type="checkbox" id="lote-selecionar-todos" checked onchange="FolhaManager.toggleTodosLote(this.checked)"> Selecionar Todos</label>
+            </div>
+            <div id="lote-lista-colaboradores" style="max-height:220px; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:0.4rem;"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('modal-processar-lote').classList.add('hidden')">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btn-confirmar-lote" onclick="FolhaManager.executarProcessamentoLote()">Processar Folha do Lote</button>
         </div>
       </div>
     </div>
