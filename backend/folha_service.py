@@ -226,6 +226,82 @@ class FolhaService:
     # Ciclo de Vida da Folha de Pagamento
     # ──────────────────────────────────────────────────────────
 
+    def _validar_e_hidratar_eventos(
+        self,
+        eventos: Optional[List[Dict[str, Any]]],
+        horas_divisor: float = 220.0,
+        dias_mes: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """Valida existência, status ativo, limites (horas/dias/percentual) e hidrata incidências do catálogo."""
+        try:
+            from .folha_calculos import MAPA_ALIAS_LEGADO
+        except ImportError:
+            from backend.folha_calculos import MAPA_ALIAS_LEGADO
+
+        rubricas = self.listar_rubricas(apenas_ativas=False)
+        rubricas_map = {str(r["codigo"]).strip().upper(): r for r in rubricas}
+        max_horas = max(220.0, float(horas_divisor or 220.0))
+        max_dias = max(31, int(dias_mes or 30))
+
+        resultado: List[Dict[str, Any]] = []
+        for raw_ev in (eventos or []):
+            ev = dict(raw_ev)
+            raw_cod = str(ev.get("codigo") or ev.get("codigo_evento") or "").strip().upper()
+            cod_oficial = MAPA_ALIAS_LEGADO.get(raw_cod, raw_cod)
+            is_livre = bool(ev.get("is_custom_livre")) or raw_cod in ("__OUTRO", "__OUTRO__")
+
+            rub = None
+            if cod_oficial and not is_livre:
+                rub = rubricas_map.get(cod_oficial) or rubricas_map.get(raw_cod)
+                if not rub:
+                    raise FolhaValidacaoException({
+                        "eventos": f"Evento '{raw_cod}' não está cadastrado no catálogo de rubricas."
+                    })
+                if int(rub.get("ativo", 1)) == 0:
+                    raise FolhaValidacaoException({
+                        "eventos": f"Evento '{cod_oficial} - {rub['descricao']}' está inativo e não pode ser lançado."
+                    })
+                ev.setdefault("tipo", rub.get("tipo", "provento"))
+                ev.setdefault("forma_calculo", rub.get("forma_calculo", "valor_fixo"))
+                ev.setdefault("incide_inss", int(rub.get("incide_inss", 0)))
+                ev.setdefault("incide_irrf", int(rub.get("incide_irrf", 0)))
+                ev.setdefault("incide_fgts", int(rub.get("incide_fgts", 0)))
+                if not ev.get("descricao"):
+                    ev["descricao"] = rub.get("descricao", "")
+                has_val = ev.get("valor_total") not in (None, "") or ev.get("valor_informado") not in (None, "")
+                if not has_val and ev.get("forma_calculo") == "valor_fixo" and float(rub.get("valor_padrao") or 0) > 0:
+                    ev["valor_informado"] = float(rub["valor_padrao"])
+
+            ref_raw = ev.get("quantidade") if ev.get("quantidade") not in (None, "") else ev.get("referencia")
+            ref_val = float(ref_raw or 0)
+            perc_val = float(ev.get("percentual") or 0)
+            val_raw = ev.get("valor_total") if ev.get("valor_total") not in (None, "") else ev.get("valor_informado")
+            val_num = float(val_raw or 0)
+
+            if ref_val < 0 or perc_val < 0 or val_num < 0:
+                raise FolhaValidacaoException({
+                    "eventos": f"Valores ou referências negativos não são permitidos no evento '{raw_cod}'."
+                })
+
+            forma = str(ev.get("forma_calculo") or "").strip().lower()
+            if cod_oficial in ("0010", "0011", "0015", "0020", "0532") or forma == "horas":
+                if ref_val > max_horas:
+                    raise FolhaValidacaoException({
+                        "eventos": f"Quantidade de horas ({ref_val}) no evento '{raw_cod}' excede o limite mensal ({max_horas}h)."
+                    })
+            if cod_oficial in ("0530", "0531") or forma == "dias":
+                if ref_val > max_dias:
+                    raise FolhaValidacaoException({
+                        "eventos": f"Quantidade de dias ({ref_val}) no evento '{raw_cod}' excede o limite do mês ({max_dias} dias)."
+                    })
+            if perc_val > 100.0 or (forma == "percentual" and ref_val > 100.0):
+                raise FolhaValidacaoException({
+                    "eventos": f"Percentual informado no evento '{raw_cod}' não pode exceder 100%."
+                })
+
+            resultado.append(ev)
+        return resultado
+
     def criar_ou_atualizar_folha(
         self,
         colaborador_id: int,
@@ -262,25 +338,23 @@ class FolhaService:
         if tipo_folha_norm not in tipos_validos:
             raise FolhaValidacaoException({"tipo_folha": f"Tipo de folha inválido: '{tipo_folha_norm}'."})
 
-        if (colab.get("situacao") or "ativo").lower() in ("inativo", "desligado") and tipo_folha_norm != "rescisoria":
-            raise FolhaValidacaoException({"colaborador_id": "Colaborador inativo/desligado só pode receber folha rescisória."})
-
-        for ev in (eventos or []):
-            ref_ev = ev.get("referencia")
-            val_ev = ev.get("valor_informado")
-            if ref_ev is not None and float(ref_ev) < 0:
-                raise FolhaValidacaoException({"eventos": f"Referência negativa não permitida no evento {ev.get('codigo', '')}."})
-            if val_ev is not None and float(val_ev) < 0:
-                raise FolhaValidacaoException({"eventos": f"Valor negativo não permitido no evento {ev.get('codigo', '')}."})
+        if (colab.get("situacao") or "ativo").lower() != "ativo" and tipo_folha_norm != "rescisoria":
+            raise FolhaValidacaoException({"colaborador_id": "Somente colaboradores ativos podem receber folha (exceto folha rescisória)."})
 
         emp_id = (empresa_id or colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001").strip()
         fil_id = (filial_id or colab.get("filial_id") or None)
 
-        # Validação da competência (AAAA-MM)
+        # Validação da competência (AAAA-MM) e confronto com data de admissão
         comp = competencia.strip()
         partes_comp = comp.split("-")
         if len(partes_comp) != 2 or not (len(partes_comp[0]) == 4 and len(partes_comp[1]) == 2):
             raise FolhaValidacaoException({"competencia": "A competência deve estar no formato AAAA-MM (ex: 2026-10)."})
+
+        adm_str = str(colab.get("data_admissao") or "").strip()
+        if len(adm_str) >= 7 and adm_str[4] == "-" and comp < adm_str[:7]:
+            raise FolhaValidacaoException({
+                "competencia": f"A competência {comp} não pode ser anterior à data de admissão ({adm_str})."
+            })
 
         P = self._ph()
         conn = self._conn()
@@ -367,6 +441,15 @@ class FolhaService:
                     "valor_informado": round(num_dep_sf * cota_sf, 2),
                 })
 
+        # Validar eventos no catálogo e hidratar incidências
+        try:
+            eventos_proc = self._validar_e_hidratar_eventos(
+                eventos_proc, horas_divisor=horas_divisor, dias_mes=dias_mes
+            )
+        except Exception:
+            conn.close()
+            raise
+
         # Processar cálculos detalhados
         calc_result = processar_calculo_folha(
             salario_base=salario_base,
@@ -392,12 +475,24 @@ class FolhaService:
         )
 
         resumo = calc_result["resumo"]
+        if float(resumo["salario_liquido"]) < 0:
+            conn.close()
+            raise FolhaValidacaoException({
+                "salario_liquido": "O salário líquido não pode ser negativo. Revise os descontos lançados."
+            })
+
         itens = calc_result["itens"]
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         situacao_destino = "rascunho" if salvar_como_rascunho else "calculada"
 
-        inss_desc = sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0501", "0502"))
-        irrf_desc = sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0505", "0506", "0507"))
+        inss_desc = sum(
+            float(it["valor_total"]) for it in itens
+            if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0501", "0502") or it["codigo_evento"] in ("501", "0501", "0502"))
+        )
+        irrf_desc = sum(
+            float(it["valor_total"]) for it in itens
+            if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0505", "0506", "0507") or it["codigo_evento"] in ("502", "0505", "0506", "0507"))
+        )
         enc_pat = round(float(resumo["base_inss"]) * 0.278, 2)  # 20% Patronal + 2% RAT + 5.8% Terceiros
 
         # Transação segura
@@ -516,12 +611,15 @@ class FolhaService:
                     INSERT INTO folha_itens (
                         folha_id, codigo_evento, descricao, tipo, referencia,
                         unidade_referencia, valor_unitario, valor_total, origem,
+                        incide_inss, incide_irrf, incide_fgts,
                         memoria_calculo, criado_em
-                    ) VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P});
+                    ) VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P});
                 """, (
                     folha_id, it["codigo_evento"], it["descricao"], it["tipo"],
                     it["referencia"], it["unidade_referencia"], it["valor_unitario"],
-                    it["valor_total"], it["origem"], it["memoria_calculo"], agora
+                    it["valor_total"], it["origem"],
+                    int(it.get("inss", 0)), int(it.get("irrf", 0)), int(it.get("fgts", 0)),
+                    it["memoria_calculo"], agora
                 ))
 
             conn.commit()
@@ -755,18 +853,58 @@ class FolhaService:
         conn.close()
         return self.obter_folha_por_id(folha_id)
 
-    def reabrir_folha(self, folha_id: int, motivo: str, usuario: str = "Sistema/Administrador") -> Dict[str, Any]:
+    def reabrir_folha(
+        self,
+        folha_id: int,
+        motivo: str,
+        usuario: str = "Sistema/Administrador",
+        apagar_para_relancar: bool = False,
+    ) -> Dict[str, Any]:
         """
         Reabre uma folha fechada mediante registro obrigatório do motivo na auditoria.
+        Se apagar_para_relancar=True, grava auditoria em auditoria_operacoes e apaga a folha
+        para permitir novo lançamento do zero na mesma competência.
         """
         if not motivo or len(motivo.strip()) < 5:
             raise FolhaValidacaoException({"motivo": "Informe um motivo detalhado para reabertura da folha."})
 
-        self.obter_folha_por_id(folha_id)
+        folha = self.obter_folha_por_id(folha_id)
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if apagar_para_relancar:
+            detalhes = (
+                f"Folha #{folha_id} ({folha.get('colaborador_nome')} - {folha.get('competencia')}) "
+                f"reaberta e apagada para relançamento. Motivo: {motivo.strip()}"
+            )
+            try:
+                cursor.execute(f"""
+                    INSERT INTO auditoria_operacoes (
+                        empresa_id, modulo, operacao, registro_tipo, registro_id,
+                        campo_alterado, valor_anterior, valor_novo, usuario_responsavel, detalhes, criado_em
+                    ) VALUES ({P}, 'folha', 'REABERTURA_EXCLUSAO', 'folhas_pagamento', {P}, 'situacao', {P}, 'apagada', {P}, {P}, {P});
+                """, (
+                    folha.get("empresa_id") or "a0000000-0000-0000-0000-000000000001",
+                    str(folha_id),
+                    folha.get("situacao", "fechada"),
+                    usuario,
+                    detalhes,
+                    agora,
+                ))
+            except Exception:
+                pass
+            cursor.execute(f"DELETE FROM folhas_pagamento WHERE id = {P};", (folha_id,))
+            conn.commit()
+            conn.close()
+            return {
+                "id": folha_id,
+                "apagada": True,
+                "colaborador_id": folha["colaborador_id"],
+                "competencia": folha["competencia"],
+                "motivo": motivo.strip(),
+            }
 
         cursor.execute(f"""
             UPDATE folhas_pagamento SET
@@ -1067,6 +1205,8 @@ class FolhaService:
         filial_id: Optional[str] = None,
         setor: Optional[str] = None,
         colaborador_id: Optional[int] = None,
+        competencia_inicio: Optional[str] = None,
+        competencia_fim: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Consolida indicadores reais da folha para Dashboard, Relatórios Gerenciais e Financeiros."""
         folhas = self.listar_folhas(
@@ -1077,6 +1217,12 @@ class FolhaService:
         )
         if filial_id:
             folhas = [f for f in folhas if (f.get("filial_id") or "") == filial_id]
+        if competencia_inicio:
+            ci = competencia_inicio.strip()
+            folhas = [f for f in folhas if (f.get("competencia") or "") >= ci]
+        if competencia_fim:
+            cf = competencia_fim.strip()
+            folhas = [f for f in folhas if (f.get("competencia") or "") <= cf]
 
         total_bruto = round(sum(float(f.get("total_proventos") or 0) for f in folhas), 2)
         total_descontos = round(sum(float(f.get("total_descontos") or 0) for f in folhas), 2)
@@ -1085,9 +1231,10 @@ class FolhaService:
         total_irrf = round(sum(float(f.get("irrf_descontado") or 0) for f in folhas), 2)
         total_fgts = round(sum(float(f.get("valor_fgts_informativo") or 0) for f in folhas), 2)
         total_encargos = round(sum(float(f.get("encargos_patronais") or 0) for f in folhas), 2)
+        total_base_inss = round(sum(float(f.get("base_inss") or 0) for f in folhas), 2)
         custo_total = round(total_bruto + total_fgts + total_encargos, 2)
 
-        abertas = sum(1 for f in folhas if f.get("situacao") in ("rascunho", "calculada", "aprovada"))
+        abertas = sum(1 for f in folhas if f.get("situacao") != "fechada")
         fechadas = sum(1 for f in folhas if f.get("situacao") == "fechada")
         colabs_unicos = len({f.get("colaborador_id") for f in folhas})
 
@@ -1111,7 +1258,111 @@ class FolhaService:
                 g["custo_total"] = round(g["custo_total"] + bruto_f + fgts_f + enc_f, 2)
             return sorted(grupos.values(), key=lambda x: x["custo_total"], reverse=True)
 
-        # Evolução mensal (sem filtro de competência para mostrar histórico comparativo)
+        # Colaboradores ativos e salário médio
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql_col = "SELECT COUNT(*), COALESCE(AVG(salario_base), 0) FROM colaboradores WHERE situacao = 'ativo'"
+        p_col: List[Any] = []
+        if empresa_id:
+            sql_col += f" AND (empresa_id = {P} OR empresa_id IS NULL)"
+            p_col.append(empresa_id.strip())
+        if setor:
+            sql_col += f" AND setor = {P}"
+            p_col.append(setor.strip())
+        cursor.execute(sql_col, tuple(p_col))
+        row_col = cursor.fetchone()
+        num_colabs_ativos = int(row_col[0] or 0)
+        sal_medio_cadastro = round(float(row_col[1] or 0.0), 2)
+
+        # Itens das folhas filtradas para eventos mais usados e horas extras
+        eventos_map: Dict[tuple, Dict[str, Any]] = {}
+        he_qtd = 0
+        he_horas = 0.0
+        he_valor = 0.0
+        folha_ids = [int(f["id"]) for f in folhas]
+        if folha_ids:
+            placeholders = ",".join([P] * len(folha_ids))
+            cursor.execute(
+                f"SELECT codigo_evento, descricao, tipo, referencia, valor_total FROM folha_itens WHERE folha_id IN ({placeholders});",
+                tuple(folha_ids),
+            )
+            for it in self._fetchall(cursor):
+                cod = str(it.get("codigo_evento") or "")
+                tipo_it = str(it.get("tipo") or "")
+                val_it = float(it.get("valor_total") or 0.0)
+                ref_it = float(it.get("referencia") or 0.0)
+                if cod in ("0010", "0011", "101", "102"):
+                    he_qtd += 1
+                    he_horas = round(he_horas + ref_it, 2)
+                    he_valor = round(he_valor + val_it, 2)
+                if tipo_it != "informativo" and cod not in ("001", "0001"):
+                    chave_ev = (cod, it.get("descricao") or cod, tipo_it)
+                    agg = eventos_map.setdefault(chave_ev, {
+                        "codigo": cod,
+                        "descricao": it.get("descricao") or cod,
+                        "tipo": tipo_it,
+                        "qtd_lancamentos": 0,
+                        "valor_total": 0.0,
+                    })
+                    agg["qtd_lancamentos"] += 1
+                    agg["valor_total"] = round(agg["valor_total"] + val_it, 2)
+        conn.close()
+
+        eventos_mais_usados = sorted(
+            eventos_map.values(),
+            key=lambda x: (-x["qtd_lancamentos"], -x["valor_total"], x["codigo"]),
+        )
+
+        sal_medio = (
+            round(sum(float(f.get("salario_base_contratual") or 0) for f in folhas) / len(folhas), 2)
+            if folhas else sal_medio_cadastro
+        )
+
+        folhas_nao_fechadas = [
+            {
+                "id": f["id"],
+                "colaborador_nome": f.get("colaborador_nome"),
+                "matricula": f.get("colaborador_matricula"),
+                "competencia": f.get("competencia"),
+                "tipo_folha": f.get("tipo_folha", "mensal"),
+                "situacao": f.get("situacao"),
+                "salario_liquido": float(f.get("salario_liquido") or 0.0),
+            }
+            for f in folhas if f.get("situacao") != "fechada"
+        ]
+
+        # Totais por mês para o relatório financeiro (com filtros aplicados)
+        totais_mes_map: Dict[str, Dict[str, Any]] = {}
+        for f in folhas:
+            c_mes = f.get("competencia") or "N/D"
+            tm = totais_mes_map.setdefault(c_mes, {
+                "competencia": c_mes, "qtd": 0, "bruto": 0.0, "descontos": 0.0, "liquido": 0.0,
+                "inss_segurados": 0.0, "irrf": 0.0, "fgts": 0.0, "encargos_empresa": 0.0, "custo_total": 0.0,
+            })
+            br = float(f.get("total_proventos") or 0)
+            fg = float(f.get("valor_fgts_informativo") or 0)
+            en = float(f.get("encargos_patronais") or 0)
+            tm["qtd"] += 1
+            tm["bruto"] = round(tm["bruto"] + br, 2)
+            tm["descontos"] = round(tm["descontos"] + float(f.get("total_descontos") or 0), 2)
+            tm["liquido"] = round(tm["liquido"] + float(f.get("salario_liquido") or 0), 2)
+            tm["inss_segurados"] = round(tm["inss_segurados"] + float(f.get("inss_descontado") or 0), 2)
+            tm["irrf"] = round(tm["irrf"] + float(f.get("irrf_descontado") or 0), 2)
+            tm["fgts"] = round(tm["fgts"] + fg, 2)
+            tm["encargos_empresa"] = round(tm["encargos_empresa"] + en, 2)
+            tm["custo_total"] = round(tm["custo_total"] + br + fg + en, 2)
+        totais_por_mes = [totais_mes_map[k] for k in sorted(totais_mes_map.keys())]
+
+        inss_pat_20 = round(total_base_inss * 0.20, 2)
+        rat_fap_2 = round(total_base_inss * 0.02, 2)
+        terceiros_5_8 = round(total_base_inss * 0.058, 2)
+        inss_pat_e_terc = round(inss_pat_20 + rat_fap_2 + terceiros_5_8, 2)
+        total_encargos_empresa = round(inss_pat_e_terc + total_fgts, 2)
+        inss_total_recolher = round(total_inss + inss_pat_e_terc, 2)
+        total_a_recolher = round(inss_total_recolher + total_irrf + total_fgts, 2)
+
+        # Evolução mensal histórica (sem filtro de competência para visão comparativa)
         todas_folhas = self.listar_folhas(empresa_id=empresa_id, setor=setor, colaborador_id=colaborador_id)
         evolucao_map: Dict[str, Dict[str, Any]] = {}
         for f in todas_folhas:
@@ -1129,8 +1380,18 @@ class FolhaService:
             ev["custo_total"] = round(ev["custo_total"] + br + fg + en, 2)
         evolucao_mensal = [evolucao_map[k] for k in sorted(evolucao_map.keys())]
 
+        por_dept = _agrupar("colaborador_setor", "Não informado")
+
         return {
-            "filtros": {"competencia": competencia, "empresa_id": empresa_id, "filial_id": filial_id, "setor": setor, "colaborador_id": colaborador_id},
+            "filtros": {
+                "competencia": competencia,
+                "competencia_inicio": competencia_inicio,
+                "competencia_fim": competencia_fim,
+                "empresa_id": empresa_id,
+                "filial_id": filial_id,
+                "setor": setor,
+                "colaborador_id": colaborador_id,
+            },
             "resumo_financeiro": {
                 "qtd_colaboradores": colabs_unicos,
                 "qtd_folhas": len(folhas),
@@ -1145,7 +1406,41 @@ class FolhaService:
                 "encargos_patronais": total_encargos,
                 "custo_total_empresa": custo_total,
             },
-            "por_departamento": _agrupar("colaborador_setor", "Não informado"),
+            "gerencial": {
+                "numero_colaboradores_ativos": num_colabs_ativos,
+                "numero_colaboradores_folha": colabs_unicos,
+                "salario_medio": sal_medio,
+                "custo_por_departamento": por_dept,
+                "eventos_mais_usados": eventos_mais_usados,
+                "horas_extras": {
+                    "qtd_lancamentos": he_qtd,
+                    "total_horas": he_horas,
+                    "valor_total": he_valor,
+                },
+                "folhas_nao_fechadas": {
+                    "quantidade": len(folhas_nao_fechadas),
+                    "lista": folhas_nao_fechadas,
+                },
+            },
+            "financeiro": {
+                "totais_por_mes": totais_por_mes,
+                "encargos_empresa": {
+                    "inss_patronal_20": inss_pat_20,
+                    "rat_fap_2": rat_fap_2,
+                    "terceiros_5_8": terceiros_5_8,
+                    "fgts_deposito": total_fgts,
+                    "total_encargos_empresa": total_encargos_empresa,
+                },
+                "valores_a_recolher": {
+                    "inss_segurados": total_inss,
+                    "inss_patronal_e_terceiros": inss_pat_e_terc,
+                    "inss_total_recolher": inss_total_recolher,
+                    "irrf_recolher": total_irrf,
+                    "fgts_recolher": total_fgts,
+                    "total_a_recolher": total_a_recolher,
+                },
+            },
+            "por_departamento": por_dept,
             "por_centro_custo": _agrupar("colaborador_centro_custo", "Sem centro de custo"),
             "por_cargo": _agrupar("colaborador_cargo", "Não informado"),
             "evolucao_mensal": evolucao_mensal,

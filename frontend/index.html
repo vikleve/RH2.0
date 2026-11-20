@@ -2107,7 +2107,9 @@
                 <p class="text-muted" style="font-size:0.82rem; margin:0.2rem 0 0;">Dados consolidados diretamente do banco de dados da folha de pagamento.</p>
               </div>
               <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
-                <input type="month" id="rel-folha-competencia" class="form-control" style="width:155px;" title="Filtrar competência">
+                <input type="month" id="rel-folha-inicio" class="form-control" style="width:150px;" title="Competência inicial">
+                <input type="month" id="rel-folha-fim" class="form-control" style="width:150px;" title="Competência final">
+                <input type="month" id="rel-folha-competencia" class="form-control" style="width:150px;" title="Competência específica (opcional)">
                 <select id="rel-folha-setor" class="form-control select-control" style="width:170px;">
                   <option value="">Todos os Departamentos</option>
                   <option value="Recursos Humanos">Recursos Humanos</option>
@@ -2119,16 +2121,22 @@
                   <option value="Administrativo">Administrativo</option>
                 </select>
                 <button type="button" class="btn btn-primary btn-sm" onclick="FolhaManager.carregarRelatorios()">Gerar Relatório</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.exportarRelatorioGerencialCSV()">Exportar Gerencial (CSV)</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.exportarRelatorioFinanceiroCSV()">Exportar Financeiro (CSV)</button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="FolhaManager.exportarRelatorioExcel()">Exportar Excel</button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="window.print()">Imprimir / PDF</button>
               </div>
             </div>
 
             <div class="metrics-grid" id="rel-folha-kpis" style="margin-bottom:1rem;">
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Colaboradores Ativos</span><span class="metric-value text-blue" id="rel-kpi-colabs">0</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Salário Médio</span><span class="metric-value" id="rel-kpi-sal-medio">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Horas Extras</span><span class="metric-value text-green" id="rel-kpi-he" style="font-size:0.95rem;">0h (R$ 0,00)</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">Folhas Não Fechadas</span><span class="metric-value" id="rel-kpi-nao-fechadas">0</span></div></div>
               <div class="metric-card"><div class="metric-info"><span class="metric-label">Total Bruto</span><span class="metric-value text-green" id="rel-kpi-bruto">R$ 0,00</span></div></div>
               <div class="metric-card"><div class="metric-info"><span class="metric-label">Total Descontos</span><span class="metric-value" id="rel-kpi-descontos">R$ 0,00</span></div></div>
               <div class="metric-card"><div class="metric-info"><span class="metric-label">Líquido a Pagar</span><span class="metric-value text-purple" id="rel-kpi-liquido">R$ 0,00</span></div></div>
-              <div class="metric-card"><div class="metric-info"><span class="metric-label">INSS / IRRF / FGTS</span><span class="metric-value" id="rel-kpi-tributos" style="font-size:0.95rem;">R$ 0,00</span></div></div>
+              <div class="metric-card"><div class="metric-info"><span class="metric-label">INSS / IRRF / FGTS</span><span class="metric-value" id="rel-kpi-tributos" style="font-size:0.9rem;">R$ 0,00</span></div></div>
               <div class="metric-card"><div class="metric-info"><span class="metric-label">Encargos Patronais</span><span class="metric-value" id="rel-kpi-encargos">R$ 0,00</span></div></div>
               <div class="metric-card"><div class="metric-info"><span class="metric-label">Custo Total Empresa</span><span class="metric-value text-blue" id="rel-kpi-custo">R$ 0,00</span></div></div>
             </div>
@@ -2144,7 +2152,7 @@
               </div>
             </div>
 
-            <div class="table-responsive">
+            <div class="table-responsive" style="margin-bottom:1.25rem;">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -2160,6 +2168,43 @@
                 </thead>
                 <tbody id="rel-tabela-departamentos"></tbody>
               </table>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1rem; margin-bottom:1.25rem;">
+              <div class="details-card">
+                <h4>Relatório Gerencial — Eventos Mais Usados</h4>
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead><tr><th>Cód.</th><th>Evento</th><th>Tipo</th><th>Qtd</th><th>Total (R$)</th></tr></thead>
+                    <tbody id="rel-tabela-eventos"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="details-card">
+                <h4>Relatório Gerencial — Folhas Não Fechadas</h4>
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead><tr><th>Colaborador</th><th>Comp.</th><th>Situação</th><th>Líquido</th></tr></thead>
+                    <tbody id="rel-tabela-nao-fechadas"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1rem;">
+              <div class="details-card">
+                <h4>Relatório Financeiro — Totais por Mês</h4>
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead><tr><th>Mês</th><th>Qtd</th><th>Bruto</th><th>Líquido</th><th>Encargos Emp.</th><th>Custo Total</th></tr></thead>
+                    <tbody id="rel-tabela-financeiro-mes"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="details-card">
+                <h4>Relatório Financeiro — Encargos e Valores a Recolher</h4>
+                <div id="rel-valores-recolher" style="display:flex; flex-direction:column; gap:0.45rem; font-size:0.86rem; margin-top:0.5rem;"></div>
+              </div>
             </div>
           </section>
         </div>
@@ -3583,7 +3628,9 @@
                 <label for="rub-forma">Forma Cálculo</label>
                 <select id="rub-forma" class="form-control select-control">
                   <option value="valor_fixo">Valor Fixo</option>
-                  <option value="percentual">Percentual</option>
+                  <option value="percentual">% sobre Salário-Base</option>
+                  <option value="horas">Horas sobre Salário-Hora</option>
+                  <option value="dias">Dias sobre Salário-Dia</option>
                   <option value="referencia">Por Referência</option>
                   <option value="calculado">Calculado</option>
                 </select>
@@ -3786,6 +3833,12 @@
             <textarea id="reabrir-folha-motivo" class="form-control" rows="3"
               placeholder="Ex: Inclusão de atestado médico entregue com atraso, estorno de horas extras indevidas..."></textarea>
             <span class="field-error" id="erro-reabrir-folha-motivo"></span>
+          </div>
+          <div class="form-group mt-2" style="font-size:0.85rem;">
+            <label style="display:flex; align-items:center; gap:0.45rem; cursor:pointer;">
+              <input type="checkbox" id="reabrir-apagar-folha" checked>
+              <span>Apagar esta folha ao reabrir para relançar do zero</span>
+            </label>
           </div>
         </div>
         <div class="modal-footer">

@@ -145,6 +145,7 @@ MAPA_ALIAS_LEGADO: Dict[str, str] = {
     "001": "0001",
     "SALARIO": "0001",
     "SALARIO_BASE": "0001",
+    "DESC_ADTO": "0520",
 }
 
 
@@ -1045,14 +1046,16 @@ def processar_calculo_folha(
             tipo = "provento"
 
         incidencias = {
-            "inss": info_cat["inss"] if info_cat else (1 if tipo == "provento" else 0),
-            "irrf": info_cat["irrf"] if info_cat else (1 if tipo == "provento" else 0),
-            "fgts": info_cat["fgts"] if info_cat else (1 if tipo == "provento" else 0),
+            "inss": int(ev["incide_inss"]) if ev.get("incide_inss") is not None else (info_cat["inss"] if info_cat else (1 if tipo == "provento" else 0)),
+            "irrf": int(ev["incide_irrf"]) if ev.get("incide_irrf") is not None else (info_cat["irrf"] if info_cat else (1 if tipo == "provento" else 0)),
+            "fgts": int(ev["incide_fgts"]) if ev.get("incide_fgts") is not None else (info_cat["fgts"] if info_cat else (1 if tipo == "provento" else 0)),
         }
 
-        qtd = _to_decimal(ev.get("quantidade") or ev.get("referencia") or 0)
+        qtd_raw = ev.get("quantidade") if ev.get("quantidade") not in (None, "") else (ev.get("referencia") or 0)
+        qtd = _to_decimal(qtd_raw)
         perc = _to_decimal(ev.get("percentual") or 0)
-        val_manual = _to_decimal(ev.get("valor_total") or 0)
+        val_raw = ev.get("valor_total") if ev.get("valor_total") not in (None, "") else (ev.get("valor_informado") or 0)
+        val_manual = _to_decimal(val_raw)
         val_unit_informado = _to_decimal(ev.get("valor_unitario") or 0)
 
         # Código de saída: se o usuário passou um alias legado (ex: HE50, FALTA), emite código legado histórico (101, 201)
@@ -1461,20 +1464,54 @@ def processar_calculo_folha(
             })
 
         else:
-            # Rubrica personalizada/genérica informada
-            unit = val_unit_informado or (val_manual / qtd if qtd > 0 else val_manual)
-            unid_ref = ev.get("unidade_referencia") or ("horas" if "HORA" in desc.upper() else "un")
-            mem = ev.get("memoria_calculo") or f"Lançamento {tipo}: {desc} = R$ {val_manual:,.2f}".replace(".", ",")
+            # Rubrica personalizada/genérica informada (valor fixo, percentual, horas ou dias)
+            forma_calc = str(ev.get("forma_calculo") or "valor_fixo").strip().lower()
+            ref_emit = qtd or Decimal("1")
+            origem_emit = "manual"
+            if val_manual > Decimal("0.00"):
+                tot_custom = val_manual
+                unit = val_unit_informado or (tot_custom / qtd if qtd > 0 else tot_custom)
+                unid_ref = ev.get("unidade_referencia") or ("horas" if "HORA" in desc.upper() else "un")
+                mem = ev.get("memoria_calculo") or f"Lançamento {tipo}: {desc} = R$ {tot_custom:,.2f}".replace(".", ",")
+            elif forma_calc == "percentual":
+                p_calc = perc if perc > Decimal("0.00") else qtd
+                tot_custom = arredondar_moeda(sb * (p_calc / Decimal("100.00")))
+                ref_emit = p_calc
+                unit = sb
+                unid_ref = "%"
+                origem_emit = "calculado"
+                mem = f"{desc} ({p_calc}% sobre salário-base R$ {sb:,.2f}): R$ {tot_custom:,.2f}".replace(".", ",")
+            elif forma_calc == "horas":
+                tot_custom = arredondar_moeda(vh_normal * qtd)
+                ref_emit = qtd
+                unit = vh_normal
+                unid_ref = "horas"
+                origem_emit = "calculado"
+                mem = f"{desc} ({qtd}h x R$ {vh_normal:,.4f}/h): R$ {tot_custom:,.2f}".replace(".", ",")
+            elif forma_calc == "dias":
+                v_dia = sb / Decimal(str(dm))
+                tot_custom = arredondar_moeda(v_dia * qtd)
+                ref_emit = qtd
+                unit = v_dia
+                unid_ref = "dias"
+                origem_emit = "calculado"
+                mem = f"{desc} ({qtd}d x R$ {v_dia:,.2f}/dia): R$ {tot_custom:,.2f}".replace(".", ",")
+            else:
+                tot_custom = val_manual
+                unit = val_unit_informado or tot_custom
+                unid_ref = ev.get("unidade_referencia") or ("horas" if "HORA" in desc.upper() else "un")
+                mem = ev.get("memoria_calculo") or f"Lançamento {tipo}: {desc} = R$ {tot_custom:,.2f}".replace(".", ",")
+
             adicionar_item(
                 codigo=codigo_saida or f"EV_{len(itens_consolidados)+1}",
                 descricao=desc,
                 tipo=tipo,
-                referencia=qtd or 1,
+                referencia=ref_emit,
                 unidade=unid_ref,
                 valor_unit=unit,
-                valor_total=val_manual,
+                valor_total=tot_custom,
                 memoria=mem,
-                origem="manual",
+                origem=origem_emit,
                 codigo_catalogo=cod_oficial,
                 incidencias=incidencias
             )
