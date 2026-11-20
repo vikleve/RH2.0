@@ -94,12 +94,12 @@ TETO_INSS_PADRAO_2026 = Decimal("8475.55")
 TETO_CONTRIBUICAO_INSS_2026 = Decimal("988.09")
 
 TABELA_IRRF_PADRAO_2026 = [
-    # (limite_inferior, limite_superior, alíquota, parcela a deduzir)
-    (Decimal("0.00"), Decimal("2428.80"), Decimal("0.0"), Decimal("0.00")),
-    (Decimal("2428.80"), Decimal("2826.65"), Decimal("7.5"), Decimal("182.16")),
-    (Decimal("2826.65"), Decimal("3751.05"), Decimal("15.0"), Decimal("394.16")),
-    (Decimal("3751.05"), Decimal("4664.68"), Decimal("22.5"), Decimal("675.49")),
-    (Decimal("4664.68"), None, Decimal("27.5"), Decimal("908.73")),
+    # (limite_superior_inclusivo, alíquota, parcela a deduzir)
+    (Decimal("2428.80"), Decimal("0.0"), Decimal("0.00")),
+    (Decimal("2826.65"), Decimal("7.5"), Decimal("182.16")),
+    (Decimal("3751.05"), Decimal("15.0"), Decimal("394.16")),
+    (Decimal("4664.68"), Decimal("22.5"), Decimal("675.49")),
+    (None, Decimal("27.5"), Decimal("908.73")),
 ]
 DEDUCAO_DEPENDENTE_IRRF_PADRAO = Decimal("189.59")
 DESCONTO_SIMPLIFICADO_IRRF_PADRAO = Decimal("607.20")
