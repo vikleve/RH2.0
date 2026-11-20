@@ -2597,14 +2597,15 @@ const FolhaManager = {
       const elRazao = document.getElementById('h-empresa-razao');
       const elCnpjCidade = document.getElementById('h-empresa-cnpj-cidade');
       if (elRazao) {
-        elRazao.textContent = f.empresa_nome || 'USINA CENTRAL DE BIOENERGIA S.A.';
+        elRazao.textContent = f.empresa_razao_social || f.empresa_nome || 'FORÇAVERDE USINA DE ENERGIA E BIOCOMBUSTÍVEIS S.A.';
       }
       if (elCnpjCidade) {
-        elCnpjCidade.textContent = f.empresa_cnpj ? `CNPJ: ${f.empresa_cnpj} • ${f.empresa_endereco || 'Sertãozinho / SP'}` : 'CNPJ: 54.321.987/0001-00 • Fazenda Boa Esperança, s/n - Zona Rural - Sertãozinho / SP';
+        elCnpjCidade.textContent = f.empresa_cnpj ? `CNPJ: ${f.empresa_cnpj} • ${f.empresa_endereco || 'Sertãozinho / SP'}` : 'CNPJ: 12.345.678/0001-90 • Fazenda Boa Esperança, s/n - Sertãozinho / SP';
       }
 
       // Preencher Contracheque
       document.getElementById('h-competencia').textContent = f.competencia;
+      if (document.getElementById('h-numero-recibo')) document.getElementById('h-numero-recibo').textContent = f.numero_recibo || `REC-${String(f.competencia || '').replace('-', '')}-${String(f.id || 0).padStart(6, '0')}`;
       document.getElementById('h-matricula').textContent = f.colaborador_matricula || '--';
       document.getElementById('h-nome').textContent = f.colaborador_nome || '--';
       const cpfBruto = formatarCpf(f.colaborador_cpf || '');
@@ -2615,6 +2616,10 @@ const FolhaManager = {
       document.getElementById('h-setor').textContent = f.colaborador_setor || '--';
       document.getElementById('h-admissao').textContent = formatarDataBR(f.colaborador_data_admissao);
       document.getElementById('h-data-pagto').textContent = formatarDataBR(f.data_pagamento) || '05 do mês subsequente';
+      if (document.getElementById('h-colab-salario-base')) document.getElementById('h-colab-salario-base').textContent = formatarMoeda(f.salario_base_contratual);
+      if (document.getElementById('h-dep-irrf')) document.getElementById('h-dep-irrf').textContent = String(f.total_dependentes_irrf ?? 0);
+      if (document.getElementById('h-data-emissao')) document.getElementById('h-data-emissao').textContent = new Date().toLocaleString('pt-BR');
+      if (document.getElementById('h-autenticidade')) document.getElementById('h-autenticidade').textContent = f.codigo_autenticidade || '--';
 
       // Itens discriminados
       const corpoItens = document.getElementById('h-corpo-itens');
@@ -2921,6 +2926,58 @@ const FolhaManager = {
       await this.carregarFolhas();
     } catch (e) {
       exibirToast('Erro de comunicação no processamento em lote.', 'error');
+    }
+  },
+
+  async baixarHoleritePDF() {
+    if (!this.folhaParaFecharOuReabrir) return;
+    const f = this.folhaParaFecharOuReabrir;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${f.id}/pdf`, { headers: getAuthHeaders(), credentials: 'include' });
+      if (!resp.ok) {
+        exibirToast('Erro ao gerar PDF do contracheque.', 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const disp = resp.headers.get('Content-Disposition') || '';
+      const match = disp.match(/filename="([^"]+)"/);
+      const nomeArq = match ? match[1] : `CONTRACHEQUE_${f.id}.pdf`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = nomeArq;
+      a.click();
+      exibirToast('PDF A4 do contracheque baixado com sucesso!', 'success');
+    } catch (e) {
+      exibirToast('Falha ao baixar PDF do contracheque.', 'error');
+    }
+  },
+
+  async baixarHoleritesLotePDF() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '';
+    const setor = document.getElementById('filtro-folha-setor')?.value || '';
+    const situacao = document.getElementById('filtro-folha-situacao')?.value || '';
+    const params = new URLSearchParams();
+    if (comp) params.set('competencia', comp);
+    if (setor) params.set('setor', setor);
+    if (situacao && situacao !== 'todos') params.set('situacao', situacao);
+    try {
+      const resp = await fetch(`${API_BASE}/folha/holerites-lote/pdf?${params.toString()}`, { headers: getAuthHeaders(), credentials: 'include' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        exibirToast(err.mensagem || 'Nenhum contracheque encontrado para o lote.', 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const disp = resp.headers.get('Content-Disposition') || '';
+      const match = disp.match(/filename="([^"]+)"/);
+      const nomeArq = match ? match[1] : `CONTRACHEQUES_LOTE_${comp || 'GERAL'}.pdf`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = nomeArq;
+      a.click();
+      exibirToast('PDF A4 em lote baixado com sucesso!', 'success');
+    } catch (e) {
+      exibirToast('Falha ao gerar PDF em lote.', 'error');
     }
   },
 

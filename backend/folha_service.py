@@ -571,6 +571,37 @@ class FolhaService:
         """, (folha_id,))
         folha["historico"] = self._fetchall(cursor)
 
+        # Buscar dependentes IRRF e dados da empresa/filial para o contracheque
+        try:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(eh_dependente_irrf, 1) = 1;",
+                (folha["colaborador_id"],)
+            )
+            folha["total_dependentes_irrf"] = int(cursor.fetchone()[0] or 0)
+        except Exception:
+            folha["total_dependentes_irrf"] = 0
+
+        try:
+            emp_id = folha.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+            cursor.execute(f"SELECT razao_social, cnpj FROM empresas WHERE id = {P};", (emp_id,))
+            emp = self._fetchone(cursor)
+            if emp:
+                folha["empresa_razao_social"] = emp.get("razao_social")
+                folha["empresa_cnpj"] = emp.get("cnpj")
+            cursor.execute(f"SELECT cidade, uf FROM filiais WHERE empresa_id = {P} LIMIT 1;", (emp_id,))
+            fil = self._fetchone(cursor)
+            if fil and fil.get("cidade"):
+                folha["empresa_endereco"] = f"{fil.get('cidade')} / {fil.get('uf') or 'SP'}"
+        except Exception:
+            pass
+
+        try:
+            from .holerite_pdf import calcular_codigo_autenticidade, numero_recibo_folha
+        except ImportError:
+            from backend.holerite_pdf import calcular_codigo_autenticidade, numero_recibo_folha
+        folha["numero_recibo"] = numero_recibo_folha(folha)
+        folha["codigo_autenticidade"] = calcular_codigo_autenticidade(folha)
+
         conn.close()
         return folha
 

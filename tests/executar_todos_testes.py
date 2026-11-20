@@ -29,6 +29,7 @@ from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhis
 from tests.test_rbac_enterprise import TestRBACEnterprise
 from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
 from tests.test_folha_enterprise_completa import TestFolhaEnterpriseCompleta
+from tests.test_holerite_pdf import TestHoleritePDF
 
 
 def executar():
@@ -72,6 +73,9 @@ def executar():
 
     # 7. Testes Enterprise Completos (Rubricas, Lote, Tipos de Folha, Documentos, Relatórios)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaEnterpriseCompleta))
+
+    # 8. Testes de Geração Real de Contracheques em PDF A4 (Individual e Lote)
+    suite.addTests(carregador.loadTestsFromTestCase(TestHoleritePDF))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"
