@@ -61,44 +61,44 @@ TABELA_IRRF_2026 = [
 # ─────────────────────────────────────────────────────────────────────────────
 def calcular_inss_2026(base_inss: Any) -> Tuple[Decimal, Decimal, str, List[Dict[str, Any]]]:
     """
-    Calcula INSS progressivo faixa a faixa conforme tabela oficial 2026.
-    Retorna: (valor_inss, aliquota_efetiva, memoria_calculo, faixas_detalhadas)
+    Calcula INSS progressivo em faixas contínuas.
+    Cada faixa tributa apenas a diferença entre o teto atingido e o limite anterior.
     """
     base = to_d(base_inss)
     if base <= Decimal("0.00"):
         return Decimal("0.00"), Decimal("0.00"), "Base de cálculo zerada.", []
 
     base_tributavel = min(base, TETO_INSS_2026)
-    total_inss = Decimal("0.000000")
+    total = Decimal("0.00")
     faixas_det = []
-    mem_linhas = [f"Base INSS: R$ {base_tributavel:.2f} (Teto: R$ {TETO_INSS_2026:.2f})"]
+    memoria = [f"Base INSS: R$ {base_tributavel:.2f} (Teto: R$ {TETO_INSS_2026:.2f})"]
+    limite_anterior = Decimal("0.00")
 
-    for i, (f_min, f_max, aliq) in enumerate(TABELA_INSS_2026, start=1):
-        if base_tributavel <= f_min:
+    for i, (_, teto_faixa, aliq) in enumerate(TABELA_INSS_2026, start=1):
+        limite = min(base_tributavel, teto_faixa)
+        base_faixa = max(Decimal("0.00"), limite - limite_anterior)
+        if base_faixa > 0:
+            valor = base_faixa * aliq / Decimal("100.00")
+            total += valor
+            faixas_det.append({
+                "faixa": i,
+                "minimo": float(limite_anterior),
+                "maximo": float(limite),
+                "base_tributada": float(round2(base_faixa)),
+                "aliquota": float(aliq),
+                "valor": float(round2(valor))
+            })
+            memoria.append(
+                f"Faixa {i} ({aliq}% sobre R$ {base_faixa:.2f}): R$ {round2(valor):.2f}"
+            )
+        limite_anterior = teto_faixa
+        if base_tributavel <= teto_faixa:
             break
 
-        limite_superior = min(base_tributavel, f_max)
-        base_na_faixa = limite_superior - f_min
-        fator = aliq / Decimal("100.00")
-        valor_faixa = base_na_faixa * fator
-        total_inss += valor_faixa
-
-        faixas_det.append({
-            "faixa": i,
-            "minimo": float(f_min),
-            "maximo": float(f_max),
-            "base_tributada": float(round2(base_na_faixa)),
-            "aliquota": float(aliq),
-            "valor": float(round2(valor_faixa))
-        })
-        mem_linhas.append(f"Faixa {i} ({aliq}% sobre R$ {base_na_faixa:.2f}): R$ {round2(valor_faixa):.2f}")
-
-    inss_arredondado = min(round2(total_inss), TETO_CONTRIBUICAO_INSS_2026)
-    aliq_efetiva = round2((inss_arredondado / base) * Decimal("100.00")) if base > 0 else Decimal("0.00")
-    mem_linhas.append(f"Total INSS a recolher: R$ {inss_arredondado:.2f} (Alíquota efetiva: {aliq_efetiva}%)")
-
-    return inss_arredondado, aliq_efetiva, " | ".join(mem_linhas), faixas_det
-
+    inss = min(round2(total), TETO_CONTRIBUICAO_INSS_2026)
+    efetiva = round2((inss / base) * Decimal("100.00")) if base > 0 else Decimal("0.00")
+    memoria.append(f"Total INSS a recolher: R$ {inss:.2f} (Alíquota efetiva: {efetiva}%)")
+    return inss, efetiva, " | ".join(memoria), faixas_det
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Redução do IRRF — Lei 15.270/2025 (RN Seção 2.4)
 # ─────────────────────────────────────────────────────────────────────────────
