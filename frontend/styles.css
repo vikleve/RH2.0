@@ -3544,3 +3544,144 @@ body {
     align-items: flex-start;
   }
 }
+
+
+/* Painel Detalhado da Folha Individual (Layout Referência 2 Colunas) */
+.folha-individual-wrapper {
+  margin-bottom: 1.5rem;
+}
+.folha-individual-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1rem;
+}
+.folha-individual-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(290px, 1fr);
+  gap: 1.15rem;
+  align-items: start;
+}
+.folha-ind-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.folha-card-clean {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.folha-emp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+.folha-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #eef2ee;
+  color: #1b4332;
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.folha-emp-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid #f1f5f9;
+}
+.folha-meta-lbl {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+.folha-status-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+.folha-sec-title {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: #64748b;
+}
+.folha-grupo-hdr {
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+}
+.folha-grupo-hdr.proventos { color: #166534; }
+.folha-grupo-hdr.descontos { color: #991b1b; }
+.folha-evento-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.88rem;
+}
+.folha-calc-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  position: sticky;
+  top: 1rem;
+}
+.folha-calc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.88rem;
+  color: #475569;
+  padding: 0.38rem 0;
+}
+.folha-calc-row strong { color: #0f172a; font-weight: 600; }
+.folha-calc-row strong.text-neg { color: #b91c1c; }
+.folha-liquido-pill {
+  margin-top: 1rem;
+  background: #164438;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.folha-liquido-pill span { font-size: 0.78rem; letter-spacing: 0.08em; font-weight: 600; opacity: 0.9; }
+.folha-liquido-pill strong { font-size: 1.35rem; font-weight: 800; }
+@media (max-width: 900px) {
+  .folha-individual-grid { grid-template-columns: 1fr; }
+}
