@@ -58,7 +58,7 @@ class FolhaService:
     # ──────────────────────────────────────────────────────────
 
     def obter_parametro_vigente(self) -> Dict[str, Any]:
-        """Retorna os parâmetros de folha ativos vigentes."""
+        """Retorna parâmetros ativos e vigentes; os defaults são oficiais para 2026."""
         self._ph()
         conn = self._conn()
         cursor = conn.cursor()
@@ -67,27 +67,35 @@ class FolhaService:
         )
         param = self._fetchone(cursor)
         conn.close()
+        padroes_2026 = {
+            "id": 1,
+            "codigo": "PADRAO_CLT_2026",
+            "descricao": "Parâmetros Padrão CLT 2026",
+            "horas_mensais_padrao": 220.0,
+            "dias_mes_padrao": 30,
+            "percentual_he_padrao": 50.0,
+            "percentual_he_extra": 100.0,
+            "percentual_adicional_noturno": 20.0,
+            "aplicar_reducao_noturna": 0,
+            "fator_reducao_noturna": 1.142857,
+            "aplicar_inss": 1,
+            "aplicar_irrf": 1,
+            "aliquota_fgts": 8.0,
+            "teto_inss": 8475.55,
+            "deducao_dependente_irrf": 189.59,
+            "desconto_simplificado_irrf": 607.20,
+            "salario_minimo": 1621.00,
+            "limite_salario_familia": 1980.38,
+            "valor_cota_salario_familia": 67.54,
+            "ativo": 1,
+            "validado_por_profissional": 0,
+        }
         if not param:
-            # Fallback seguro caso a tabela esteja vazia
-            return {
-                "id": 1,
-                "codigo": "PADRAO_CLT_2026",
-                "descricao": "Parâmetros Padrão CLT 2026",
-                "horas_mensais_padrao": 220.0,
-                "dias_mes_padrao": 30,
-                "percentual_he_padrao": 50.0,
-                "percentual_he_extra": 100.0,
-                "percentual_adicional_noturno": 20.0,
-                "aplicar_reducao_noturna": 0,
-                "fator_reducao_noturna": 1.142857,
-                "aplicar_inss": 1,
-                "aplicar_irrf": 1,
-                "aliquota_fgts": 8.0,
-                "teto_inss": 8475.55,
-                "deducao_dependente_irrf": 189.59,
-                "ativo": 1,
-                "validado_por_profissional": 1
-            }
+            return padroes_2026
+        # Mantém configurações específicas já cadastradas, mas completa campos
+        # recém-introduzidos sem sobrescrever percentuais aprovados pelo DP.
+        for chave, valor in padroes_2026.items():
+            param.setdefault(chave, valor)
         return param
 
     def salvar_parametros(self, dados: Dict[str, Any], usuario: str = "Sistema/Administrador") -> Dict[str, Any]:
