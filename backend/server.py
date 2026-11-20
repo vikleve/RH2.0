@@ -487,6 +487,41 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             )
             return self._enviar_json(200, {"sucesso": True, "dados": rel})
 
+        # Rota protegida: Download PDF em lote GET /api/folha/holerites-lote/pdf
+        if path == "/api/folha/holerites-lote/pdf":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            empresa_valida = self._validar_escopo_empresa(usuario, empresa_alvo)
+            if empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador"):
+                return
+            comp = query.get("competencia", [None])[0]
+            setor = query.get("setor", [None])[0]
+            situacao = query.get("situacao", [None])[0]
+            folhas_resumo = self.folha_service.listar_folhas(
+                competencia=comp,
+                setor=setor,
+                situacao=situacao,
+                empresa_id=empresa_valida,
+            )
+            holerites = [self.folha_service.obter_folha_por_id(f["id"]) for f in folhas_resumo]
+            if not holerites:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": "Nenhum contracheque encontrado para gerar PDF em lote."})
+            try:
+                from .holerite_pdf import gerar_pdf_holerites_lote
+            except ImportError:
+                from backend.holerite_pdf import gerar_pdf_holerites_lote
+            pdf_bytes = gerar_pdf_holerites_lote(holerites)
+            comp_slug = (comp or "COMPETENCIA").replace("-", "_")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Disposition", f'attachment; filename="CONTRACHEQUES_LOTE_{comp_slug}.pdf"')
+            self.send_header("Content-Length", str(len(pdf_bytes)))
+            self.end_headers()
+            self.wfile.write(pdf_bytes)
+            return
+
         # Rota protegida: Holerites em lote para impressão/PDF GET /api/folha/holerites-lote
         if path == "/api/folha/holerites-lote":
             usuario = self._exigir_autenticacao()
@@ -564,9 +599,31 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             )
             return self._enviar_json(200, {"sucesso": True, "total": len(folhas), "dados": folhas})
 
-        # Rota protegida: Obter folha por ID GET /api/folha/<id>
+        # Rota protegida: Obter folha por ID ou PDF GET /api/folha/<id>[/pdf]
         if path.startswith("/api/folha/"):
             partes = path.strip("/").split("/")
+            if len(partes) == 4 and partes[2].isdigit() and partes[3] == "pdf":
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                folha_id = int(partes[2])
+                try:
+                    folha = self.folha_service.obter_folha_por_id(folha_id)
+                    try:
+                        from .holerite_pdf import gerar_pdf_holerite, nome_arquivo_contracheque
+                    except ImportError:
+                        from backend.holerite_pdf import gerar_pdf_holerite, nome_arquivo_contracheque
+                    pdf_bytes = gerar_pdf_holerite(folha)
+                    nome_arq = nome_arquivo_contracheque(folha)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Disposition", f'attachment; filename="{nome_arq}"')
+                    self.send_header("Content-Length", str(len(pdf_bytes)))
+                    self.end_headers()
+                    self.wfile.write(pdf_bytes)
+                    return
+                except FolhaNaoEncontradaException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             if len(partes) == 3 and partes[2].isdigit():
                 usuario = self._exigir_autenticacao()
                 if not usuario:

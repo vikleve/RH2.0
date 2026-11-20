@@ -1274,8 +1274,11 @@
             <button type="button" class="btn btn-outline" id="btn-catalogo-rubricas" onclick="FolhaManager.abrirCatalogoRubricas()">
               Catálogo de Rubricas
             </button>
-            <button type="button" class="btn btn-outline" id="btn-holerites-lote" onclick="FolhaManager.emitirHoleritesLote()">
-              Holerites em Lote (PDF)
+            <button type="button" class="btn btn-outline" id="btn-holerites-lote" onclick="FolhaManager.baixarHoleritesLotePDF()">
+              Baixar Lote PDF (A4)
+            </button>
+            <button type="button" class="btn btn-outline" onclick="FolhaManager.emitirHoleritesLote()">
+              Imprimir Lote
             </button>
             <button type="button" class="btn btn-outline" onclick="document.getElementById('btn-parametros-folha')?.click()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -3271,15 +3274,19 @@
           <div class="holerite-container" id="holerite-documento-imprimivel">
             <!-- Cabeçalho da Empresa -->
             <div class="holerite-header">
-              <div>
-                <div class="holerite-empresa-titulo" id="h-empresa-razao">USINA CENTRAL DE BIOENERGIA S.A.</div>
-                <div style="font-size: 0.8rem; color: #475569;" id="h-empresa-cnpj-cidade">CNPJ: 54.321.987/0001-00 &bull; Fazenda Boa Esperança, s/n - Zona Rural - Sertãozinho / SP</div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <img src="assets/logo-forcaverde.png" alt="Logo Empresa" style="height:42px; width:auto; border-radius:6px;">
+                <div>
+                  <div class="holerite-empresa-titulo" id="h-empresa-razao">USINA CENTRAL DE BIOENERGIA S.A.</div>
+                  <div style="font-size: 0.8rem; color: #475569;" id="h-empresa-cnpj-cidade">CNPJ: 54.321.987/0001-00 &bull; Fazenda Boa Esperança, s/n - Zona Rural - Sertãozinho / SP</div>
+                </div>
               </div>
               <div class="holerite-recibo-badge">
-                <div>RECIBO DE PAGAMENTO DE SALÁRIO</div>
+                <div>RECIBO DE PAGAMENTO</div>
                 <div style="font-size: 0.85rem; color: #1e40af; margin-top: 0.2rem;">
                   Competência: <strong id="h-competencia">--/----</strong>
                 </div>
+                <div style="font-size: 0.72rem; color: #475569;">Recibo Nº: <span id="h-numero-recibo">--</span></div>
               </div>
             </div>
 
@@ -3289,9 +3296,11 @@
               <div style="grid-column: span 2;"><strong>Nome:</strong> <span id="h-nome">--</span></div>
               <div><strong>CPF:</strong> <span id="h-cpf">--</span></div>
               <div><strong>Cargo:</strong> <span id="h-cargo">--</span></div>
-              <div><strong>Setor:</strong> <span id="h-setor">--</span></div>
+              <div><strong>Departamento:</strong> <span id="h-setor">--</span></div>
               <div><strong>Admissão:</strong> <span id="h-admissao">--</span></div>
               <div><strong>Data Pagto:</strong> <span id="h-data-pagto">--</span></div>
+              <div><strong>Salário-Base:</strong> <span id="h-colab-salario-base">R$ 0,00</span></div>
+              <div><strong>Dep. IRRF:</strong> <span id="h-dep-irrf">0</span></div>
             </div>
 
             <!-- Tabela de Vencimentos e Descontos -->
@@ -3342,6 +3351,9 @@
               <div style="max-width: 450px;">
                 Declaro ter recebido a importância líquida discriminada neste demonstrativo, correspondente à quitação
                 das verbas devidas no período.
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 0.35rem;">
+                  Emissão: <span id="h-data-emissao">--</span> &bull; Autenticidade SHA-256: <strong id="h-autenticidade">--</strong>
+                </div>
               </div>
               <div class="linha-assinatura">
                 Assinatura do Colaborador
@@ -3378,6 +3390,9 @@
 
         <div class="modal-footer">
           <button class="btn btn-outline" id="btn-fechar-holerite-footer">Fechar</button>
+          <button class="btn btn-outline" id="btn-baixar-holerite-pdf" onclick="FolhaManager.baixarHoleritePDF()">
+            Baixar PDF (A4)
+          </button>
           <button class="btn btn-primary" id="btn-imprimir-holerite">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 6 2 18 2 18 9"></polyline>
