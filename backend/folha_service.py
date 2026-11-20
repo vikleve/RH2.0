@@ -290,10 +290,10 @@ class FolhaService:
                 "aliquota_fgts": param.get("aliquota_fgts", "8.0"),
                 "teto_inss": "8475.55",
                 "deducao_dependente_irrf": param.get("deducao_dependente_irrf", "189.59"),
-                "desconto_simplificado_irrf": "607.20",
-                "salario_minimo": "1621.00",
-                "limite_salario_familia": "1980.38",
-                "valor_cota_salario_familia": "67.54"
+                "desconto_simplificado_irrf": param.get("desconto_simplificado_irrf", "607.20"),
+                "salario_minimo": param.get("salario_minimo", "1621.00"),
+                "limite_salario_familia": param.get("limite_salario_familia", "1980.38"),
+                "valor_cota_salario_familia": param.get("valor_cota_salario_familia", "67.54")
             }
         )
 
