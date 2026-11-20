@@ -577,5 +577,32 @@ class TestFolhaCalculos(unittest.TestCase):
                 processar_calculo_folha(salario_base=valor)
 
 
+    def test_irrf_progressivo_escolhe_deducao_simplificada_mais_vantajosa(self):
+        """Com salário de R$ 4.000, o simplificado reduz a base e zera o IRRF em 2026."""
+        irrf, base, memoria = calcular_irrf_progressivo(
+            base_bruta_irrf=Decimal("4000.00"),
+            desconto_inss=Decimal("373.41"),
+            desconto_simplificado=Decimal("607.20"),
+            rendimento_tributavel=Decimal("4000.00"),
+        )
+        self.assertEqual(base, Decimal("3392.80"))
+        self.assertEqual(irrf, Decimal("0.00"))
+        self.assertIn("Desconto simplificado", memoria)
+
+    def test_irrf_progressivo_6000_reproduz_exemplo_oficial_receita(self):
+        """R$ 6.000: INSS R$ 649,60, imposto tabela R$ 562,63 e IRRF R$ 382,88."""
+        inss, _, _, _ = calcular_inss_progressivo(Decimal("6000.00"))
+        self.assertEqual(inss, Decimal("649.60"))
+        irrf, base, memoria = calcular_irrf_progressivo(
+            base_bruta_irrf=Decimal("6000.00"),
+            desconto_inss=inss,
+            desconto_simplificado=Decimal("607.20"),
+            rendimento_tributavel=Decimal("6000.00"),
+        )
+        self.assertEqual(base, Decimal("5350.40"))
+        self.assertEqual(irrf, Decimal("382.88"))
+        self.assertIn("R$ 179.75", memoria)
+
+
 if __name__ == "__main__":
     unittest.main()
