@@ -27,6 +27,14 @@ CAMPOS_COMPARAVEIS = [
     ("data_admissao",   "Data de Admissao"),
     ("cargo",           "Cargo"),
     ("setor",           "Setor"),
+    ("departamento",    "Departamento"),
+    ("centro_custo",    "Centro de Custo"),
+    ("tipo_contrato",   "Tipo de Contrato"),
+    ("jornada_trabalho", "Jornada de Trabalho"),
+    ("carga_horaria_mensal", "Carga Horária Mensal"),
+    ("pis_pasep",       "PIS/PASEP/NIT"),
+    ("sexo",            "Sexo"),
+    ("estado_civil",    "Estado Civil"),
     ("salario_base",    "Salário-base"),
     ("situacao",        "Situação do Vínculo"),
 ]
@@ -89,9 +97,25 @@ class ColaboradorService:
     # CRUD
     # ──────────────────────────────────────────────────────────
 
+    def gerar_proxima_matricula(self) -> str:
+        """Gera uma matrícula única sequencial no padrão RH-XXXX."""
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT matricula FROM colaboradores;")
+        existentes = {str(r[0]).strip().upper() for r in cursor.fetchall() if r and r[0]}
+        conn.close()
+        seq = 1001 + len(existentes)
+        while f"RH-{seq}" in existentes:
+            seq += 1
+        return f"RH-{seq}"
+
     def cadastrar(self, dados: dict, usuario: str = "Sistema/Administrador") -> dict:
         """Cadastra um novo colaborador com validacao e checagem de duplicidade."""
-        is_valido, erros, sanitizado = validar_formulario_colaborador(dados, is_edicao=False)
+        dados_proc = dict(dados or {})
+        if dados_proc.get("auto_gerar_matricula") and not (dados_proc.get("matricula") or "").strip():
+            dados_proc["matricula"] = self.gerar_proxima_matricula()
+
+        is_valido, erros, sanitizado = validar_formulario_colaborador(dados_proc, is_edicao=False)
         if not is_valido:
             raise ValidacaoException(erros)
 
@@ -110,25 +134,31 @@ class ColaboradorService:
             raise ValidacaoException({"matricula": f"Ja existe um colaborador com a matricula {sanitizado['matricula']}."})
 
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        empresa_id = (dados_proc.get("empresa_id") or "a0000000-0000-0000-0000-000000000001").strip()
 
         sql_pg = """
             INSERT INTO colaboradores (
-                matricula, nome_completo, cpf, rg, data_nascimento,
+                empresa_id, matricula, nome_completo, cpf, rg, data_nascimento,
                 telefone, email, logradouro, numero, bairro, cidade, uf, cep,
-                data_admissao, cargo, setor, salario_base, situacao,
-                criado_em, atualizado_em
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                data_admissao, cargo, setor, departamento, centro_custo,
+                tipo_contrato, jornada_trabalho, carga_horaria_mensal,
+                pis_pasep, sexo, estado_civil,
+                salario_base, situacao, criado_em, atualizado_em
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
         """
         sql_sqlite = """
             INSERT INTO colaboradores (
-                matricula, nome_completo, cpf, rg, data_nascimento,
+                empresa_id, matricula, nome_completo, cpf, rg, data_nascimento,
                 telefone, email, logradouro, numero, bairro, cidade, uf, cep,
-                data_admissao, cargo, setor, salario_base, situacao,
-                criado_em, atualizado_em
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                data_admissao, cargo, setor, departamento, centro_custo,
+                tipo_contrato, jornada_trabalho, carga_horaria_mensal,
+                pis_pasep, sexo, estado_civil,
+                salario_base, situacao, criado_em, atualizado_em
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """
         params = (
+            empresa_id,
             sanitizado["matricula"],
             sanitizado["nome_completo"],
             sanitizado["cpf"],
@@ -145,6 +175,14 @@ class ColaboradorService:
             sanitizado["data_admissao"],
             sanitizado["cargo"],
             sanitizado["setor"],
+            sanitizado.get("departamento", sanitizado["setor"]),
+            sanitizado.get("centro_custo", ""),
+            sanitizado.get("tipo_contrato", "CLT"),
+            sanitizado.get("jornada_trabalho", "44h semanais"),
+            sanitizado.get("carga_horaria_mensal", 220.0),
+            sanitizado.get("pis_pasep", ""),
+            sanitizado.get("sexo", ""),
+            sanitizado.get("estado_civil", ""),
             sanitizado["salario_base"],
             sanitizado.get("situacao", "ativo"),
             agora,
@@ -155,9 +193,15 @@ class ColaboradorService:
 
         for dep in sanitizado.get("dependentes", []):
             cursor.execute(f"""
-                INSERT INTO dependentes (colaborador_id, nome, cpf, parentesco)
-                VALUES ({P},{P},{P},{P})
-            """, (colaborador_id, dep["nome"], dep.get("cpf", ""), dep["parentesco"]))
+                INSERT INTO dependentes (
+                    colaborador_id, nome, cpf, parentesco,
+                    data_nascimento, eh_dependente_irrf, eh_elegivel_salario_familia
+                ) VALUES ({P},{P},{P},{P},{P},{P},{P})
+            """, (
+                colaborador_id, dep["nome"], dep.get("cpf", ""), dep["parentesco"],
+                dep.get("data_nascimento", ""), int(dep.get("eh_dependente_irrf", 1)),
+                int(dep.get("eh_elegivel_salario_familia", 0))
+            ))
 
         cursor.execute(f"""
             INSERT INTO historico_alteracoes (
@@ -174,6 +218,94 @@ class ColaboradorService:
         conn.commit()
         conn.close()
         return self.obter_por_id(colaborador_id)
+
+    def adicionar_documento(
+        self,
+        colaborador_id: int,
+        tipo_documento: str,
+        nome_arquivo: str,
+        conteudo_base64: str = "",
+        mime_type: str = "application/octet-stream",
+        tamanho_bytes: int = 0,
+        observacao: str = "",
+        usuario: str = "Sistema/Administrador",
+    ) -> dict:
+        """Anexa um documento cadastral ao colaborador com trilha de auditoria."""
+        colab = self.obter_por_id(colaborador_id)
+        if not (tipo_documento or "").strip() or not (nome_arquivo or "").strip():
+            raise ValidacaoException({"documento": "Tipo de documento e nome do arquivo são obrigatórios."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        empresa_id = colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+
+        sql_pg = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """
+        sql_sqlite = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+        """
+        doc_id = self._insert_id(cursor, conn, sql_pg, sql_sqlite, (
+            colaborador_id, empresa_id, tipo_documento.strip(), nome_arquivo.strip(),
+            (mime_type or "application/octet-stream").strip(), int(tamanho_bytes or 0),
+            conteudo_base64 or "", (observacao or "").strip(), usuario, agora
+        ))
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Anexado", None, f"{tipo_documento.strip()}: {nome_arquivo.strip()}", usuario))
+
+        conn.commit()
+        cursor.execute(f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE id = {P}", (doc_id,))
+        doc = self._fetchone(cursor)
+        conn.close()
+        return doc
+
+    def listar_documentos(self, colaborador_id: int) -> list:
+        """Lista os documentos anexados do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE colaborador_id = {P} ORDER BY id DESC",
+            (colaborador_id,)
+        )
+        docs = self._fetchall(cursor)
+        conn.close()
+        return docs
+
+    def remover_documento(self, colaborador_id: int, doc_id: int, usuario: str = "Sistema/Administrador") -> bool:
+        """Remove um documento anexado do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT nome_arquivo FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise RecursoNaoEncontradoException("Documento não encontrado para este colaborador.")
+        nome_arq = row[0]
+        cursor.execute(f"DELETE FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Removido", nome_arq, None, usuario))
+        conn.commit()
+        conn.close()
+        return True
 
     def listar(
         self,
@@ -206,7 +338,7 @@ class ColaboradorService:
             sql += f" AND (c.empresa_id = {P} OR c.empresa_id IS NULL)"
             params.append(empresa_id.strip())
 
-        if situacao and situacao.lower() in ("ativo", "inativo"):
+        if situacao and situacao.lower() in ("ativo", "inativo", "afastado", "ferias", "desligado"):
             sql += f" AND c.situacao = {P}"
             params.append(situacao.lower())
 
@@ -309,10 +441,24 @@ class ColaboradorService:
             raise RecursoNaoEncontradoException(f"Colaborador com ID {colaborador_id} nao encontrado ou acesso nao autorizado.")
 
         cursor.execute(
-            f"SELECT id, nome, cpf, parentesco FROM dependentes WHERE colaborador_id = {P}",
+            f"""SELECT id, nome, cpf, parentesco,
+                       COALESCE(data_nascimento, '') AS data_nascimento,
+                       COALESCE(eh_dependente_irrf, 1) AS eh_dependente_irrf,
+                       COALESCE(eh_elegivel_salario_familia, 0) AS eh_elegivel_salario_familia
+                FROM dependentes WHERE colaborador_id = {P}""",
             (colaborador_id,)
         )
         colab["dependentes"] = self._fetchall(cursor)
+
+        try:
+            cursor.execute(
+                f"""SELECT id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em
+                    FROM colaborador_documentos WHERE colaborador_id = {P} ORDER BY id DESC""",
+                (colaborador_id,)
+            )
+            colab["documentos"] = self._fetchall(cursor)
+        except Exception:
+            colab["documentos"] = []
 
         cursor.execute(f"""
             SELECT id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
@@ -396,7 +542,10 @@ class ColaboradorService:
                 data_nascimento={P}, telefone={P}, email={P},
                 logradouro={P}, numero={P}, bairro={P}, cidade={P},
                 uf={P}, cep={P}, data_admissao={P}, cargo={P},
-                setor={P}, salario_base={P}, situacao={P}, atualizado_em={P}
+                setor={P}, departamento={P}, centro_custo={P},
+                tipo_contrato={P}, jornada_trabalho={P}, carga_horaria_mensal={P},
+                pis_pasep={P}, sexo={P}, estado_civil={P},
+                salario_base={P}, situacao={P}, atualizado_em={P}
             WHERE id={P}
         """, (
             sanitizado["matricula"], sanitizado["nome_completo"],
@@ -407,6 +556,14 @@ class ColaboradorService:
             sanitizado.get("cidade", ""), sanitizado.get("uf", ""),
             sanitizado.get("cep", ""), sanitizado["data_admissao"],
             sanitizado["cargo"], sanitizado["setor"],
+            sanitizado.get("departamento", sanitizado["setor"]),
+            sanitizado.get("centro_custo", ""),
+            sanitizado.get("tipo_contrato", "CLT"),
+            sanitizado.get("jornada_trabalho", "44h semanais"),
+            sanitizado.get("carga_horaria_mensal", 220.0),
+            sanitizado.get("pis_pasep", ""),
+            sanitizado.get("sexo", ""),
+            sanitizado.get("estado_civil", ""),
             sanitizado["salario_base"], sanitizado.get("situacao", atual["situacao"]),
             agora, colaborador_id,
         ))
@@ -417,9 +574,15 @@ class ColaboradorService:
         cursor.execute(f"DELETE FROM dependentes WHERE colaborador_id = {P}", (colaborador_id,))
         for dep in deps_novos:
             cursor.execute(f"""
-                INSERT INTO dependentes (colaborador_id, nome, cpf, parentesco)
-                VALUES ({P},{P},{P},{P})
-            """, (colaborador_id, dep["nome"], dep.get("cpf", ""), dep["parentesco"]))
+                INSERT INTO dependentes (
+                    colaborador_id, nome, cpf, parentesco,
+                    data_nascimento, eh_dependente_irrf, eh_elegivel_salario_familia
+                ) VALUES ({P},{P},{P},{P},{P},{P},{P})
+            """, (
+                colaborador_id, dep["nome"], dep.get("cpf", ""), dep["parentesco"],
+                dep.get("data_nascimento", ""), int(dep.get("eh_dependente_irrf", 1)),
+                int(dep.get("eh_elegivel_salario_familia", 0))
+            ))
 
         if (len(deps_antigos) != len(deps_novos) or
                 json.dumps(deps_antigos, sort_keys=True) != json.dumps(deps_novos, sort_keys=True)):
@@ -440,6 +603,94 @@ class ColaboradorService:
         conn.commit()
         conn.close()
         return self.obter_por_id(colaborador_id)
+
+    def adicionar_documento(
+        self,
+        colaborador_id: int,
+        tipo_documento: str,
+        nome_arquivo: str,
+        conteudo_base64: str = "",
+        mime_type: str = "application/octet-stream",
+        tamanho_bytes: int = 0,
+        observacao: str = "",
+        usuario: str = "Sistema/Administrador",
+    ) -> dict:
+        """Anexa um documento cadastral ao colaborador com trilha de auditoria."""
+        colab = self.obter_por_id(colaborador_id)
+        if not (tipo_documento or "").strip() or not (nome_arquivo or "").strip():
+            raise ValidacaoException({"documento": "Tipo de documento e nome do arquivo são obrigatórios."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        empresa_id = colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+
+        sql_pg = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """
+        sql_sqlite = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+        """
+        doc_id = self._insert_id(cursor, conn, sql_pg, sql_sqlite, (
+            colaborador_id, empresa_id, tipo_documento.strip(), nome_arquivo.strip(),
+            (mime_type or "application/octet-stream").strip(), int(tamanho_bytes or 0),
+            conteudo_base64 or "", (observacao or "").strip(), usuario, agora
+        ))
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Anexado", None, f"{tipo_documento.strip()}: {nome_arquivo.strip()}", usuario))
+
+        conn.commit()
+        cursor.execute(f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE id = {P}", (doc_id,))
+        doc = self._fetchone(cursor)
+        conn.close()
+        return doc
+
+    def listar_documentos(self, colaborador_id: int) -> list:
+        """Lista os documentos anexados do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE colaborador_id = {P} ORDER BY id DESC",
+            (colaborador_id,)
+        )
+        docs = self._fetchall(cursor)
+        conn.close()
+        return docs
+
+    def remover_documento(self, colaborador_id: int, doc_id: int, usuario: str = "Sistema/Administrador") -> bool:
+        """Remove um documento anexado do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT nome_arquivo FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise RecursoNaoEncontradoException("Documento não encontrado para este colaborador.")
+        nome_arq = row[0]
+        cursor.execute(f"DELETE FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Removido", nome_arq, None, usuario))
+        conn.commit()
+        conn.close()
+        return True
 
     def inativar(self, colaborador_id: int, motivo: str = None, usuario: str = "Sistema/Administrador") -> dict:
         """Inativacao logica sem excluir historico ou dados."""
@@ -468,6 +719,94 @@ class ColaboradorService:
         conn.close()
         return self.obter_por_id(colaborador_id)
 
+    def adicionar_documento(
+        self,
+        colaborador_id: int,
+        tipo_documento: str,
+        nome_arquivo: str,
+        conteudo_base64: str = "",
+        mime_type: str = "application/octet-stream",
+        tamanho_bytes: int = 0,
+        observacao: str = "",
+        usuario: str = "Sistema/Administrador",
+    ) -> dict:
+        """Anexa um documento cadastral ao colaborador com trilha de auditoria."""
+        colab = self.obter_por_id(colaborador_id)
+        if not (tipo_documento or "").strip() or not (nome_arquivo or "").strip():
+            raise ValidacaoException({"documento": "Tipo de documento e nome do arquivo são obrigatórios."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        empresa_id = colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+
+        sql_pg = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """
+        sql_sqlite = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+        """
+        doc_id = self._insert_id(cursor, conn, sql_pg, sql_sqlite, (
+            colaborador_id, empresa_id, tipo_documento.strip(), nome_arquivo.strip(),
+            (mime_type or "application/octet-stream").strip(), int(tamanho_bytes or 0),
+            conteudo_base64 or "", (observacao or "").strip(), usuario, agora
+        ))
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Anexado", None, f"{tipo_documento.strip()}: {nome_arquivo.strip()}", usuario))
+
+        conn.commit()
+        cursor.execute(f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE id = {P}", (doc_id,))
+        doc = self._fetchone(cursor)
+        conn.close()
+        return doc
+
+    def listar_documentos(self, colaborador_id: int) -> list:
+        """Lista os documentos anexados do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE colaborador_id = {P} ORDER BY id DESC",
+            (colaborador_id,)
+        )
+        docs = self._fetchall(cursor)
+        conn.close()
+        return docs
+
+    def remover_documento(self, colaborador_id: int, doc_id: int, usuario: str = "Sistema/Administrador") -> bool:
+        """Remove um documento anexado do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT nome_arquivo FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise RecursoNaoEncontradoException("Documento não encontrado para este colaborador.")
+        nome_arq = row[0]
+        cursor.execute(f"DELETE FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Removido", nome_arq, None, usuario))
+        conn.commit()
+        conn.close()
+        return True
+
     def reativar(self, colaborador_id: int, usuario: str = "Sistema/Administrador") -> dict:
         """Reativacao logica com auditoria."""
         atual = self.obter_por_id(colaborador_id)
@@ -493,3 +832,91 @@ class ColaboradorService:
         conn.commit()
         conn.close()
         return self.obter_por_id(colaborador_id)
+
+    def adicionar_documento(
+        self,
+        colaborador_id: int,
+        tipo_documento: str,
+        nome_arquivo: str,
+        conteudo_base64: str = "",
+        mime_type: str = "application/octet-stream",
+        tamanho_bytes: int = 0,
+        observacao: str = "",
+        usuario: str = "Sistema/Administrador",
+    ) -> dict:
+        """Anexa um documento cadastral ao colaborador com trilha de auditoria."""
+        colab = self.obter_por_id(colaborador_id)
+        if not (tipo_documento or "").strip() or not (nome_arquivo or "").strip():
+            raise ValidacaoException({"documento": "Tipo de documento e nome do arquivo são obrigatórios."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        empresa_id = colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+
+        sql_pg = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """
+        sql_sqlite = """
+            INSERT INTO colaborador_documentos (
+                colaborador_id, empresa_id, tipo_documento, nome_arquivo,
+                mime_type, tamanho_bytes, conteudo_base64, observacao, enviado_por, criado_em
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+        """
+        doc_id = self._insert_id(cursor, conn, sql_pg, sql_sqlite, (
+            colaborador_id, empresa_id, tipo_documento.strip(), nome_arquivo.strip(),
+            (mime_type or "application/octet-stream").strip(), int(tamanho_bytes or 0),
+            conteudo_base64 or "", (observacao or "").strip(), usuario, agora
+        ))
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Anexado", None, f"{tipo_documento.strip()}: {nome_arquivo.strip()}", usuario))
+
+        conn.commit()
+        cursor.execute(f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE id = {P}", (doc_id,))
+        doc = self._fetchone(cursor)
+        conn.close()
+        return doc
+
+    def listar_documentos(self, colaborador_id: int) -> list:
+        """Lista os documentos anexados do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, colaborador_id, tipo_documento, nome_arquivo, mime_type, tamanho_bytes, observacao, enviado_por, criado_em FROM colaborador_documentos WHERE colaborador_id = {P} ORDER BY id DESC",
+            (colaborador_id,)
+        )
+        docs = self._fetchall(cursor)
+        conn.close()
+        return docs
+
+    def remover_documento(self, colaborador_id: int, doc_id: int, usuario: str = "Sistema/Administrador") -> bool:
+        """Remove um documento anexado do colaborador."""
+        self.obter_por_id(colaborador_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT nome_arquivo FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise RecursoNaoEncontradoException("Documento não encontrado para este colaborador.")
+        nome_arq = row[0]
+        cursor.execute(f"DELETE FROM colaborador_documentos WHERE id = {P} AND colaborador_id = {P}", (doc_id, colaborador_id))
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(f"""
+            INSERT INTO historico_alteracoes (
+                colaborador_id, data_hora, campo_alterado, valor_anterior, valor_novo, usuario_responsavel
+            ) VALUES ({P},{P},{P},{P},{P},{P})
+        """, (colaborador_id, agora, "Documento Removido", nome_arq, None, usuario))
+        conn.commit()
+        conn.close()
+        return True

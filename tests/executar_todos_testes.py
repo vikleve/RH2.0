@@ -28,6 +28,7 @@ from tests.test_motor_unificado_e_empresarial import TestMotorUnificadoEEmpresar
 from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhista
 from tests.test_rbac_enterprise import TestRBACEnterprise
 from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
+from tests.test_folha_enterprise_completa import TestFolhaEnterpriseCompleta
 
 
 def executar():
@@ -68,6 +69,9 @@ def executar():
 
     # 6. Testes de API In-Memory da Folha (Endpoints REST protegidos)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaApi))
+
+    # 7. Testes Enterprise Completos (Rubricas, Lote, Tipos de Folha, Documentos, Relatórios)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFolhaEnterpriseCompleta))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"

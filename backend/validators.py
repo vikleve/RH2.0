@@ -27,6 +27,32 @@ PARENTESCOS_VALIDOS = [
     "Outro"
 ]
 
+SITUACOES_COLABORADOR_VALIDAS = ("ativo", "inativo", "afastado", "ferias", "desligado")
+
+def normalizar_pis(pis: str) -> str:
+    """Remove caracteres não numéricos do PIS/PASEP/NIT."""
+    if not pis:
+        return ""
+    return re.sub(r"\D", "", str(pis))
+
+def validar_pis_pasep(pis: str) -> bool:
+    """Valida dígito verificador do PIS/PASEP/NIT (11 dígitos)."""
+    numeros = normalizar_pis(pis)
+    if len(numeros) != 11 or numeros == numeros[0] * 11:
+        return False
+    pesos = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    soma = sum(int(numeros[i]) * pesos[i] for i in range(10))
+    resto = soma % 11
+    dv = 0 if (11 - resto) in (10, 11) else (11 - resto)
+    return dv == int(numeros[10])
+
+def formatar_pis_pasep(pis: str) -> str:
+    """Formata PIS/PASEP/NIT no padrão 000.00000.00-0."""
+    n = normalizar_pis(pis)
+    if len(n) == 11:
+        return f"{n[0:3]}.{n[3:8]}.{n[8:10]}-{n[10]}"
+    return pis
+
 def normalizar_cpf(cpf: str) -> str:
     """Remove caracteres não numéricos do CPF."""
     if not cpf:
@@ -189,8 +215,11 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
     erros = {}
     sanitizado = {}
 
-    # 1. Campos obrigatórios
+    # 1. Campos obrigatórios (se auto_gerar_matricula=True, matricula será gerada pelo serviço)
+    auto_mat = bool(dados.get("auto_gerar_matricula"))
     for campo, rotulo in CAMPOS_OBRIGATORIOS:
+        if campo == "matricula" and auto_mat:
+            continue
         val = dados.get(campo)
         if val is None or str(val).strip() == "":
             erros[campo] = f"O campo {rotulo} é obrigatório."
@@ -213,9 +242,22 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
         else:
             sanitizado["cpf"] = formatar_cpf(cpf_norm)
 
-    # 4. RG (Opcional, mas sanitizado se fornecido)
+    # 4. RG, PIS/PASEP/NIT, Sexo, Estado Civil (Opcionais, sanitizados se fornecidos)
     rg = (dados.get("rg") or "").strip()
     sanitizado["rg"] = rg
+
+    pis_raw = (dados.get("pis_pasep") or "").strip()
+    if pis_raw:
+        pis_norm = normalizar_pis(pis_raw)
+        if len(pis_norm) != 11 or not validar_pis_pasep(pis_norm):
+            erros["pis_pasep"] = "PIS/PASEP/NIT inválido. Informe 11 dígitos válidos."
+        else:
+            sanitizado["pis_pasep"] = formatar_pis_pasep(pis_norm)
+    else:
+        sanitizado["pis_pasep"] = ""
+
+    sanitizado["sexo"] = (dados.get("sexo") or "").strip()
+    sanitizado["estado_civil"] = (dados.get("estado_civil") or "").strip()
 
     # 5. Data de Nascimento
     dt_nasc = dados.get("data_nascimento")
@@ -264,7 +306,7 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
             dt_adm_obj = converter_para_data(dt_adm)
             sanitizado["data_admissao"] = dt_adm_obj.strftime("%Y-%m-%d")
 
-    # 11. Cargo e Setor
+    # 11. Cargo, Setor e Dados Contratuais Complementares
     cargo = (dados.get("cargo") or "").strip()
     if cargo:
         sanitizado["cargo"] = cargo
@@ -272,6 +314,20 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
     setor = (dados.get("setor") or "").strip()
     if setor:
         sanitizado["setor"] = setor
+
+    sanitizado["departamento"] = (dados.get("departamento") or setor or "").strip()
+    sanitizado["centro_custo"] = (dados.get("centro_custo") or "").strip()
+    sanitizado["tipo_contrato"] = (dados.get("tipo_contrato") or "CLT").strip()
+    sanitizado["jornada_trabalho"] = (dados.get("jornada_trabalho") or "44h semanais").strip()
+    ch_raw = dados.get("carga_horaria_mensal", 220.0)
+    try:
+        ch_val = float(ch_raw) if ch_raw not in (None, "") else 220.0
+        if ch_val <= 0 or ch_val > 360:
+            erros["carga_horaria_mensal"] = "Carga horária mensal deve estar entre 1 e 360 horas."
+        else:
+            sanitizado["carga_horaria_mensal"] = round(ch_val, 2)
+    except (ValueError, TypeError):
+        erros["carga_horaria_mensal"] = "Carga horária mensal inválida."
 
     # 12. Salário-base
     salario = dados.get("salario_base")
@@ -284,7 +340,7 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
 
     # 13. Situação do vínculo
     situacao = str(dados.get("situacao") or "ativo").strip().lower()
-    if situacao not in ["ativo", "inativo"]:
+    if situacao not in SITUACOES_COLABORADOR_VALIDAS:
         situacao = "ativo"
     sanitizado["situacao"] = situacao
 
@@ -299,10 +355,22 @@ def validar_formulario_colaborador(dados: dict, is_edicao: bool = False) -> tupl
                 erros_deps.extend([f"Dependente {i+1}: {e}" for e in errs])
             else:
                 cpf_dep_limpo = normalizar_cpf(dep.get("cpf", ""))
+                dt_nasc_dep = ""
+                if dep.get("data_nascimento"):
+                    dt_obj = converter_para_data(dep.get("data_nascimento"))
+                    if dt_obj:
+                        dt_nasc_dep = dt_obj.strftime("%Y-%m-%d")
+                    else:
+                        erros_deps.append(f"Dependente {i+1}: Data de nascimento inválida.")
+                eh_irrf = 1 if dep.get("eh_dependente_irrf", 1) in (1, True, "1", "true", "True") else 0
+                eh_sf = 1 if dep.get("eh_elegivel_salario_familia", 0) in (1, True, "1", "true", "True") else 0
                 dependentes_sanitizados.append({
                     "nome": dep.get("nome", "").strip(),
                     "cpf": formatar_cpf(cpf_dep_limpo) if cpf_dep_limpo else "",
-                    "parentesco": dep.get("parentesco", "").strip()
+                    "parentesco": dep.get("parentesco", "").strip(),
+                    "data_nascimento": dt_nasc_dep,
+                    "eh_dependente_irrf": eh_irrf,
+                    "eh_elegivel_salario_familia": eh_sf,
                 })
         if erros_deps:
             erros["dependentes"] = erros_deps

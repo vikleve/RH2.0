@@ -199,9 +199,17 @@ _DDL_COLABORADORES_PG = """
         data_admissao    TEXT NOT NULL,
         cargo            TEXT NOT NULL,
         setor            TEXT NOT NULL,
+        departamento     TEXT,
+        centro_custo     TEXT,
+        tipo_contrato    TEXT DEFAULT 'CLT',
+        jornada_trabalho TEXT DEFAULT '44h semanais',
+        carga_horaria_mensal NUMERIC(6,2) DEFAULT 220.00,
+        pis_pasep        TEXT,
+        sexo             TEXT,
+        estado_civil     TEXT,
         salario_base     NUMERIC(15,2) NOT NULL,
         situacao         TEXT NOT NULL DEFAULT 'ativo'
-                         CHECK (situacao IN ('ativo', 'inativo')),
+                         CHECK (situacao IN ('ativo', 'inativo', 'afastado', 'ferias', 'desligado')),
         criado_em        TEXT NOT NULL,
         atualizado_em    TEXT NOT NULL
     );
@@ -227,9 +235,17 @@ _DDL_COLABORADORES_SQLITE = """
         data_admissao    TEXT NOT NULL,
         cargo            TEXT NOT NULL,
         setor            TEXT NOT NULL,
+        departamento     TEXT,
+        centro_custo     TEXT,
+        tipo_contrato    TEXT DEFAULT 'CLT',
+        jornada_trabalho TEXT DEFAULT '44h semanais',
+        carga_horaria_mensal REAL DEFAULT 220.0,
+        pis_pasep        TEXT,
+        sexo             TEXT,
+        estado_civil     TEXT,
         salario_base     REAL NOT NULL,
         situacao         TEXT NOT NULL DEFAULT 'ativo'
-                         CHECK (situacao IN ('ativo', 'inativo')),
+                         CHECK (situacao IN ('ativo', 'inativo', 'afastado', 'ferias', 'desligado')),
         criado_em        TEXT NOT NULL,
         atualizado_em    TEXT NOT NULL
     );
@@ -237,12 +253,15 @@ _DDL_COLABORADORES_SQLITE = """
 
 _DDL_DEPENDENTES = """
     CREATE TABLE IF NOT EXISTS dependentes (
-        id               {serial} PRIMARY KEY,
-        colaborador_id   INTEGER NOT NULL
-                         REFERENCES colaboradores(id) ON DELETE CASCADE,
-        nome             TEXT NOT NULL,
-        cpf              TEXT,
-        parentesco       TEXT NOT NULL
+        id                          {serial} PRIMARY KEY,
+        colaborador_id              INTEGER NOT NULL
+                                    REFERENCES colaboradores(id) ON DELETE CASCADE,
+        nome                        TEXT NOT NULL,
+        cpf                         TEXT,
+        parentesco                  TEXT NOT NULL,
+        data_nascimento             TEXT,
+        eh_dependente_irrf          INTEGER NOT NULL DEFAULT 1,
+        eh_elegivel_salario_familia INTEGER NOT NULL DEFAULT 0
     );
 """
 
@@ -365,9 +384,13 @@ _DDL_FOLHA_PARAMETROS_SQLITE = """
 _DDL_FOLHAS_PAGAMENTO_PG = """
     CREATE TABLE IF NOT EXISTS folhas_pagamento (
         id                          SERIAL PRIMARY KEY,
+        empresa_id                  TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        filial_id                   TEXT,
         colaborador_id              INTEGER NOT NULL
                                     REFERENCES colaboradores(id) ON DELETE RESTRICT,
         competencia                 TEXT NOT NULL,
+        tipo_folha                  TEXT NOT NULL DEFAULT 'mensal',
+        versao                      INTEGER NOT NULL DEFAULT 1,
         periodo_inicio              TEXT NOT NULL,
         periodo_fim                 TEXT NOT NULL,
         data_pagamento              TEXT,
@@ -383,26 +406,34 @@ _DDL_FOLHAS_PAGAMENTO_PG = """
         base_fgts                   NUMERIC(15,2) NOT NULL DEFAULT 0.00,
         valor_fgts_informativo      NUMERIC(15,2) NOT NULL DEFAULT 0.00,
         base_irrf                   NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        inss_descontado             NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        irrf_descontado             NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        encargos_patronais          NUMERIC(15,2) NOT NULL DEFAULT 0.00,
         situacao                    TEXT NOT NULL DEFAULT 'rascunho'
-                                    CHECK (situacao IN ('rascunho', 'calculada', 'fechada', 'cancelada')),
+                                    CHECK (situacao IN ('rascunho', 'calculada', 'aprovada', 'fechada', 'cancelada')),
         observacoes                 TEXT,
         parametro_id                INTEGER REFERENCES folha_parametros(id),
         criado_por                  TEXT NOT NULL,
         criado_em                   TEXT NOT NULL,
         atualizado_por              TEXT,
         atualizado_em               TEXT,
+        aprovado_por                TEXT,
+        aprovado_em                 TEXT,
         fechado_por                 TEXT,
-        fechado_em                  TEXT,
-        CONSTRAINT unq_colab_competencia UNIQUE (colaborador_id, competencia)
+        fechado_em                  TEXT
     );
 """
 
 _DDL_FOLHAS_PAGAMENTO_SQLITE = """
     CREATE TABLE IF NOT EXISTS folhas_pagamento (
         id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        empresa_id                  TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        filial_id                   TEXT,
         colaborador_id              INTEGER NOT NULL
                                     REFERENCES colaboradores(id) ON DELETE RESTRICT,
         competencia                 TEXT NOT NULL,
+        tipo_folha                  TEXT NOT NULL DEFAULT 'mensal',
+        versao                      INTEGER NOT NULL DEFAULT 1,
         periodo_inicio              TEXT NOT NULL,
         periodo_fim                 TEXT NOT NULL,
         data_pagamento              TEXT,
@@ -418,17 +449,21 @@ _DDL_FOLHAS_PAGAMENTO_SQLITE = """
         base_fgts                   REAL NOT NULL DEFAULT 0.00,
         valor_fgts_informativo      REAL NOT NULL DEFAULT 0.00,
         base_irrf                   REAL NOT NULL DEFAULT 0.00,
+        inss_descontado             REAL NOT NULL DEFAULT 0.00,
+        irrf_descontado             REAL NOT NULL DEFAULT 0.00,
+        encargos_patronais          REAL NOT NULL DEFAULT 0.00,
         situacao                    TEXT NOT NULL DEFAULT 'rascunho'
-                                    CHECK (situacao IN ('rascunho', 'calculada', 'fechada', 'cancelada')),
+                                    CHECK (situacao IN ('rascunho', 'calculada', 'aprovada', 'fechada', 'cancelada')),
         observacoes                 TEXT,
         parametro_id                INTEGER REFERENCES folha_parametros(id),
         criado_por                  TEXT NOT NULL,
         criado_em                   TEXT NOT NULL,
         atualizado_por              TEXT,
         atualizado_em               TEXT,
+        aprovado_por                TEXT,
+        aprovado_em                 TEXT,
         fechado_por                 TEXT,
-        fechado_em                  TEXT,
-        CONSTRAINT unq_colab_competencia UNIQUE (colaborador_id, competencia)
+        fechado_em                  TEXT
     );
 """
 
@@ -446,8 +481,56 @@ _DDL_FOLHA_ITENS = """
         valor_total         REAL NOT NULL DEFAULT 0.0,
         origem              TEXT NOT NULL DEFAULT 'calculado'
                             CHECK (origem IN ('sistema', 'calculado', 'manual', 'importado')),
+        incide_inss         INTEGER NOT NULL DEFAULT 0,
+        incide_irrf         INTEGER NOT NULL DEFAULT 0,
+        incide_fgts         INTEGER NOT NULL DEFAULT 0,
         memoria_calculo     TEXT,
         criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHA_RUBRICAS = """
+    CREATE TABLE IF NOT EXISTS folha_rubricas (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        codigo              TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        tipo                TEXT NOT NULL CHECK (tipo IN ('provento', 'desconto', 'informativo')),
+        categoria           TEXT DEFAULT 'Proventos',
+        natureza            TEXT DEFAULT 'salarial',
+        forma_calculo       TEXT DEFAULT 'valor_fixo',
+        valor_padrao        REAL DEFAULT 0.0,
+        referencia_padrao   REAL DEFAULT 0.0,
+        incide_inss         INTEGER NOT NULL DEFAULT 0,
+        incide_irrf         INTEGER NOT NULL DEFAULT 0,
+        incide_fgts         INTEGER NOT NULL DEFAULT 0,
+        incide_outras_bases INTEGER NOT NULL DEFAULT 0,
+        reflexo_ferias      INTEGER NOT NULL DEFAULT 0,
+        reflexo_13          INTEGER NOT NULL DEFAULT 0,
+        vigencia_inicio     TEXT NOT NULL DEFAULT '2026-01-01',
+        vigencia_fim        TEXT,
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        sistema_legal       INTEGER NOT NULL DEFAULT 0,
+        observacao          TEXT,
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL,
+        UNIQUE (empresa_id, codigo)
+    );
+"""
+
+_DDL_COLABORADOR_DOCUMENTOS = """
+    CREATE TABLE IF NOT EXISTS colaborador_documentos (
+        id              {pk},
+        colaborador_id  INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE CASCADE,
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        tipo_documento  TEXT NOT NULL,
+        nome_arquivo    TEXT NOT NULL,
+        mime_type       TEXT,
+        tamanho_bytes   INTEGER DEFAULT 0,
+        conteudo_base64 TEXT,
+        observacao      TEXT,
+        enviado_por     TEXT NOT NULL,
+        criado_em       TEXT NOT NULL
     );
 """
 
@@ -1083,6 +1166,8 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_APROVACOES_WORKFLOW.format(pk=pk),
         _DDL_AUDITORIA_OPERACOES.format(pk=pk),
         _DDL_ARQUIVOS_BANCARIOS_CNAB.format(pk=pk),
+        _DDL_FOLHA_RUBRICAS.format(pk=pk),
+        _DDL_COLABORADOR_DOCUMENTOS.format(pk=pk),
     ]
     for ddl_sql in tabelas_plataforma:
         try:
@@ -1143,6 +1228,27 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS filial_id TEXT;",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresas_autorizadas TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS pis_pasep TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS departamento TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS centro_custo TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS tipo_contrato TEXT DEFAULT 'CLT';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS jornada_trabalho TEXT DEFAULT '44h semanais';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS carga_horaria_mensal NUMERIC(6,2) DEFAULT 220.00;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS data_nascimento TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS eh_dependente_irrf INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS eh_elegivel_salario_familia INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS filial_id TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS tipo_folha TEXT NOT NULL DEFAULT 'mensal';",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS aprovado_por TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS aprovado_em TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS inss_descontado NUMERIC(15,2) NOT NULL DEFAULT 0.00;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS irrf_descontado NUMERIC(15,2) NOT NULL DEFAULT 0.00;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN IF NOT EXISTS encargos_patronais NUMERIC(15,2) NOT NULL DEFAULT 0.00;",
+            "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_inss INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_irrf INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_fgts INTEGER NOT NULL DEFAULT 0;",
         ]
         for col_sql in colunas_extras:
             try:
@@ -1165,12 +1271,80 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE usuarios ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
             "ALTER TABLE usuarios ADD COLUMN filial_id TEXT;",
             "ALTER TABLE usuarios ADD COLUMN empresas_autorizadas TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN pis_pasep TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN departamento TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN centro_custo TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN tipo_contrato TEXT DEFAULT 'CLT';",
+            "ALTER TABLE colaboradores ADD COLUMN jornada_trabalho TEXT DEFAULT '44h semanais';",
+            "ALTER TABLE colaboradores ADD COLUMN carga_horaria_mensal REAL DEFAULT 220.0;",
+            "ALTER TABLE dependentes ADD COLUMN data_nascimento TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN eh_dependente_irrf INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE dependentes ADD COLUMN eh_elegivel_salario_familia INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE folhas_pagamento ADD COLUMN filial_id TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN tipo_folha TEXT NOT NULL DEFAULT 'mensal';",
+            "ALTER TABLE folhas_pagamento ADD COLUMN versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN aprovado_por TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN aprovado_em TEXT;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN inss_descontado REAL NOT NULL DEFAULT 0.0;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN irrf_descontado REAL NOT NULL DEFAULT 0.0;",
+            "ALTER TABLE folhas_pagamento ADD COLUMN encargos_patronais REAL NOT NULL DEFAULT 0.0;",
+            "ALTER TABLE folha_itens ADD COLUMN incide_inss INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folha_itens ADD COLUMN incide_irrf INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE folha_itens ADD COLUMN incide_fgts INTEGER NOT NULL DEFAULT 0;",
         ]
         for col_sql in colunas_extras_sqlite:
             try:
                 cursor.execute(col_sql)
             except Exception:
                 pass
+
+    # Provisiona catálogo inicial de rubricas caso esteja vazio
+    try:
+        p_mark = "%s" if pg else "?"
+        cursor.execute("SELECT COUNT(*) FROM folha_rubricas;")
+        if cursor.fetchone()[0] == 0:
+            try:
+                from .catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+            except ImportError:
+                from backend.catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            codigos_legais = {
+                "0001", "0002", "0003", "0100", "0101", "0102", "0103", "0104", "0105",
+                "0110", "0111", "0112", "0200", "0201", "0202", "0300", "0301", "0302",
+                "0501", "0502", "0505", "0506", "0507", "0510",
+                "0901", "0902", "0903", "0904", "0905", "0906", "0907", "0908", "0909",
+            }
+            for ev in CATALOGO_EVENTOS_FOLHA:
+                cod = str(ev["codigo"]).strip()
+                tipo = ev.get("tipo", "provento")
+                natureza = "informativa" if tipo == "informativo" else ("indenizatoria" if ev.get("inss", 0) == 0 and tipo == "provento" and cod not in ("0110", "0300") else "salarial")
+                forma = "calculado" if cod in ("0001", "0002", "0501", "0502", "0505", "0506", "0507", "0901", "0902", "0903", "0904", "0905", "0906", "0907", "0908", "0909") else "valor_fixo"
+                sistema_legal = 1 if cod in codigos_legais else 0
+                reflexo_ferias = 1 if tipo == "provento" and ev.get("inss", 0) == 1 and cod not in ("0100", "0101", "0111", "0112") else 0
+                reflexo_13 = reflexo_ferias
+                cursor.execute(f"""
+                    INSERT INTO folha_rubricas (
+                        empresa_id, codigo, descricao, tipo, categoria, natureza, forma_calculo,
+                        valor_padrao, referencia_padrao, incide_inss, incide_irrf, incide_fgts,
+                        incide_outras_bases, reflexo_ferias, reflexo_13, vigencia_inicio, vigencia_fim,
+                        ativo, sistema_legal, observacao, criado_em, atualizado_em
+                    ) VALUES (
+                        {p_mark},{p_mark},{p_mark},{p_mark},{p_mark},{p_mark},{p_mark},
+                        0.0,0.0,{p_mark},{p_mark},{p_mark},
+                        {p_mark},{p_mark},{p_mark},'2026-01-01',NULL,
+                        1,{p_mark},{p_mark},{p_mark},{p_mark}
+                    );
+                """, (
+                    "a0000000-0000-0000-0000-000000000001",
+                    cod, ev["evento"], tipo, ev.get("categoria", "Proventos"),
+                    natureza, forma,
+                    int(ev.get("inss", 0)), int(ev.get("irrf", 0)), int(ev.get("fgts", 0)),
+                    int(ev.get("fgts", 0)), reflexo_ferias, reflexo_13,
+                    sistema_legal, ev.get("observacao", ""), agora, agora
+                ))
+    except Exception:
+        pass
 
     # Provisiona parâmetro padrão de cálculo caso não exista
     try:
