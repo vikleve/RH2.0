@@ -133,8 +133,8 @@ class FolhaService:
             int(dados.get("aplicar_inss", 1)),
             int(dados.get("aplicar_irrf", 1)),
             float(dados.get("aliquota_fgts", 8.0)),
-            float(dados.get("teto_inss", 8475.55)),
-            float(dados.get("deducao_dependente_irrf", 189.59)),
+            float(dados.get("teto_inss", padroes_2026["teto_inss"])),
+            float(dados.get("deducao_dependente_irrf", padroes_2026["deducao_dependente_irrf"])),
             int(dados.get("ativo", 1)),
             int(dados.get("validado_por_profissional", 0)),
             agora
