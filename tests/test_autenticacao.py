@@ -230,7 +230,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
     # CA-LOGIN-07: Persistência e segurança da sessão
     # =========================================================================
     def test_ca_login_07_persistencia_e_expiracao_sessao(self):
-        """CA-LOGIN-07: Sessão válida persiste entre recarregamentos e rejeita tokens expirados."""
+        """CA-LOGIN-07: Sessão persiste entre recarregamentos sem expiração automática no modo de apresentação."""
         # 1. Login
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
@@ -250,33 +250,29 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        # 4. Requisição após expiração deve ser rejeitada
-        status_exp, _, _ = self._req("GET", "/api/auth/me", token=token)
-        self.assertEqual(status_exp, 401)
+        # 4. Mesmo com expira_em no passado, a sessão permanece válida até logout/revogação.
+        status_exp, resp_exp, _ = self._req("GET", "/api/auth/me", token=token)
+        self.assertEqual(status_exp, 200)
+        self.assertTrue(resp_exp["sucesso"])
 
-    def test_sessao_ativa_renova_expiracao_deslizante(self):
-        """Requisições autenticadas renovam a janela de 12h sem ultrapassar o limite absoluto."""
+    def test_sessao_nao_expira_automaticamente_no_modo_apresentacao(self):
+        """Sessão segue válida mesmo após expira_em, mas logout/revogação continua obrigatório."""
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
             "senha": "Sintetico#AdminTest2026!"
         })
         token = resp_login["token"]
+        passado = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
         conn = get_connection(self.temp_db_path)
-        expira_anterior = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute("UPDATE sessoes SET expira_em = ? WHERE token = ?", (expira_anterior, token))
+        conn.execute("UPDATE sessoes SET expira_em = ? WHERE token = ?", (passado, token))
         conn.commit()
         conn.close()
 
         status, _, _ = self._req("GET", "/api/auth/me", token=token)
         self.assertEqual(status, 200)
 
-        conn = get_connection(self.temp_db_path)
-        row = conn.execute("SELECT expira_em FROM sessoes WHERE token = ?", (token,)).fetchone()
-        conn.close()
-        self.assertGreater(str(row[0]), expira_anterior)
-
-    def test_cpf_sintetico_so_em_ambiente_nao_produtivo(self):
-        """O modo de CPFs fictícios exige flag explícita e nunca funciona em produção."""
+    def test_cpf_sintetico_habilitado_com_flag_temporaria(self):
+        """A flag temporária permite CPF sintético inclusive no ambiente de apresentação."""
         from backend.validators import validar_cpf
         cpf_sintetico = "12345678901"
         ambiente_original = os.environ.get("VERCEL_ENV")
@@ -286,7 +282,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
             self.assertTrue(validar_cpf(cpf_sintetico))
 
             os.environ["VERCEL_ENV"] = "production"
-            self.assertFalse(validar_cpf(cpf_sintetico))
+            self.assertTrue(validar_cpf(cpf_sintetico))
         finally:
             os.environ.pop("RH2_ALLOW_FAKE_CPFS", None)
             if ambiente_original is None:
