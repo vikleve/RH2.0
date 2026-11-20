@@ -778,51 +778,83 @@ def calcular_irrf_progressivo(
     numero_dependentes: int = 0,
     deducao_por_dependente: Optional[Decimal] = None,
     outras_deducoes: Any = 0,
-    tabela_faixas: Optional[List[Tuple[Decimal, Optional[Decimal], Decimal, Decimal]]] = None
+    tabela_faixas: Optional[List[Tuple[Decimal, Optional[Decimal], Decimal, Decimal]]] = None,
+    desconto_simplificado: Optional[Decimal] = None,
+    rendimento_tributavel: Any = None,
+    aplicar_reducao_lei_15270: bool = True
 ) -> Tuple[Decimal, Decimal, str]:
     """
-    Calcula o IRRF (Imposto de Renda Retido na Fonte) conforme faixas vigentes e dependentes.
-    Fórmula: Base Tributável = Base Bruta - INSS - (Dependentes * Dedução) - Outras Deduções
-             IRRF = (Base Tributável * Alíquota) - Parcela a Deduzir
-    Retorna: (total_irrf, base_tributavel, memoria_calculo)
+    Calcula IRRF mensal comparando deduções legais e desconto simplificado,
+    aplica a tabela progressiva e a redução da Lei 15.270/2025 para 2026.
+    Retorna (IRRF, base escolhida, memória de cálculo).
     """
     bruta = _to_decimal(base_bruta_irrf)
     inss = _to_decimal(desconto_inss)
-    deducao_dep_unit = deducao_por_dependente if deducao_por_dependente is not None else DEDUCAO_DEPENDENTE_IRRF_PADRAO
-    total_deducao_dep = Decimal(str(max(0, numero_dependentes))) * deducao_dep_unit
+    deducao_dep_unit = (
+        _to_decimal(deducao_por_dependente)
+        if deducao_por_dependente is not None
+        else DEDUCAO_DEPENDENTE_IRRF_PADRAO
+    )
+    total_deducao_dep = Decimal(str(max(0, int(numero_dependentes or 0)))) * deducao_dep_unit
     outras = _to_decimal(outras_deducoes)
+    base_legal = max(Decimal("0.00"), bruta - inss - total_deducao_dep - outras)
 
-    base_tributavel = bruta - inss - total_deducao_dep - outras
-    if base_tributavel <= Decimal("0.00"):
-        return Decimal("0.00"), Decimal("0.00"), "Base de IRRF isenta ou zerada após deduções legais"
+    # O simplificado substitui as deduções legais (não deve ser somado ao INSS).
+    simplificado = (
+        _to_decimal(desconto_simplificado)
+        if desconto_simplificado is not None
+        else Decimal("607.20")
+    )
+    base_simplificada = max(Decimal("0.00"), bruta - simplificado)
+    if base_simplificada < base_legal:
+        base_tributavel = base_simplificada
+        metodo = f"Desconto simplificado de R$ {simplificado:.2f}"
+    else:
+        base_tributavel = base_legal
+        metodo = (
+            f"Deduções legais (INSS R$ {inss:.2f}, dependentes R$ "
+            f"{total_deducao_dep:.2f}, outras R$ {outras:.2f})"
+        )
 
     faixas = tabela_faixas if tabela_faixas is not None else TABELA_IRRF_PADRAO_2026
-    aliq_aplicada = Decimal("0.00")
-    parcela_deduzir = Decimal("0.00")
-
+    aliquota = Decimal("0.00")
+    parcela = Decimal("0.00")
     for f_min, f_max, aliq, deduc in faixas:
-        if f_max is None or base_tributavel <= f_max:
-            aliq_aplicada = aliq
-            parcela_deduzir = deduc
+        if base_tributavel >= f_min and (f_max is None or base_tributavel <= f_max):
+            aliquota, parcela = aliq, deduc
             break
 
-    if aliq_aplicada == Decimal("0.00"):
-        memoria = f"Base R$ {base_tributavel:,.2f} na faixa de isenção (0%)".replace(".", ",")
-        return Decimal("0.00"), arredondar_moeda(base_tributavel), memoria
+    imposto_tabela = max(
+        Decimal("0.00"),
+        base_tributavel * aliquota / Decimal("100.00") - parcela
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    imposto_bruto = base_tributavel * (aliq_aplicada / Decimal("100.00"))
-    total_irrf = arredondar_moeda(imposto_bruto - parcela_deduzir)
-    if total_irrf < Decimal("0.00"):
-        total_irrf = Decimal("0.00")
+    # Em 2026 a redução é calculada sobre rendimentos tributáveis mensais,
+    # e limitada ao imposto calculado pela tabela progressiva.
+    rendimento = _to_decimal(rendimento_tributavel) if rendimento_tributavel is not None else bruta
+    reducao = Decimal("0.00")
+    if aplicar_reducao_lei_15270 and imposto_tabela > 0:
+        if rendimento <= Decimal("5000.00"):
+            reducao = min(Decimal("312.89"), imposto_tabela)
+        elif rendimento <= Decimal("7350.00"):
+            reducao_calculada = max(
+                Decimal("0.00"),
+                Decimal("978.62") - Decimal("0.133145") * rendimento
+            )
+            reducao = min(
+                reducao_calculada.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                imposto_tabela
+            )
 
+    total_irrf = max(Decimal("0.00"), imposto_tabela - reducao).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
     memoria = (
-        f"Base IRRF R$ {base_tributavel:,.2f} [Bruto R$ {bruta:,.2f} - INSS R$ {inss:,.2f} "
-        f"- {numero_dependentes} dep. R$ {total_deducao_dep:,.2f}] x {aliq_aplicada}% "
-        f"- Parcela a deduzir R$ {parcela_deduzir:,.2f} = R$ {total_irrf:,.2f}"
-    ).replace(".", ",")
-
+        f"{metodo}; base IRRF R$ {base_tributavel:.2f}; alíquota {aliquota}%; "
+        f"imposto pela tabela R$ {imposto_tabela:.2f}; redução Lei 15.270/2025 "
+        f"R$ {reducao:.2f}; IRRF final R$ {total_irrf:.2f}"
+    )
     return total_irrf, arredondar_moeda(base_tributavel), memoria
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. Grupo F — Eventos Informativos e Encargos Patronais
