@@ -525,5 +525,57 @@ class TestFolhaCalculos(unittest.TestCase):
         self.assertEqual(it_info["tipo"], "informativo")
 
 
+    def test_inss_oficial_2026_faixas_continuas_e_teto(self):
+        """INSS progressivo 2026 não pode criar lacunas de um centavo entre faixas."""
+        inss_3000, _, _, faixas = calcular_inss_progressivo(Decimal("3000.00"))
+        self.assertEqual(inss_3000, Decimal("248.60"))
+        self.assertEqual(len(faixas), 3)
+        self.assertEqual(faixas[1]["base_faixa"], 1379.0)
+
+        inss_teto, _, _, _ = calcular_inss_progressivo(Decimal("9000.00"))
+        self.assertEqual(inss_teto, Decimal("988.09"))
+
+    def test_irrf_2026_aplica_reducao_legal_e_desconto_simplificado(self):
+        """A folha ativa deve usar a regra mensal da Lei 15.270/2025."""
+        inss_5000, _, _, _ = calcular_inss_progressivo(Decimal("5000.00"))
+        irrf_5000, base_5000, memoria_5000 = calcular_irrf_progressivo(
+            base_bruta_irrf=Decimal("5000.00"),
+            desconto_inss=inss_5000,
+            desconto_simplificado=Decimal("607.20"),
+            rendimento_tributavel=Decimal("5000.00"),
+        )
+        self.assertEqual(base_5000, Decimal("4392.80"))
+        self.assertEqual(irrf_5000, Decimal("0.00"))
+        self.assertIn("Lei 15.270/2025", memoria_5000)
+
+        inss_6000, _, _, _ = calcular_inss_progressivo(Decimal("6000.00"))
+        irrf_6000, base_6000, _ = calcular_irrf_progressivo(
+            base_bruta_irrf=Decimal("6000.00"),
+            desconto_inss=inss_6000,
+            desconto_simplificado=Decimal("607.20"),
+            rendimento_tributavel=Decimal("6000.00"),
+        )
+        self.assertEqual(inss_6000, Decimal("649.60"))
+        self.assertEqual(base_6000, Decimal("5350.40"))
+        self.assertEqual(irrf_6000, Decimal("382.88"))
+
+    def test_processar_calculo_folha_integra_reducao_irrf_2026(self):
+        """A integração real do motor não deve ignorar a redução legal do IRRF."""
+        res = processar_calculo_folha(salario_base=6000.00)
+        resumo = res["resumo"]
+        self.assertEqual(Decimal(str(resumo["base_inss"])), Decimal("6000.00"))
+        self.assertEqual(Decimal(str(resumo["base_irrf"])), Decimal("5350.40"))
+        item_irrf = next(it for it in res["itens"] if it["codigo_catalogo"] == "0505")
+        self.assertEqual(Decimal(str(item_irrf["valor_total"])), Decimal("382.88"))
+        self.assertIn("Lei 15.270/2025", item_irrf["memoria_calculo"])
+
+    def test_conversao_decimal_rejeita_nan_e_infinito(self):
+        """Valores financeiros não finitos devem falhar explicitamente."""
+        from backend.tabelas_legais import ConversaoFinanceiraException
+        for valor in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(ConversaoFinanceiraException):
+                processar_calculo_folha(salario_base=valor)
+
+
 if __name__ == "__main__":
     unittest.main()
