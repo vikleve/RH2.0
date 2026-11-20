@@ -305,6 +305,28 @@ class TestFolhaEnterpriseCompleta(unittest.TestCase):
         self.assertEqual(st_r, 200)
         self.assertIn("resumo_financeiro", res_r["dados"])
 
+        # Simulação em tempo real deve bater 100% com o cálculo salvo no banco
+        colab = self.colab_srv.cadastrar(self._dados_colab(salario_base=6500.00))
+        st_sim, _, res_sim = _executar_handler("POST", "/api/folha/simular", self.db_path, {
+            "colaborador_id": colab["id"],
+            "eventos": [{"codigo": "0010", "referencia": 5}]
+        }, cookie=cookie_gestor)
+        self.assertEqual(st_sim, 200)
+        sim_resumo = res_sim["dados"]["resumo"]
+        st_save, _, res_save = _executar_handler("POST", "/api/folha", self.db_path, {
+            "colaborador_id": colab["id"],
+            "competencia": "2026-10",
+            "eventos": [{"codigo": "0010", "referencia": 5}]
+        }, cookie=cookie_gestor)
+        self.assertEqual(st_save, 201)
+        salva = res_save["dados"]
+        self.assertAlmostEqual(float(sim_resumo["total_proventos"]), float(salva["total_proventos"]), places=2)
+        self.assertAlmostEqual(float(sim_resumo["total_descontos"]), float(salva["total_descontos"]), places=2)
+        self.assertAlmostEqual(float(sim_resumo["salario_liquido"]), float(salva["salario_liquido"]), places=2)
+        self.assertAlmostEqual(float(sim_resumo["inss_descontado"]), float(salva["inss_descontado"]), places=2)
+        self.assertAlmostEqual(float(sim_resumo["irrf_descontado"]), float(salva["irrf_descontado"]), places=2)
+        self.assertAlmostEqual(float(sim_resumo["valor_fgts_informativo"]), float(salva["valor_fgts_informativo"]), places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

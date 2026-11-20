@@ -2929,6 +2929,315 @@ const FolhaManager = {
     }
   },
 
+  // ── Painel Detalhado da Folha Individual (Layout 2 Colunas) ──────────────
+  painelInd: {
+    colaboradorId: null,
+    folhaId: null,
+    situacao: 'aberta',
+    eventosLancados: [],
+    ultimoCalculo: null,
+  },
+
+  async abrirPainelIndividual(folhaId = null, colabId = null) {
+    const wrapper = document.getElementById('painel-folha-individual');
+    if (!wrapper) return;
+    wrapper.classList.remove('hidden');
+
+    // Carregar colaboradores ativos e rubricas se ainda não carregados
+    if (!this.colaboradoresAtivos || !this.colaboradoresAtivos.length) {
+      await this.carregarColaboradoresAtivos();
+    }
+    if (!this.rubricasCatalogo || !this.rubricasCatalogo.length) {
+      try {
+        const rResp = await fetch(`${API_BASE}/folha/eventos-catalogo?apenas_ativas=1`, { headers: getAuthHeaders(), credentials: 'include' });
+        const rJson = await rResp.json();
+        this.rubricasCatalogo = rJson.dados || [];
+      } catch (e) { /* ignore */ }
+    }
+
+    const selColab = document.getElementById('ind-select-colaborador');
+    if (selColab) {
+      selColab.innerHTML = '<option value="">Selecione um colaborador...</option>' +
+        (this.colaboradoresAtivos || []).map(c => `<option value="${c.id}">${c.matricula} — ${c.nome_completo}</option>`).join('');
+    }
+    const selRub = document.getElementById('ind-ev-rubrica');
+    if (selRub) {
+      const editaveis = (this.rubricasCatalogo || []).filter(r => r.tipo !== 'informativo' && !['0001', '0501', '0502', '0505', '0506', '0507'].includes(r.codigo));
+      selRub.innerHTML = '<option value="">Selecione...</option>' +
+        editaveis.map(r => `<option value="${r.codigo}" data-tipo="${r.tipo}" data-desc="${r.descricao || r.evento}">[${r.codigo}] ${r.descricao || r.evento} (${r.tipo})</option>`).join('');
+    }
+
+    if (folhaId) {
+      try {
+        const resp = await fetch(`${API_BASE}/folha/${folhaId}`, { headers: getAuthHeaders(), credentials: 'include' });
+        const json = await resp.json();
+        const f = json.dados;
+        if (f) {
+          document.getElementById('ind-competencia').value = f.competencia;
+          document.getElementById('ind-tipo-folha').value = f.tipo_folha || 'mensal';
+          if (selColab) selColab.value = String(f.colaborador_id);
+          await this._carregarDadosPainel(f.colaborador_id, f);
+          return;
+        }
+      } catch (e) { /* fallback */ }
+    }
+
+    const alvoColab = colabId || (this.colaboradoresAtivos && this.colaboradoresAtivos[0] && this.colaboradoresAtivos[0].id);
+    if (alvoColab) {
+      if (selColab) selColab.value = String(alvoColab);
+      await this.selecionarColaboradorPainel(alvoColab);
+    }
+  },
+
+  fecharPainelIndividual() {
+    document.getElementById('painel-folha-individual')?.classList.add('hidden');
+  },
+
+  async selecionarColaboradorPainel(colabId) {
+    if (!colabId) return;
+    const comp = document.getElementById('ind-competencia')?.value || '2026-10';
+    const tipo = document.getElementById('ind-tipo-folha')?.value || 'mensal';
+    try {
+      const resp = await fetch(`${API_BASE}/folha?colaborador_id=${colabId}&competencia=${encodeURIComponent(comp)}&tipo_folha=${encodeURIComponent(tipo)}`, {
+        headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      const lista = json.dados || [];
+      if (lista.length > 0) {
+        const detResp = await fetch(`${API_BASE}/folha/${lista[0].id}`, { headers: getAuthHeaders(), credentials: 'include' });
+        const detJson = await detResp.json();
+        await this._carregarDadosPainel(Number(colabId), detJson.dados);
+      } else {
+        await this._carregarDadosPainel(Number(colabId), null);
+      }
+    } catch (e) {
+      await this._carregarDadosPainel(Number(colabId), null);
+    }
+  },
+
+  async recarregarPainelIndividual() {
+    const colabId = document.getElementById('ind-select-colaborador')?.value;
+    if (colabId) await this.selecionarColaboradorPainel(colabId);
+  },
+
+  async _carregarDadosPainel(colabId, folhaExistente) {
+    const colab = (this.colaboradoresAtivos || []).find(c => Number(c.id) === Number(colabId)) || {};
+    this.painelInd.colaboradorId = Number(colabId);
+    this.painelInd.folhaId = folhaExistente ? folhaExistente.id : null;
+    this.painelInd.situacao = folhaExistente ? folhaExistente.situacao : 'aberta';
+
+    const nome = folhaExistente?.colaborador_nome || colab.nome_completo || '--';
+    const iniciais = nome.split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || 'RH';
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+    set('ind-avatar', iniciais);
+    set('ind-nome', nome);
+    set('ind-cargo-mat', `${folhaExistente?.colaborador_cargo || colab.cargo || '--'} • Mat. ${folhaExistente?.colaborador_matricula || colab.matricula || '--'}`);
+    set('ind-salario-base', formatarMoeda(folhaExistente?.salario_base_contratual ?? colab.salario_base ?? 0));
+    set('ind-admissao', formatarDataBR(folhaExistente?.colaborador_data_admissao || colab.data_admissao));
+    set('ind-dependentes', String(folhaExistente?.total_dependentes_irrf ?? colab.total_dependentes_irrf ?? colab.total_dependentes ?? 0));
+    set('ind-cpf', formatarCpf(folhaExistente?.colaborador_cpf || colab.cpf || ''));
+
+    // Eventos lançados manuais/variáveis (excluindo salário-base 0001 e tributos automáticos)
+    const eventos = [];
+    if (folhaExistente && Array.isArray(folhaExistente.itens)) {
+      folhaExistente.itens.forEach(it => {
+        if (it.tipo === 'informativo') return;
+        if (['0001', '0501', '0502', '0505', '0506', '0507'].includes(it.codigo_evento)) return;
+        eventos.push({
+          codigo: it.codigo_evento,
+          descricao: it.descricao,
+          tipo: it.tipo,
+          referencia: Number(it.referencia || 0),
+          valor_informado: it.origem === 'manual' ? Number(it.valor_total || 0) : null,
+        });
+      });
+    }
+    this.painelInd.eventosLancados = eventos;
+    this._atualizarBotoesStatusPainel();
+    await this.simularPainelIndividual();
+  },
+
+  _atualizarBotoesStatusPainel() {
+    const sit = this.painelInd.situacao;
+    const fechada = sit === 'fechada';
+    const txtMap = {
+      aberta: 'Competência aberta — adicione eventos e clique em Salvar & Calcular.',
+      rascunho: 'Rascunho salvo — adicione ou edite eventos antes de calcular.',
+      calculada: 'Folha calculada — aguardando conferência e aprovação.',
+      aprovada: 'Folha aprovada — pronta para fechamento definitivo.',
+      fechada: 'Competência fechada — os lançamentos não podem ser alterados.'
+    };
+    const elTxt = document.getElementById('ind-status-texto');
+    if (elTxt) elTxt.textContent = (fechada ? '🔒 ' : '') + (txtMap[sit] || sit);
+
+    const show = (id, cond) => { const el = document.getElementById(id); if (el) el.style.display = cond ? 'inline-flex' : 'none'; };
+    show('ind-btn-add-evento', !fechada);
+    show('ind-btn-salvar', !fechada);
+    show('ind-btn-aprovar', sit === 'calculada');
+    show('ind-btn-fechar', Boolean(this.painelInd.folhaId) && !fechada);
+    show('ind-btn-reabrir', fechada);
+    show('ind-btn-holerite', Boolean(this.painelInd.folhaId));
+    show('ind-btn-pdf', Boolean(this.painelInd.folhaId));
+  },
+
+  toggleFormEventoPainel() {
+    document.getElementById('ind-form-novo-evento')?.classList.toggle('hidden');
+  },
+
+  async adicionarEventoPainel() {
+    const sel = document.getElementById('ind-ev-rubrica');
+    const opt = sel?.options[sel.selectedIndex];
+    const codigo = sel?.value;
+    if (!codigo) {
+      exibirToast('Selecione uma rubrica.', 'error');
+      return;
+    }
+    const tipo = opt.getAttribute('data-tipo') || 'provento';
+    const descricao = opt.getAttribute('data-desc') || opt.textContent;
+    const ref = Number(document.getElementById('ind-ev-ref')?.value || 0);
+    const valRaw = document.getElementById('ind-ev-valor')?.value;
+    const valor_informado = valRaw !== '' && valRaw !== null ? Number(valRaw) : null;
+
+    this.painelInd.eventosLancados.push({ codigo, descricao, tipo, referencia: ref, valor_informado });
+    document.getElementById('ind-ev-ref').value = '0';
+    document.getElementById('ind-ev-valor').value = '';
+    await this.simularPainelIndividual();
+  },
+
+  async removerEventoPainel(idx) {
+    if (this.painelInd.situacao === 'fechada') return;
+    this.painelInd.eventosLancados.splice(idx, 1);
+    await this.simularPainelIndividual();
+  },
+
+  async simularPainelIndividual() {
+    if (!this.painelInd.colaboradorId) return;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/simular`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          colaborador_id: this.painelInd.colaboradorId,
+          eventos: this.painelInd.eventosLancados
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.dados) return;
+      const calc = json.dados;
+      this.painelInd.ultimoCalculo = calc;
+      const r = calc.resumo || {};
+      const itens = calc.itens || [];
+
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      set('ind-calc-proventos', formatarMoeda(r.total_proventos));
+      set('ind-calc-base-inss', formatarMoeda(r.base_inss));
+      set('ind-calc-inss', `- ${formatarMoeda(r.inss_descontado)}`);
+      set('ind-calc-base-irrf', formatarMoeda(r.base_irrf));
+      set('ind-calc-irrf', `- ${formatarMoeda(r.irrf_descontado)}`);
+      set('ind-calc-desc-lanc', `- ${formatarMoeda(r.descontos_lancados)}`);
+      set('ind-calc-total-desc', `- ${formatarMoeda(r.total_descontos)}`);
+      set('ind-calc-fgts', formatarMoeda(r.valor_fgts_informativo));
+      set('ind-calc-liquido', formatarMoeda(r.salario_liquido));
+
+      const proventos = itens.filter(it => it.tipo === 'provento');
+      const descontosAvulsos = itens.filter(it => it.tipo === 'desconto' && !['0501', '0502', '0505', '0506', '0507'].includes(it.codigo_evento));
+      set('ind-qtd-eventos', `${proventos.length + descontosAvulsos.length} evento(s)`);
+
+      const fechada = this.painelInd.situacao === 'fechada';
+      const elProv = document.getElementById('ind-lista-proventos');
+      if (elProv) {
+        elProv.innerHTML = proventos.map(it => {
+          const idxManual = this.painelInd.eventosLancados.findIndex(e => e.codigo === it.codigo_evento && e.tipo === 'provento');
+          const btnRem = (!fechada && idxManual >= 0) ? `<button type="button" class="btn-icon text-danger" title="Remover" onclick="FolhaManager.removerEventoPainel(${idxManual})">&times;</button>` : '';
+          return `
+            <div class="folha-evento-linha">
+              <div><span style="color:#64748b; margin-right:0.5rem;">${it.codigo_evento}</span><strong>${it.descricao}</strong> <span class="text-xs text-muted">${it.referencia > 0 ? `(${it.referencia} ${it.unidade_referencia || ''})` : ''}</span></div>
+              <div style="display:flex; align-items:center; gap:0.5rem;"><strong>${formatarMoeda(it.valor_total)}</strong>${btnRem}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const elDesc = document.getElementById('ind-lista-descontos');
+      if (elDesc) {
+        elDesc.innerHTML = descontosAvulsos.length ? descontosAvulsos.map(it => {
+          const idxManual = this.painelInd.eventosLancados.findIndex(e => e.codigo === it.codigo_evento && e.tipo === 'desconto');
+          const btnRem = (!fechada && idxManual >= 0) ? `<button type="button" class="btn-icon text-danger" title="Remover" onclick="FolhaManager.removerEventoPainel(${idxManual})">&times;</button>` : '';
+          return `
+            <div class="folha-evento-linha">
+              <div><span style="color:#64748b; margin-right:0.5rem;">${it.codigo_evento}</span><strong>${it.descricao}</strong> <span class="text-xs text-muted">${it.referencia > 0 ? `(${it.referencia} ${it.unidade_referencia || ''})` : ''}</span></div>
+              <div style="display:flex; align-items:center; gap:0.5rem;"><strong style="color:#b91c1c;">- ${formatarMoeda(it.valor_total)}</strong>${btnRem}</div>
+            </div>
+          `;
+        }).join('') : '<p class="text-muted" style="font-size:0.84rem; margin:0.25rem 0;">Nenhum desconto avulso — INSS e IRRF são calculados automaticamente.</p>';
+      }
+    } catch (e) {
+      console.error('Erro ao simular painel:', e);
+    }
+  },
+
+  async salvarPainelIndividual(rascunho = false) {
+    if (!this.painelInd.colaboradorId) return;
+    const comp = document.getElementById('ind-competencia')?.value || '2026-10';
+    const tipo = document.getElementById('ind-tipo-folha')?.value || 'mensal';
+    const [ano, mes] = comp.split('-').map(Number);
+    const ultDia = new Date(ano, mes, 0).getDate();
+    const payload = {
+      colaborador_id: this.painelInd.colaboradorId,
+      competencia: comp,
+      tipo_folha: tipo,
+      salvar_como_rascunho: rascunho,
+      periodo_inicio: `${comp}-01`,
+      periodo_fim: `${comp}-${String(ultDia).padStart(2, '0')}`,
+      eventos: this.painelInd.eventosLancados
+    };
+    const url = this.painelInd.folhaId ? `${API_BASE}/folha/${this.painelInd.folhaId}` : `${API_BASE}/folha`;
+    const method = this.painelInd.folhaId ? 'PUT' : 'POST';
+    try {
+      const resp = await fetch(url, { method, headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify(payload) });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao salvar folha.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem || 'Folha salva e calculada!', 'success');
+      await this.carregarFolhas();
+      await this._carregarDadosPainel(this.painelInd.colaboradorId, json.dados);
+    } catch (e) {
+      exibirToast('Erro de comunicação ao salvar folha.', 'error');
+    }
+  },
+
+  async aprovarDoPainel() {
+    if (!this.painelInd.folhaId) return;
+    const resp = await fetch(`${API_BASE}/folha/${this.painelInd.folhaId}/aprovar`, { method: 'POST', headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify({}) });
+    const json = await resp.json();
+    if (!resp.ok) { exibirToast(json.mensagem || 'Erro ao aprovar.', 'error'); return; }
+    exibirToast(json.mensagem, 'success');
+    await this.carregarFolhas();
+    await this._carregarDadosPainel(this.painelInd.colaboradorId, json.dados);
+  },
+
+  async fecharDoPainel() {
+    if (!this.painelInd.folhaId) return;
+    this.solicitarFechamento(this.painelInd.folhaId);
+  },
+
+  async reabrirDoPainel() {
+    if (!this.painelInd.folhaId) return;
+    this.solicitarReabertura(this.painelInd.folhaId);
+  },
+
+  abrirHoleriteDoPainel() {
+    if (this.painelInd.folhaId) this.abrirModalHolerite(this.painelInd.folhaId, false);
+  },
+
+  baixarPdfDoPainel() {
+    if (this.painelInd.folhaId) this.baixarHoleritePDF(this.painelInd.folhaId);
+  },
+
   _baixarBlobArquivo(blob, nomeArq) {
     if (window.navigator && typeof window.navigator.msSaveOrOpenBlob === 'function') {
       window.navigator.msSaveOrOpenBlob(blob, nomeArq);

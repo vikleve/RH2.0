@@ -866,6 +866,57 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        # Rota protegida: Simular cálculo da folha em tempo real POST /api/folha/simular
+        if path == "/api/folha/simular":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                colab_id = dados.get("colaborador_id")
+                if not colab_id:
+                    return self._enviar_json(400, {"sucesso": False, "mensagem": "Informe colaborador_id."})
+                colab = self.folha_service.obter_dados_colaborador(int(colab_id))
+                param = self.folha_service.obter_parametro_vigente()
+                tipo_contrato = (colab.get("tipo_contrato") or "CLT").strip().lower()
+                aliquota_fgts = 2.0 if tipo_contrato == "aprendiz" else param.get("aliquota_fgts", 8.0)
+                num_dep_irrf = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
+                from .folha_calculos import processar_calculo_folha
+                calc = processar_calculo_folha(
+                    salario_base=float(colab.get("salario_base", 0.0)),
+                    dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
+                    dias_mes=int(dados.get("dias_mes", 30)),
+                    divisor_horas=float(dados.get("horas_divisor", colab.get("carga_horaria_mensal") or 220.0)),
+                    eventos_informados=dados.get("eventos", []),
+                    numero_dependentes=num_dep_irrf,
+                    parametros_config={
+                        "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
+                        "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
+                        "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
+                        "aplicar_inss": bool(param.get("aplicar_inss", 1)),
+                        "aplicar_irrf": bool(param.get("aplicar_irrf", 1)),
+                        "aliquota_fgts": aliquota_fgts,
+                        "teto_inss": param.get("teto_inss", "8475.55"),
+                        "deducao_dependente_irrf": param.get("deducao_dependente_irrf", "189.59"),
+                        "desconto_simplificado_irrf": param.get("desconto_simplificado_irrf", "607.20"),
+                        "salario_minimo": param.get("salario_minimo", "1621.00"),
+                        "limite_salario_familia": param.get("limite_salario_familia", "1980.38"),
+                        "valor_cota_salario_familia": param.get("valor_cota_salario_familia", "67.54"),
+                    },
+                )
+                itens = calc["itens"]
+                inss_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0501", "0502")), 2)
+                irrf_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0505", "0506", "0507")), 2)
+                desc_lancados = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] not in ("0501", "0502", "0505", "0506", "0507")), 2)
+                calc["resumo"]["inss_descontado"] = inss_val
+                calc["resumo"]["irrf_descontado"] = irrf_val
+                calc["resumo"]["descontos_lancados"] = desc_lancados
+                return self._enviar_json(200, {"sucesso": True, "dados": calc})
+            except FolhaNaoEncontradaException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         # Rota protegida: Criar folha POST /api/folha
         if path == "/api/folha":
             usuario_auth = self._exigir_autenticacao()
