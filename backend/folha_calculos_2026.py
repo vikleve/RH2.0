@@ -40,11 +40,11 @@ DESCONTO_SIMPLIFICADO_IRRF_2026 = Decimal("607.20")
 ALIQUOTA_FGTS_PADRAO = Decimal("8.00")
 
 TABELA_INSS_2026 = [
-    # (faixa_min, faixa_max, aliquota_percentual)
+    # Limites superiores inclusivos; cálculo por faixas contínuas.
     (Decimal("0.00"), Decimal("1621.00"), Decimal("7.5")),
-    (Decimal("1621.01"), Decimal("2902.84"), Decimal("9.0")),
-    (Decimal("2902.85"), Decimal("4354.27"), Decimal("12.0")),
-    (Decimal("4354.28"), Decimal("8475.55"), Decimal("14.0")),
+    (Decimal("1621.00"), Decimal("2902.84"), Decimal("9.0")),
+    (Decimal("2902.84"), Decimal("4354.27"), Decimal("12.0")),
+    (Decimal("4354.27"), Decimal("8475.55"), Decimal("14.0")),
 ]
 
 TABELA_IRRF_2026 = [
