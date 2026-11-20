@@ -1,28 +1,25 @@
-# Sessão ativa e CPFs sintéticos — RH2.0
+# Modo temporário de apresentação — RH2.0
 
-## Sessão durante o uso
+## CPF sintético
+Durante a fase de testes e apresentação, configure `RH2_ALLOW_FAKE_CPFS=1` no ambiente Production da Vercel.
+- O CPF deve conter exatamente 11 dígitos após a normalização.
+- A validação matemática dos dígitos verificadores fica temporariamente desativada.
+- A verificação de unicidade no banco permanece ativa.
+- O frontend também exige 11 dígitos.
 
-O backend Vercel/Python usa timeout deslizante:
-- 12 horas sem requisição autenticada: a sessão expira;
-- cada requisição autenticada renova a janela de 12 horas;
-- limite absoluto de 7 dias desde o login, mesmo com atividade;
-- logout continua revogando a sessão imediatamente.
+## Sessão
+Durante a apresentação, a expiração automática está temporariamente desativada:
+- a sessão permanece válida até logout, revogação administrativa ou inativação da conta;
+- o logout continua invalidando o token no servidor;
+- o token continua armazenado em `sessionStorage`, portanto fechar a sessão/aba do navegador pode exigir novo login;
+- a validade não depende mais do campo `expira_em`.
 
-O frontend envia uma validação leve para `/api/auth/me` no máximo a cada 5 minutos quando há interação (clique, teclado, toque ou rolagem) e a aba está visível. Falhas transitórias de rede não encerram a sessão local.
+## Reversão obrigatória antes da versão final
+Este modo é exclusivamente temporário para demonstração. Antes de liberar a versão final:
+1. Remover `RH2_ALLOW_FAKE_CPFS` do ambiente Production da Vercel.
+2. Restaurar a validação matemática oficial de CPF no backend.
+3. Restaurar timeout deslizante e limite absoluto de sessão.
+4. Executar a suíte de testes de autenticação e validar o deploy.
+5. Registrar a aprovação dos responsáveis pela governança.
 
-## CPFs sintéticos para testes
-
-A validação matemática pode ser relaxada exclusivamente em ambiente não produtivo.
-
-Na Vercel, configure a variável:
-- Nome: `RH2_ALLOW_FAKE_CPFS`
-- Valor: `1`
-- Ambiente: **Preview** (não Production)
-
-O código também verifica `VERCEL_ENV`, `APP_ENV` e `ENVIRONMENT`: se qualquer um indicar `production`, CPFs fictícios continuam bloqueados mesmo que a variável esteja configurada.
-
-Nesse modo, o CPF ainda precisa conter exatamente 11 dígitos. A unicidade por empresa continua ativa, inclusive para dados sintéticos. A validação matemática normal permanece ativa em produção.
-
-Para desativar o modo de teste, remova `RH2_ALLOW_FAKE_CPFS` do ambiente Preview e faça um novo deploy.
-
-**Importante:** não configure essa variável no ambiente Production. Os dados criados com CPFs sintéticos são exclusivamente para testes e não devem ser usados em cadastros reais, folha oficial ou obrigações legais.
+**Não utilizar CPFs sintéticos nem dados pessoais fictícios como se fossem registros reais em folha oficial, eSocial, relatórios legais ou operações empresariais.**
