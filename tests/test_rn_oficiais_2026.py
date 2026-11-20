@@ -51,32 +51,32 @@ class TestRegrasNegocioOficiais2026(unittest.TestCase):
         self.assertEqual(irrf_final, Decimal("0.00"))
 
     def test_caso_3_salario_6000(self):
-        """Caso 3: R$ 6.000,00 -> INSS R$ 641,51; Base IRRF 5.358,49 (INSS); Imposto tabela 564,85; Redução 179,75; IRRF final R$ 385,10"""
+        """Caso 3: R$ 6.000,00 -> INSS R$ 649,60; Base IRRF 5.350,40 (INSS); Imposto tabela 562,63; Redução 179,75; IRRF final R$ 382,88"""
         inss, aliq, mem_inss, _ = calcular_inss_2026(6000.00)
-        self.assertEqual(inss, Decimal("641.51"))
+        self.assertEqual(inss, Decimal("649.60"))
 
         irrf_final, base_irrf, imp_tabela, reducao, mem_irrf = calcular_irrf_2026(
             rendimento_bruto=6000.00,
             desconto_inss=inss
         )
-        self.assertEqual(base_irrf, Decimal("5358.49"))
-        self.assertEqual(imp_tabela, Decimal("564.85"))
+        self.assertEqual(base_irrf, Decimal("5350.40"))
+        self.assertEqual(imp_tabela, Decimal("562.63"))
         self.assertEqual(reducao, Decimal("179.75"))
-        self.assertEqual(irrf_final, Decimal("385.10"))
+        self.assertEqual(irrf_final, Decimal("382.88"))
 
     def test_caso_4_salario_6500(self):
-        """Caso 4: R$ 6.500,00 -> INSS R$ 711,51; Base IRRF 5.788,49 (INSS); Imposto tabela 683,10; Redução 113,18; IRRF final R$ 569,92"""
+        """Caso 4: R$ 6.500,00 -> INSS R$ 719,60; Base IRRF 5.780,40 (INSS); Imposto tabela 680,88; Redução 113,18; IRRF final R$ 567,70"""
         inss, aliq, mem_inss, _ = calcular_inss_2026(6500.00)
-        self.assertEqual(inss, Decimal("711.51"))
+        self.assertEqual(inss, Decimal("719.60"))
 
         irrf_final, base_irrf, imp_tabela, reducao, mem_irrf = calcular_irrf_2026(
             rendimento_bruto=6500.00,
             desconto_inss=inss
         )
-        self.assertEqual(base_irrf, Decimal("5788.49"))
-        self.assertEqual(imp_tabela, Decimal("683.10"))
+        self.assertEqual(base_irrf, Decimal("5780.40"))
+        self.assertEqual(imp_tabela, Decimal("680.88"))
         self.assertEqual(reducao, Decimal("113.18"))
-        self.assertEqual(irrf_final, Decimal("569.92"))
+        self.assertEqual(irrf_final, Decimal("567.70"))
 
     def test_caso_5_salario_9000_teto_inss(self):
         """Caso 5: R$ 9.000,00 -> INSS R$ 988,09 (teto); Base IRRF 8.011,91 (INSS); Imposto tabela 1.294,55; Redução 0,00; IRRF final R$ 1.294,55"""
