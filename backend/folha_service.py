@@ -252,12 +252,26 @@ class FolhaService:
         """
         colab = self.obter_dados_colaborador(colaborador_id)
         salario_base = float(colab.get("salario_base", 0.0))
+        if salario_base <= 0:
+            raise FolhaValidacaoException({"salario_base": "O colaborador selecionado não possui salário-base válido cadastrado."})
+
         num_dependentes = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
         num_dep_sf = int(colab.get("total_dependentes_salario_familia", 0))
         tipo_folha_norm = (tipo_folha or "mensal").strip().lower()
         tipos_validos = ("mensal", "adiantamento", "13_primeira", "13_segunda", "complementar", "ferias", "rescisoria")
         if tipo_folha_norm not in tipos_validos:
             raise FolhaValidacaoException({"tipo_folha": f"Tipo de folha inválido: '{tipo_folha_norm}'."})
+
+        if (colab.get("situacao") or "ativo").lower() in ("inativo", "desligado") and tipo_folha_norm != "rescisoria":
+            raise FolhaValidacaoException({"colaborador_id": "Colaborador inativo/desligado só pode receber folha rescisória."})
+
+        for ev in (eventos or []):
+            ref_ev = ev.get("referencia")
+            val_ev = ev.get("valor_informado")
+            if ref_ev is not None and float(ref_ev) < 0:
+                raise FolhaValidacaoException({"eventos": f"Referência negativa não permitida no evento {ev.get('codigo', '')}."})
+            if val_ev is not None and float(val_ev) < 0:
+                raise FolhaValidacaoException({"eventos": f"Valor negativo não permitido no evento {ev.get('codigo', '')}."})
 
         emp_id = (empresa_id or colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001").strip()
         fil_id = (filial_id or colab.get("filial_id") or None)
@@ -706,12 +720,16 @@ class FolhaService:
 
     def fechar_folha(self, folha_id: int, usuario: str = "Sistema/Administrador") -> Dict[str, Any]:
         """
-        Fecha a folha de pagamento, impedindo modificações posteriores
-        sem reabertura auditada.
+        Fecha a folha de pagamento após validar vínculo, salário-base e eventos persistidos,
+        impedindo modificações posteriores sem reabertura auditada.
         """
         folha = self.obter_folha_por_id(folha_id)
         if folha["situacao"] == "fechada":
             raise FolhaBloqueadaException("A folha de pagamento já se encontra fechada.")
+        if float(folha.get("salario_base_contratual") or 0) <= 0:
+            raise FolhaValidacaoException({"salario_base": "Não é possível fechar folha sem salário-base válido vinculado ao colaborador."})
+        if not folha.get("itens"):
+            raise FolhaValidacaoException({"itens": "Não é possível fechar uma folha sem eventos/itens calculados."})
 
         P = self._ph()
         conn = self._conn()
