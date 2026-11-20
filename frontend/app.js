@@ -237,7 +237,47 @@ const AuthManager = {
     this.exibirTelaLogin();
   },
 
+  pararMonitoramentoSessao() {
+    if (!this._monitoramentoSessao) return;
+    ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(evento =>
+      document.removeEventListener(evento, this._monitoramentoSessao.atividade, true)
+    );
+    document.removeEventListener('visibilitychange', this._monitoramentoSessao.visibilidade);
+    this._monitoramentoSessao = null;
+  },
+
+  iniciarMonitoramentoSessao() {
+    if (this._monitoramentoSessao) return;
+    const intervaloMinimo = 5 * 60 * 1000;
+    let ultimaRenovacao = 0;
+    const renovar = async () => {
+      if (!this.usuario || document.hidden || Date.now() - ultimaRenovacao < intervaloMinimo) return;
+      ultimaRenovacao = Date.now();
+      try {
+        const resp = await fetch(`${API_BASE}/auth/me`, {
+          method: 'GET',
+          headers: getAuthHeaders(),
+          credentials: 'include'
+        });
+        if (resp.status === 401) {
+          this.exibirTelaLogin('Sua sessão expirou. Entre novamente para continuar.');
+          exibirToast('Sua sessão expirou. Entre novamente para continuar.', 'warning');
+        }
+      } catch (e) {
+        console.warn('Falha transitória ao renovar sessão; a sessão local foi mantida.');
+      }
+    };
+    const atividade = () => { renovar(); };
+    const visibilidade = () => { if (!document.hidden) renovar(); };
+    this._monitoramentoSessao = { atividade, visibilidade };
+    ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(evento =>
+      document.addEventListener(evento, atividade, { passive: true, capture: true })
+    );
+    document.addEventListener('visibilitychange', visibilidade);
+  },
+
   exibirTelaLogin(mensagemErro = null) {
+    this.pararMonitoramentoSessao();
     const telaLogin = document.getElementById('tela-login');
     const telaSistema = document.getElementById('tela-sistema');
     if (telaLogin) telaLogin.classList.remove('hidden');
@@ -268,6 +308,7 @@ const AuthManager = {
   },
 
   exibirTelaSistema(usuario) {
+    this.iniciarMonitoramentoSessao();
     if (typeof PlataformaManager !== 'undefined') { PlataformaManager.carregarDashboard(); }
 
     const telaLogin = document.getElementById('tela-login');
