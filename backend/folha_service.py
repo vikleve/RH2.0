@@ -266,14 +266,18 @@ class FolhaService:
             eventos_informados=eventos or [],
             numero_dependentes=num_dependentes,
             parametros_config={
-                "percentual_noturno": float(param.get("percentual_adicional_noturno", 20.0)),
+                "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
                 "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
-                "fator_reducao_noturna": float(param.get("fator_reducao_noturna", 1.142857)),
+                "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
                 "aplicar_inss": bool(param.get("aplicar_inss", 1)),
                 "aplicar_irrf": bool(param.get("aplicar_irrf", 1)),
-                "aliquota_fgts": float(param.get("aliquota_fgts", 8.0)),
-                "teto_inss": float(param.get("teto_inss", 8157.41)),
-                "deducao_dependente_irrf": float(param.get("deducao_dependente_irrf", 189.59))
+                "aliquota_fgts": param.get("aliquota_fgts", "8.0"),
+                "teto_inss": param.get("teto_inss", "8475.55"),
+                "deducao_dependente_irrf": param.get("deducao_dependente_irrf", "189.59"),
+                "desconto_simplificado_irrf": "607.20",
+                "salario_minimo": "1621.00",
+                "limite_salario_familia": "1980.38",
+                "valor_cota_salario_familia": "67.54"
             }
         )
 
