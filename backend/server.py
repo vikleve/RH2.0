@@ -10,7 +10,7 @@ import http.server
 import json
 import os
 import socketserver
-from typing import Any
+from typing import Any, Optional
 import urllib.parse
 from decimal import Decimal
 
