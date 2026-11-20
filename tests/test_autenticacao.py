@@ -254,6 +254,46 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         status_exp, _, _ = self._req("GET", "/api/auth/me", token=token)
         self.assertEqual(status_exp, 401)
 
+    def test_sessao_ativa_renova_expiracao_deslizante(self):
+        """Requisições autenticadas renovam a janela de 12h sem ultrapassar o limite absoluto."""
+        _, resp_login, _ = self._req("POST", "/api/auth/login", {
+            "identificador": "admin.dp",
+            "senha": "Sintetico#AdminTest2026!"
+        })
+        token = resp_login["token"]
+        conn = get_connection(self.temp_db_path)
+        expira_anterior = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("UPDATE sessoes SET expira_em = ? WHERE token = ?", (expira_anterior, token))
+        conn.commit()
+        conn.close()
+
+        status, _, _ = self._req("GET", "/api/auth/me", token=token)
+        self.assertEqual(status, 200)
+
+        conn = get_connection(self.temp_db_path)
+        row = conn.execute("SELECT expira_em FROM sessoes WHERE token = ?", (token,)).fetchone()
+        conn.close()
+        self.assertGreater(str(row[0]), expira_anterior)
+
+    def test_cpf_sintetico_so_em_ambiente_nao_produtivo(self):
+        """O modo de CPFs fictícios exige flag explícita e nunca funciona em produção."""
+        from backend.validators import validar_cpf
+        cpf_sintetico = "12345678901"
+        ambiente_original = os.environ.get("VERCEL_ENV")
+        try:
+            os.environ["RH2_ALLOW_FAKE_CPFS"] = "1"
+            os.environ["VERCEL_ENV"] = "preview"
+            self.assertTrue(validar_cpf(cpf_sintetico))
+
+            os.environ["VERCEL_ENV"] = "production"
+            self.assertFalse(validar_cpf(cpf_sintetico))
+        finally:
+            os.environ.pop("RH2_ALLOW_FAKE_CPFS", None)
+            if ambiente_original is None:
+                os.environ.pop("VERCEL_ENV", None)
+            else:
+                os.environ["VERCEL_ENV"] = ambiente_original
+
     # =========================================================================
     # CA-LOGIN-08: Regressão do módulo existente
     # =========================================================================
