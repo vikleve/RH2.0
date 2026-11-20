@@ -1881,10 +1881,7 @@ const FolhaManager = {
 
   async abrirModalNovaFolha() {
     this.folhaEmEdicao = null;
-    this.rubricasManuais = [
-      { tipo: 'provento', codigo: '0010', descricao: 'Horas extras 50%', referencia: 1, valor_total: 100, isCustom: false },
-      { tipo: 'desconto', codigo: '0520', descricao: 'Adiantamento salarial', referencia: 1, valor_total: 100, isCustom: false }
-    ];
+    this.rubricasManuais = [];
     document.getElementById('modal-folha-title').textContent = 'Lançar & Calcular Nova Folha de Pagamento';
     document.getElementById('folha-id-edicao').value = '';
     document.getElementById('form-folha-pagamento').reset();
@@ -1998,6 +1995,14 @@ const FolhaManager = {
 
     if (selectColab) {
       selectColab.addEventListener('change', (e) => {
+        if (!this.folhaEmEdicao) {
+          this.rubricasManuais = [];
+          ['folha-campo-he50', 'folha-campo-he100', 'folha-campo-noturno', 'folha-campo-faltas', 'folha-campo-atrasos', 'folha-campo-observacoes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+          });
+          this.renderizarRubricasManuais();
+        }
         this.atualizarCardColaboradorSelecionado(e.target.value);
         this.atualizarPreviaCalculo();
       });
@@ -3221,8 +3226,13 @@ const FolhaManager = {
   },
 
   async fecharDoPainel() {
-    if (!this.painelInd.folhaId) return;
-    this.solicitarFechamento(this.painelInd.folhaId);
+    if (!this.painelInd.colaboradorId) return;
+    if (this.painelInd.situacao !== 'fechada') {
+      await this.salvarPainelIndividual(false);
+    }
+    if (this.painelInd.folhaId) {
+      this.solicitarFechamento(this.painelInd.folhaId);
+    }
   },
 
   async reabrirDoPainel() {
@@ -3563,6 +3573,9 @@ const FolhaManager = {
       document.getElementById('modal-fechar-folha-confirm').classList.add('hidden');
       document.getElementById('modal-holerite').classList.add('hidden');
       await this.carregarFolhas();
+      if (this.painelInd && Number(this.painelInd.folhaId) === Number(folhaId) && json.dados) {
+        await this._carregarDadosPainel(this.painelInd.colaboradorId, json.dados);
+      }
     } catch (e) {
       console.error('Erro ao fechar folha:', e);
       exibirToast('Erro de comunicação ao fechar folha.', 'error');
