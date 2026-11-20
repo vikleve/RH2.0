@@ -17,7 +17,7 @@ from .audit import AuditService
 
 ITERATIONS = 100_000
 SESSION_IDLE_TIMEOUT_HOURS = 12
-SESSION_ABSOLUTE_TIMEOUT_DAYS = 7
+SESSION_ABSOLUTE_TIMEOUT_HOURS = 8
 MENSAGEM_GENERICA_ERRO = "E-mail ou senha inválidos."
 
 
@@ -317,7 +317,7 @@ class AuthService:
         else:
             criado_dt = datetime.strptime(str(criado_em), "%Y-%m-%d %H:%M:%S")
         agora_dt = datetime.now()
-        limite_absoluto = criado_dt + timedelta(days=SESSION_ABSOLUTE_TIMEOUT_DAYS)
+        limite_absoluto = criado_dt + timedelta(hours=SESSION_ABSOLUTE_TIMEOUT_HOURS)
         proxima_expiracao = min(
             agora_dt + timedelta(hours=SESSION_IDLE_TIMEOUT_HOURS),
             limite_absoluto,
@@ -329,7 +329,7 @@ class AuthService:
             return None
 
         # Renova a janela de inatividade em toda requisição autenticada.
-        # O limite absoluto de sete dias impede uma sessão sem fim.
+        # O limite absoluto de oito horas impede uma sessão sem fim.
         cursor.execute(
             f"UPDATE sessoes SET expira_em={P} WHERE token={P} AND revogado=0",
             (proxima_expiracao.strftime("%Y-%m-%d %H:%M:%S"), token),
