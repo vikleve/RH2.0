@@ -283,20 +283,37 @@
           </div>
           <button type="button" id="btn-close-sidebar" class="btn-close-sidebar" aria-label="Fechar menu lateral">&times;</button>
         </div>
+
+        <!-- Identificação Corporativa da Empresa & Toggle Expandir/Recolher -->
+        <div class="sidebar-company-card" id="sidebar-company-card">
+          <div class="sidebar-company-info">
+            <div class="sidebar-company-avatar" title="RH2.0 Enterprise">RH</div>
+            <div class="sidebar-company-text">
+              <span class="sidebar-company-name" id="sidebar-empresa-nome">ForçaVerde Usina</span>
+              <span class="sidebar-company-plan">RH2.0 Enterprise • 2026</span>
+            </div>
+          </div>
+          <button type="button" id="btn-collapse-sidebar" class="btn-collapse-sidebar" title="Recolher ou expandir menu lateral" aria-label="Recolher ou expandir menu lateral">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+        </div>
+
         <div class="sidebar-nav">
           <div class="sidebar-section">
-            <div class="sidebar-section-title">Estratégico & Indicadores</div>
+            <div class="sidebar-section-title">Estratégico &amp; Indicadores</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn active" data-view="dashboard" id="btn-menu-dashboard" type="button">
+              <button class="sidebar-btn active" data-view="dashboard" id="btn-menu-dashboard" type="button" title="Dashboard">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="3" width="7" height="9"></rect>
                   <rect x="14" y="3" width="7" height="5"></rect>
                   <rect x="14" y="12" width="7" height="9"></rect>
                   <rect x="3" y="16" width="7" height="5"></rect>
                 </svg>
-                <span>Dashboard &amp; BI</span>
+                <span>Dashboard</span>
               </button>
-              <button class="sidebar-btn" data-view="pendencias" id="btn-menu-pendencias" type="button">
+              <button class="sidebar-btn" data-view="pendencias" id="btn-menu-pendencias" type="button" title="Central de Pendências">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                   <line x1="12" y1="9" x2="12" y2="13"></line>
@@ -309,56 +326,62 @@
           </div>
 
           <div class="sidebar-section">
-            <div class="sidebar-section-title">Ciclo do Colaborador</div>
+            <div class="sidebar-section-title">Pessoas &amp; Admissão</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn" data-view="colaboradores" id="btn-menu-colaboradores" type="button">
+              <button class="sidebar-btn" data-view="colaboradores" id="btn-menu-colaboradores" type="button" title="Funcionários">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                   <circle cx="9" cy="7" r="4"></circle>
                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                 </svg>
-                <span>Colaboradores (M01)</span>
+                <span>Funcionários</span>
               </button>
-              <button class="sidebar-btn" data-view="admissoes" id="btn-menu-admissoes" type="button">
+              <button class="sidebar-btn" data-view="admissoes" id="btn-menu-admissoes" type="button" title="Admissões">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                   <circle cx="8.5" cy="7" r="4"></circle>
                   <line x1="20" y1="8" x2="20" y2="14"></line>
                   <line x1="23" y1="11" x2="17" y2="11"></line>
                 </svg>
-                <span>Admissões (M02)</span>
+                <span>Admissões</span>
               </button>
-              <button class="sidebar-btn" data-view="ponto" id="btn-menu-ponto" type="button">
+              <button class="sidebar-btn" data-view="beneficios" id="btn-menu-beneficios" type="button" title="Benefícios">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                </svg>
+                <span>Benefícios</span>
+              </button>
+              <button class="sidebar-btn" data-view="ponto" id="btn-menu-ponto" type="button" title="Controle de Ponto">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"></circle>
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
-                <span>Jornada &amp; Ponto (M03)</span>
+                <span>Controle de Ponto</span>
               </button>
-              <button class="sidebar-btn" data-view="ferias" id="btn-menu-ferias" type="button">
+              <button class="sidebar-btn" data-view="ferias" id="btn-menu-ferias" type="button" title="Férias">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                   <line x1="16" y1="2" x2="16" y2="6"></line>
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span>Férias &amp; Abono (M06)</span>
+                <span>Férias</span>
               </button>
-              <button class="sidebar-btn" data-view="afastamentos" id="btn-menu-afastamentos" type="button">
+              <button class="sidebar-btn" data-view="afastamentos" id="btn-menu-afastamentos" type="button" title="Afastamentos">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
                 </svg>
-                <span>Afastamentos (M07)</span>
+                <span>Afastamentos</span>
               </button>
-              <button class="sidebar-btn" data-view="rescisoes" id="btn-menu-rescisoes" type="button">
+              <button class="sidebar-btn" data-view="rescisoes" id="btn-menu-rescisoes" type="button" title="Rescisões">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                   <circle cx="8.5" cy="7" r="4"></circle>
                   <line x1="18" y1="8" x2="23" y2="13"></line>
                   <line x1="23" y1="8" x2="18" y2="13"></line>
                 </svg>
-                <span>Rescisões (M11)</span>
+                <span>Rescisões</span>
               </button>
             </div>
           </div>
@@ -366,35 +389,50 @@
           <div class="sidebar-section">
             <div class="sidebar-section-title">Folha &amp; Remuneração</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn" data-view="folha" id="btn-menu-folha" type="button">
+              <button class="sidebar-btn" data-view="folha" id="btn-menu-folha" type="button" title="Folha de Pagamento">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                   <line x1="2" y1="10" x2="22" y2="10"></line>
                   <line x1="12" y1="14" x2="12" y2="18"></line>
                   <line x1="8" y1="18" x2="16" y2="18"></line>
                 </svg>
-                <span>Folha Mensal (M09/10)</span>
+                <span>Folha de Pagamento</span>
               </button>
-              <button class="sidebar-btn" data-view="integracoes" id="btn-menu-integracoes" type="button">
+              <button class="sidebar-btn" data-view="integracoes" id="btn-menu-integracoes" type="button" title="Bancos / CNAB 240">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="5" width="20" height="14" rx="2"></rect>
                   <line x1="2" y1="10" x2="22" y2="10"></line>
                 </svg>
-                <span>Bancos / CNAB 240 (M18)</span>
+                <span>Bancos / CNAB 240</span>
               </button>
             </div>
           </div>
 
           <div class="sidebar-section">
-            <div class="sidebar-section-title">Compliance &amp; Segurança</div>
+            <div class="sidebar-section-title">Compliance, Relatórios &amp; Docs</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn" data-view="sst" id="btn-menu-sst" type="button">
+              <button class="sidebar-btn" data-view="relatorios" id="btn-menu-relatorios" type="button" title="Relatórios">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                <span>Relatórios</span>
+              </button>
+              <button class="sidebar-btn" data-view="documentos" id="btn-menu-documentos" type="button" title="Documentos">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                <span>Documentos</span>
+              </button>
+              <button class="sidebar-btn" data-view="sst" id="btn-menu-sst" type="button" title="SST &amp; Medicina">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                 </svg>
-                <span>SST &amp; Medicina (M13)</span>
+                <span>SST &amp; Medicina</span>
               </button>
-              <button class="sidebar-btn" data-view="esocial" id="btn-menu-esocial" type="button">
+              <button class="sidebar-btn" data-view="esocial" id="btn-menu-esocial" type="button" title="eSocial &amp; Obrigações">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
@@ -402,26 +440,33 @@
                   <line x1="16" y1="17" x2="8" y2="17"></line>
                   <polyline points="10 9 9 9 8 9"></polyline>
                 </svg>
-                <span>eSocial &amp; Obrigações (M12)</span>
+                <span>eSocial &amp; Obrigações</span>
               </button>
             </div>
           </div>
 
           <div class="sidebar-section">
-            <div class="sidebar-section-title">Governança &amp; Sistema</div>
+            <div class="sidebar-section-title">Governança &amp; Configurações</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn" data-view="auditoria" id="btn-menu-auditoria" type="button">
+              <button class="sidebar-btn" data-view="auditoria" id="btn-menu-auditoria" type="button" title="Auditoria &amp; Logs">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
-                <span>Auditoria &amp; Logs (M20)</span>
+                <span>Auditoria &amp; Logs</span>
               </button>
-              <button class="sidebar-btn" data-view="multiempresa" id="btn-menu-multiempresa" type="button">
+              <button class="sidebar-btn" data-view="multiempresa" id="btn-menu-multiempresa" type="button" title="Multiempresa">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                   <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
-                <span>Multiempresa (M17)</span>
+                <span>Multiempresa</span>
+              </button>
+              <button class="sidebar-btn" data-view="configuracoes" id="btn-menu-configuracoes" type="button" title="Configurações">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>Configurações</span>
               </button>
             </div>
           </div>
@@ -429,14 +474,14 @@
           <div class="sidebar-section">
             <div class="sidebar-section-title">Portais Enterprise</div>
             <div class="sidebar-menu">
-              <button class="sidebar-btn" data-view="portal-colaborador" id="btn-menu-portal-colaborador" type="button">
+              <button class="sidebar-btn" data-view="portal-colaborador" id="btn-menu-portal-colaborador" type="button" title="Portal do Colaborador">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                   <circle cx="12" cy="7" r="4"></circle>
                 </svg>
                 <span>Portal do Colaborador</span>
               </button>
-              <button class="sidebar-btn" data-view="portal-gestor" id="btn-menu-portal-gestor" type="button">
+              <button class="sidebar-btn" data-view="portal-gestor" id="btn-menu-portal-gestor" type="button" title="Portal do Gestor">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                   <circle cx="9" cy="7" r="4"></circle>
@@ -452,6 +497,14 @@
 
       <!-- Conteúdo Principal da Plataforma -->
       <main class="main-content platform-main-content">
+        <!-- Breadcrumb Corporativo Dinâmico -->
+        <nav id="global-breadcrumb" class="page-breadcrumb" aria-label="Breadcrumb">
+          <button type="button" class="breadcrumb-link" onclick="PlataformaManager.navegarPara('dashboard')">RH2.0 Enterprise</button>
+          <span class="breadcrumb-sep">/</span>
+          <span id="breadcrumb-categoria">Estratégico</span>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current" id="breadcrumb-pagina">Dashboard &amp; BI</span>
+        </nav>
 
         <!-- ============================================================ -->
         <!-- VISÃO DASHBOARD & BI (MÓDULOS 19 E 20)                        -->
@@ -771,7 +824,31 @@
       <!-- ============================================================ -->
       <!-- VISÃO DO MÓDULO 1: CADASTRO DE COLABORADORES                 -->
       <!-- ============================================================ -->
-      <div id="view-modulo-colaboradores">
+      <div id="view-modulo-colaboradores" class="platform-view hidden">
+        <div class="view-header">
+          <div class="view-header-titles">
+            <span class="view-eyebrow">Pessoas &amp; Cadastros &bull; CLT</span>
+            <h2 class="view-title">Gestão de Funcionários</h2>
+            <p class="view-subtitle">Cadastro completo, histórico salarial, dependentes, pesquisa unificada e auditoria contratual (RF-001 a RF-010)</p>
+          </div>
+          <div class="view-header-actions">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('btn-recarregar')?.click()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Atualizar Lista
+            </button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('btn-novo-colaborador')?.click()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Novo Funcionário
+            </button>
+          </div>
+        </div>
         <!-- Cards de Métricas / Resumo -->
         <section class="metrics-grid">
           <div class="metric-card">
@@ -940,6 +1017,7 @@
             <p class="empty-desc">Tente alterar os termos da busca ou os filtros de situação e setor.</p>
             <button id="btn-limpar-filtros" class="btn btn-primary btn-sm">Limpar Filtros</button>
           </div>
+          <div id="paginacao-colaboradores" class="pagination-bar hidden"></div>
         </section>
       </div> <!-- /#view-modulo-colaboradores -->
 
@@ -1185,7 +1263,55 @@
       <!-- ============================================================ -->
       <!-- VISÃO DO MÓDULO 2: FOLHA DE PAGAMENTO                         -->
       <!-- ============================================================ -->
-      <div id="view-modulo-folha" class="hidden">
+      <div id="view-modulo-folha" class="platform-view hidden">
+        <div class="view-header">
+          <div class="view-header-titles">
+            <span class="view-eyebrow">Folha &amp; Remuneração &bull; Motor 2026</span>
+            <h2 class="view-title">Gestão da Folha de Pagamento</h2>
+            <p class="view-subtitle">Processamento mensal, encargos (INSS/IRRF/FGTS), memória de cálculo e histórico de competências (RF-060 a RF-105)</p>
+          </div>
+          <div class="view-header-actions">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('btn-parametros-folha')?.click()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Parâmetros Legais 2026
+            </button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('btn-nova-folha')?.click()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Processar Nova Folha
+            </button>
+          </div>
+        </div>
+
+        <!-- Banner Executivo da Competência e Empresa -->
+        <section class="folha-competencia-banner" aria-label="Resumo da competência selecionada">
+          <div class="folha-banner-item">
+            <span class="folha-banner-label">Competência</span>
+            <span class="folha-banner-value" id="folha-banner-competencia">Todas / Atual</span>
+            <span class="folha-banner-sub">Regime Mensal CLT</span>
+          </div>
+          <div class="folha-banner-item">
+            <span class="folha-banner-label">Empresa / Estabelecimento</span>
+            <span class="folha-banner-value" id="folha-banner-empresa">ForçaVerde Usina</span>
+            <span class="folha-banner-sub">Matriz Consolidada</span>
+          </div>
+          <div class="folha-banner-item">
+            <span class="folha-banner-label">Encargos FGTS (Est. 8%)</span>
+            <span class="folha-banner-value" id="folha-banner-encargos">R$ 0,00</span>
+            <span class="folha-banner-sub"><span id="folha-banner-qtd-func">0</span> funcionários na listagem</span>
+          </div>
+          <div class="folha-banner-item">
+            <span class="folha-banner-label">Status do Processamento</span>
+            <span class="folha-banner-value" id="folha-banner-status">Aguardando filtro</span>
+            <span class="folha-banner-sub">Auditoria Decimal ABNT 5891</span>
+          </div>
+        </section>
+
         <!-- Cards de Métricas da Folha -->
         <section class="metrics-grid">
           <div class="metric-card">
@@ -1345,6 +1471,7 @@
               a folha de um colaborador.</p>
             <button id="btn-limpar-filtros-folha" class="btn btn-primary btn-sm">Limpar Filtros</button>
           </div>
+          <div id="paginacao-folha" class="pagination-bar hidden"></div>
         </section>
       </div> <!-- /#view-modulo-folha -->
 
@@ -1668,6 +1795,237 @@
         </div>
 
         <!-- ============================================================ -->
+        <!-- VISÃO BENEFÍCIOS & DESCONTOS                                 -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-beneficios" class="platform-view hidden">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Remuneração &amp; Vantagens &bull; CLT</span>
+              <h2 class="view-title">Gestão de Benefícios &amp; Descontos</h2>
+              <p class="view-subtitle">Regras de Vale-Transporte (teto 6%), Vale-Alimentação/Refeição, Planos de Saúde e rubricas vinculadas à folha</p>
+            </div>
+            <div class="view-header-actions">
+              <button type="button" class="btn btn-primary" onclick="PlataformaManager.navegarPara('folha')">
+                Ir para Folha de Pagamento
+              </button>
+            </div>
+          </div>
+
+          <section class="enterprise-cards-grid">
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="1" y="3" width="15" height="13"></rect>
+                    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                    <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                    <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700; color: var(--corp-text);">Vale-Transporte (Lei 7.418/85)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Desconto limitado a 6% sobre o salário-base contratual, respeitando o teto do benefício concedido.</p>
+              </div>
+              <span class="badge-status badge-calculada">Rubrica Ativa na Folha</span>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8h1a4 4 0 0 1 0 8h-1"></path>
+                    <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700; color: var(--corp-text);">Vale-Alimentação &amp; Refeição (PAT)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Benefício sem incidência salarial (natureza indenizatória) conforme regras do Programa de Alimentação do Trabalhador.</p>
+              </div>
+              <span class="badge-status badge-calculada">Integrado ao Motor</span>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700; color: var(--corp-text);">Assistência Médica &amp; Odontológica</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Controle de coparticipação e mensalidades por colaborador e dependentes vinculados.</p>
+              </div>
+              <span class="badge-status badge-calculada">Rubricas 0031 / 0032</span>
+            </div>
+          </section>
+
+          <section class="table-card mt-2">
+            <div class="table-card-header">
+              <h3 style="font-size: 1.05rem; font-weight: 600;">Rubricas de Benefícios &amp; Descontos Disponíveis no Catálogo Oficial</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Descrição da Rubrica</th>
+                    <th>Natureza</th>
+                    <th>Incidência INSS / FGTS</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-beneficios-catalogo">
+                  <tr><td colspan="5" class="text-center text-muted" style="padding: 1.5rem;">Carregando catálogo oficial de benefícios...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO RELATÓRIOS GERENCIAIS                                  -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-relatorios" class="platform-view hidden">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Analytics &amp; Exportações &bull; Contabilidade</span>
+              <h2 class="view-title">Relatórios Gerenciais &amp; Folha</h2>
+              <p class="view-subtitle">Exportação de dados reais do banco para conferência contábil, diretoria e auditoria</p>
+            </div>
+          </div>
+
+          <section class="enterprise-cards-grid">
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Quadro de Funcionários (CSV)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Exporta matrícula, nome, CPF, cargo, setor, salário-base e situação diretamente da base ativa.</p>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.exportarColaboradoresCSV()">
+                Exportar CSV Real
+              </button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <line x1="2" y1="10" x2="22" y2="10"></line>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Resumo Analítico da Folha (CSV)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Exporta proventos, descontos, líquido e competência de todas as folhas processadas no sistema.</p>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.exportarFolhasCSV()">
+                Exportar Folha CSV
+              </button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <div class="enterprise-action-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                </div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Indicadores Executivos BI</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Visão consolidada de encargos, turnover, absenteísmo e distribuição por departamento.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('dashboard')">
+                Abrir Painel BI
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO DOCUMENTOS TRABALHISTAS                                -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-documentos" class="platform-view hidden">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Repositório Legal &bull; Guarda Trabalhista</span>
+              <h2 class="view-title">Documentos &amp; Comprovantes Oficiais</h2>
+              <p class="view-subtitle">Acesso centralizado a holerites individuais, espelhos de ponto, remessas CNAB 240 e XMLs do eSocial</p>
+            </div>
+          </div>
+
+          <section class="enterprise-cards-grid">
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Holerites &amp; Memória de Cálculo</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Emita e imprima contracheques oficiais com detalhamento de INSS, IRRF e FGTS.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('folha')">Acessar Holerites</button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Espelho de Ponto (Portaria 671)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Consulte marcações diárias, horas extras e saldo apurado por colaborador.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('ponto')">Acessar Espelhos</button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Remessas CNAB 240 &amp; XML eSocial</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Arquivos bancários FEBRABAN (001, 237, 341, 033, 104) e leiautes S-1.2.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('integracoes')">Acessar Arquivos</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- VISÃO CONFIGURAÇÕES DO SISTEMA                               -->
+        <!-- ============================================================ -->
+        <div id="view-modulo-configuracoes" class="platform-view hidden">
+          <div class="view-header">
+            <div class="view-header-titles">
+              <span class="view-eyebrow">Administração &amp; Parâmetros &bull; 2026</span>
+              <h2 class="view-title">Configurações &amp; Governança Legal</h2>
+              <p class="view-subtitle">Tabelas legais vigentes (Portaria MPS/MF 13/2026), parâmetros de cálculo e estrutura multiempresa</p>
+            </div>
+          </div>
+
+          <section class="enterprise-cards-grid">
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Parâmetros Legais de Folha</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Configure divisores (220h), percentuais de HE (50%/100%), adicional noturno e alíquota FGTS.</p>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('btn-parametros-folha')?.click()">
+                Configurar Parâmetros
+              </button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Empresas &amp; Filiais (Multi-Tenant)</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Gerencie estabelecimentos, CNPJs, CNAEs e isolamento de dados por organização.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('multiempresa')">
+                Gerenciar Empresas
+              </button>
+            </div>
+
+            <div class="enterprise-action-card">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">Trilha de Auditoria &amp; Segurança</h3>
+                <p class="text-muted mt-1" style="font-size: 0.84rem;">Consulte logs de operações, alterações cadastrais e eventos de autenticação.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('auditoria')">
+                Ver Auditoria
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
         <!-- VISÃO PORTAL DO COLABORADOR (ENTERPRISE AUTOATENDIMENTO)      -->
         <!-- ============================================================ -->
         <div id="view-modulo-portal-colaborador" class="platform-view">
@@ -1766,7 +2124,7 @@
                         <td class="text-danger">R$ 1.025,40</td>
                         <td><strong class="text-primary">R$ 4.099,60</strong></td>
                         <td>
-                          <button class="btn btn-outline btn-sm" onclick="alert('Visualização do holerite oficial 10/2026 gerada com sucesso.');">
+                          <button class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('folha'); exibirToast('Selecione a competência para visualizar ou imprimir seu holerite.', 'info');">
                             Visualizar / Imprimir
                           </button>
                         </td>
@@ -1779,7 +2137,7 @@
                         <td class="text-danger">R$ 960,00</td>
                         <td><strong class="text-primary">R$ 3.840,00</strong></td>
                         <td>
-                          <button class="btn btn-outline btn-sm" onclick="alert('Visualização do holerite oficial 09/2026 gerada com sucesso.');">
+                          <button class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('folha'); exibirToast('Selecione a competência 09/2026 para visualizar ou imprimir.', 'info');">
                             Visualizar / Imprimir
                           </button>
                         </td>
@@ -1908,7 +2266,7 @@
                         <td>R$ 58.400,00</td>
                         <td>R$ 4.210,50</td>
                         <td>
-                          <button class="btn btn-outline btn-sm" onclick="alert('Download do Informe de Rendimentos IRPF 2026/2025 iniciado.');">
+                          <button class="btn btn-outline btn-sm" onclick="exibirToast('Comprovante anual de rendimentos IRPF 2026/2025 preparado para impressão.', 'success'); window.print();">
                             Baixar Informe (PDF)
                           </button>
                         </td>
@@ -2031,8 +2389,8 @@
                     <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
                     <td>
                       <div class="btn-group-actions">
-                        <button class="btn btn-primary btn-sm" onclick="alert('Solicitação de ajuste de ponto aprovada com sucesso.');">Aprovar</button>
-                        <button class="btn btn-outline btn-sm text-danger" onclick="alert('Solicitação rejeitada.');">Rejeitar</button>
+                        <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'Ajuste de ponto aprovado', true)">Aprovar</button>
+                        <button class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.processarAcaoGestor(this, 'Ajuste de ponto rejeitado', false)">Rejeitar</button>
                       </div>
                     </td>
                   </tr>
@@ -2045,8 +2403,8 @@
                     <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
                     <td>
                       <div class="btn-group-actions">
-                        <button class="btn btn-primary btn-sm" onclick="alert('Férias aprovadas pelo gestor e enviadas para DP.');">Aprovar</button>
-                        <button class="btn btn-outline btn-sm text-danger" onclick="alert('Solicitação rejeitada.');">Rejeitar</button>
+                        <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'Férias homologadas e enviadas ao DP', true)">Aprovar</button>
+                        <button class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.processarAcaoGestor(this, 'Solicitação de férias rejeitada', false)">Rejeitar</button>
                       </div>
                     </td>
                   </tr>
