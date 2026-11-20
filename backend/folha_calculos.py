@@ -1569,7 +1569,12 @@ def processar_calculo_folha(
             numero_dependentes=numero_dependentes,
             deducao_por_dependente=deducao_dep,
             outras_deducoes=outras_deducoes_irrf,
-            tabela_faixas=tabela_irrf
+            tabela_faixas=tabela_irrf,
+            desconto_simplificado=_to_decimal(
+                params.get("desconto_simplificado_irrf", DESCONTO_SIMPLIFICADO_IRRF_PADRAO)
+            ),
+            rendimento_tributavel=base_bruta_irrf,
+            aplicar_reducao_lei_15270=True
         )
 
         if val_irrf > Decimal("0.00"):
