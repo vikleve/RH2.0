@@ -16,7 +16,8 @@ from .database import _usar_postgres, get_connection, init_db, insert_returning_
 from .audit import AuditService
 
 ITERATIONS = 100_000
-SESSION_DURATION_HOURS = 12
+SESSION_IDLE_TIMEOUT_HOURS = 12
+SESSION_ABSOLUTE_TIMEOUT_DAYS = 7
 MENSAGEM_GENERICA_ERRO = "E-mail ou senha inválidos."
 
 
@@ -247,7 +248,7 @@ class AuthService:
 
         token = secrets.token_hex(32)
         agora_dt = datetime.now()
-        expira_dt = agora_dt + timedelta(hours=SESSION_DURATION_HOURS)
+        expira_dt = agora_dt + timedelta(hours=SESSION_IDLE_TIMEOUT_HOURS)
         agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
         expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -295,7 +296,7 @@ class AuthService:
         agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         cursor.execute(f"""
-            SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil
+            SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em
             FROM sessoes s
             JOIN usuarios u ON u.id = s.usuario_id
             WHERE s.token = {P}
@@ -310,6 +311,30 @@ class AuthService:
             return None
 
         usuario = self._row(cursor, row)
+        criado_em = usuario.pop("criado_em", None)
+        if isinstance(criado_em, datetime):
+            criado_dt = criado_em
+        else:
+            criado_dt = datetime.strptime(str(criado_em), "%Y-%m-%d %H:%M:%S")
+        agora_dt = datetime.now()
+        limite_absoluto = criado_dt + timedelta(days=SESSION_ABSOLUTE_TIMEOUT_DAYS)
+        proxima_expiracao = min(
+            agora_dt + timedelta(hours=SESSION_IDLE_TIMEOUT_HOURS),
+            limite_absoluto,
+        )
+        if proxima_expiracao <= agora_dt:
+            cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE token={P}", (token,))
+            conn.commit()
+            conn.close()
+            return None
+
+        # Renova a janela de inatividade em toda requisição autenticada.
+        # O limite absoluto de sete dias impede uma sessão sem fim.
+        cursor.execute(
+            f"UPDATE sessoes SET expira_em={P} WHERE token={P} AND revogado=0",
+            (proxima_expiracao.strftime("%Y-%m-%d %H:%M:%S"), token),
+        )
+        conn.commit()
         conn.close()
         if usuario and "empresa_id" not in usuario:
             usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
