@@ -34,28 +34,30 @@ except ImportError:
 
 def _to_decimal(val: Any, estrito: bool = False) -> Decimal:
     """
-    Converte com precisão e segurança qualquer valor numérico ou string para Decimal.
-    Não silencia erros em valores malformados (RF-FIN-001, Seção 4.5).
+    Conversão financeira estrita para Decimal.
+    Valores ausentes são tratados como zero somente quando o chamador os omite;
+    valores explicitamente malformados, NaN ou infinitos nunca viram zero.
     """
+    from .tabelas_legais import ConversaoFinanceiraException
     if val is None or val == "":
         return Decimal("0.00")
     if isinstance(val, Decimal):
-        return val
-    try:
-        str_val = str(val).strip().replace("R$", "").strip()
-        if "," in str_val and "." not in str_val:
-            str_val = str_val.replace(",", ".")
-        elif "," in str_val and "." in str_val:
-            # Exemplo: 1.234,56
-            str_val = str_val.replace(".", "").replace(",", ".")
-        return Decimal(str_val)
-    except Exception as e:
-        if estrito or not isinstance(val, (int, float, str)):
-            from .tabelas_legais import ConversaoFinanceiraException
-            raise ConversaoFinanceiraException(f"Valor monetário inválido para cálculo: {val}") from e
-        from .tabelas_legais import ConversaoFinanceiraException
-        raise ConversaoFinanceiraException(f"Erro de conversão numérica para Decimal no valor '{val}'") from e
-
+        resultado = val
+    else:
+        try:
+            texto = str(val).strip().replace("R$", "").strip()
+            if "," in texto and "." not in texto:
+                texto = texto.replace(",", ".")
+            elif "," in texto and "." in texto:
+                texto = texto.replace(".", "").replace(",", ".")
+            resultado = Decimal(texto)
+        except Exception as exc:
+            raise ConversaoFinanceiraException(
+                f"Valor monetário inválido para cálculo: {val!r}"
+            ) from exc
+    if not resultado.is_finite():
+        raise ConversaoFinanceiraException(f"Valor monetário não finito: {val!r}")
+    return resultado
 
 def arredondar_moeda(val: Any) -> Decimal:
     """Arredonda para 2 casas decimais no padrão financeiro bancário (ROUND_HALF_UP)."""
