@@ -2288,7 +2288,8 @@ const FolhaManager = {
           descricao: r.descricao,
           tipo: r.tipo,
           referencia: r.referencia,
-          valor_total: r.valor_total
+          valor_total: r.valor_total,
+          is_custom_livre: Boolean(r.isCustom)
         });
       }
     });
@@ -3043,12 +3044,22 @@ const FolhaManager = {
     set('ind-dependentes', String(folhaExistente?.total_dependentes_irrf ?? colab.total_dependentes_irrf ?? colab.total_dependentes ?? 0));
     set('ind-cpf', formatarCpf(folhaExistente?.colaborador_cpf || colab.cpf || ''));
 
-    // Eventos lançados manuais/variáveis (excluindo salário-base 0001 e tributos automáticos)
+    // Limpar mini-formulário ao trocar colaborador/mês
+    const elRub = document.getElementById('ind-ev-rubrica');
+    const elRef = document.getElementById('ind-ev-ref');
+    const elVal = document.getElementById('ind-ev-valor');
+    if (elRub) elRub.value = '';
+    if (elRef) elRef.value = '0';
+    if (elVal) elVal.value = '';
+    document.getElementById('ind-form-novo-evento')?.classList.add('hidden');
+
+    // Eventos lançados manuais/variáveis (excluindo salário-base e tributos automáticos INSS/IRRF)
+    const codigosAutomaticos = ['001', '0001', '501', '0501', '0502', '502', '0505', '0506', '0507'];
     const eventos = [];
     if (folhaExistente && Array.isArray(folhaExistente.itens)) {
       folhaExistente.itens.forEach(it => {
         if (it.tipo === 'informativo') return;
-        if (['0001', '0501', '0502', '0505', '0506', '0507'].includes(it.codigo_evento)) return;
+        if (codigosAutomaticos.includes(String(it.codigo_evento))) return;
         eventos.push({
           codigo: it.codigo_evento,
           descricao: it.descricao,
@@ -3129,7 +3140,11 @@ const FolhaManager = {
         })
       });
       const json = await resp.json();
-      if (!resp.ok || !json.dados) return;
+      if (!resp.ok || !json.dados) {
+        if (json.erros && json.erros.eventos) exibirToast(json.erros.eventos, 'error');
+        else if (json.mensagem) exibirToast(json.mensagem, 'error');
+        return;
+      }
       const calc = json.dados;
       this.painelInd.ultimoCalculo = calc;
       const r = calc.resumo || {};
@@ -3146,8 +3161,9 @@ const FolhaManager = {
       set('ind-calc-fgts', formatarMoeda(r.valor_fgts_informativo));
       set('ind-calc-liquido', formatarMoeda(r.salario_liquido));
 
+      const codigosTributosAuto = ['501', '0501', '0502', '502', '0505', '0506', '0507'];
       const proventos = itens.filter(it => it.tipo === 'provento');
-      const descontosAvulsos = itens.filter(it => it.tipo === 'desconto' && !['0501', '0502', '0505', '0506', '0507'].includes(it.codigo_evento));
+      const descontosAvulsos = itens.filter(it => it.tipo === 'desconto' && !codigosTributosAuto.includes(String(it.codigo_evento)) && !codigosTributosAuto.includes(String(it.codigo_catalogo || '')));
       set('ind-qtd-eventos', `${proventos.length + descontosAvulsos.length} evento(s)`);
 
       const fechada = this.painelInd.situacao === 'fechada';
@@ -3204,7 +3220,8 @@ const FolhaManager = {
       const resp = await fetch(url, { method, headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify(payload) });
       const json = await resp.json();
       if (!resp.ok) {
-        exibirToast(json.mensagem || 'Erro ao salvar folha.', 'error');
+        const errDet = json.erros ? Object.values(json.erros).join(' ') : '';
+        exibirToast(errDet || json.mensagem || 'Erro ao salvar folha.', 'error');
         return;
       }
       exibirToast(json.mensagem || 'Folha salva e calculada!', 'success');
@@ -3393,9 +3410,13 @@ const FolhaManager = {
   ultimoRelatorio: null,
 
   async carregarRelatorios() {
+    const compInicio = document.getElementById('rel-folha-inicio')?.value || '';
+    const compFim = document.getElementById('rel-folha-fim')?.value || '';
     const comp = document.getElementById('rel-folha-competencia')?.value || '';
     const setor = document.getElementById('rel-folha-setor')?.value || '';
     const params = new URLSearchParams();
+    if (compInicio) params.set('competencia_inicio', compInicio);
+    if (compFim) params.set('competencia_fim', compFim);
     if (comp) params.set('competencia', comp);
     if (setor) params.set('setor', setor);
     try {
@@ -3404,7 +3425,16 @@ const FolhaManager = {
       const rel = json.dados || {};
       this.ultimoRelatorio = rel;
       const rf = rel.resumo_financeiro || {};
+      const ger = rel.gerencial || {};
+      const fin = rel.financeiro || {};
+      const he = ger.horas_extras || {};
+      const naoFech = ger.folhas_nao_fechadas || {};
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+      set('rel-kpi-colabs', String(ger.numero_colaboradores_ativos ?? rf.qtd_colaboradores ?? 0));
+      set('rel-kpi-sal-medio', formatarMoeda(ger.salario_medio || 0));
+      set('rel-kpi-he', `${Number(he.total_horas || 0)}h (${formatarMoeda(he.valor_total || 0)})`);
+      set('rel-kpi-nao-fechadas', String(naoFech.quantidade ?? rf.folhas_abertas ?? 0));
       set('rel-kpi-bruto', formatarMoeda(rf.total_bruto || 0));
       set('rel-kpi-descontos', formatarMoeda(rf.total_descontos || 0));
       set('rel-kpi-liquido', formatarMoeda(rf.total_liquido || 0));
@@ -3451,9 +3481,120 @@ const FolhaManager = {
           </tr>
         `).join('') || '<tr><td colspan="8" class="text-center text-muted">Nenhum registro encontrado.</td></tr>';
       }
+
+      const tbodyEv = document.getElementById('rel-tabela-eventos');
+      if (tbodyEv) {
+        const evMais = ger.eventos_mais_usados || [];
+        tbodyEv.innerHTML = evMais.slice(0, 10).map(e => `
+          <tr>
+            <td><strong>${e.codigo}</strong></td>
+            <td>${e.descricao}</td>
+            <td>${e.tipo}</td>
+            <td>${e.qtd_lancamentos}</td>
+            <td>${formatarMoeda(e.valor_total)}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="5" class="text-center text-muted">Sem eventos no período.</td></tr>';
+      }
+
+      const tbodyNF = document.getElementById('rel-tabela-nao-fechadas');
+      if (tbodyNF) {
+        const nfLista = naoFech.lista || [];
+        tbodyNF.innerHTML = nfLista.map(f => `
+          <tr>
+            <td>${f.colaborador_nome}</td>
+            <td>${f.competencia}</td>
+            <td><span class="badge badge-dep">${f.situacao}</span></td>
+            <td>${formatarMoeda(f.salario_liquido)}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="4" class="text-center text-muted">Todas as folhas do período estão fechadas.</td></tr>';
+      }
+
+      const tbodyFinMes = document.getElementById('rel-tabela-financeiro-mes');
+      if (tbodyFinMes) {
+        const tMes = fin.totais_por_mes || [];
+        tbodyFinMes.innerHTML = tMes.map(m => `
+          <tr>
+            <td><strong>${m.competencia}</strong></td>
+            <td>${m.qtd}</td>
+            <td>${formatarMoeda(m.bruto)}</td>
+            <td>${formatarMoeda(m.liquido)}</td>
+            <td>${formatarMoeda(m.encargos_empresa)}</td>
+            <td><strong>${formatarMoeda(m.custo_total)}</strong></td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" class="text-center text-muted">Sem dados financeiros no período.</td></tr>';
+      }
+
+      const boxRec = document.getElementById('rel-valores-recolher');
+      if (boxRec) {
+        const enc = fin.encargos_empresa || {};
+        const rec = fin.valores_a_recolher || {};
+        boxRec.innerHTML = `
+          <div style="display:flex; justify-content:space-between;"><span>INSS Segurados (retido):</span><strong>${formatarMoeda(rec.inss_segurados || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span>INSS Patronal (20%) + RAT (2%) + Terceiros (5,8%):</span><strong>${formatarMoeda(rec.inss_patronal_e_terceiros || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span>Total Guia INSS (GPS/DARF):</span><strong>${formatarMoeda(rec.inss_total_recolher || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span>IRRF a Recolher (DARF):</span><strong>${formatarMoeda(rec.irrf_recolher || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span>FGTS a Recolher (GFIP/FGTS Digital):</span><strong>${formatarMoeda(rec.fgts_recolher || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between; border-top:1px solid #cbd5e1; padding-top:0.4rem;"><span><strong>Total Encargos da Empresa (Patr. + FGTS):</strong></span><strong>${formatarMoeda(enc.total_encargos_empresa || 0)}</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span><strong>Total Geral de Tributos a Recolher:</strong></span><strong style="color:#166534;">${formatarMoeda(rec.total_a_recolher || 0)}</strong></div>
+        `;
+      }
     } catch (e) {
       exibirToast('Erro ao carregar relatórios da folha.', 'error');
     }
+  },
+
+  exportarRelatorioGerencialCSV() {
+    if (!this.ultimoRelatorio) {
+      exibirToast('Gere o relatório antes de exportar.', 'error');
+      return;
+    }
+    const ger = this.ultimoRelatorio.gerencial || {};
+    const depts = ger.custo_por_departamento || this.ultimoRelatorio.por_departamento || [];
+    const evs = ger.eventos_mais_usados || [];
+    const linhas = [
+      ['RELATORIO GERENCIAL DA FOLHA'],
+      ['Colaboradores Ativos', ger.numero_colaboradores_ativos || 0],
+      ['Salario Medio', ger.salario_medio || 0],
+      ['Horas Extras (Qtd / Horas / Valor)', ger.horas_extras?.qtd_lancamentos || 0, ger.horas_extras?.total_horas || 0, ger.horas_extras?.valor_total || 0],
+      ['Folhas Nao Fechadas', ger.folhas_nao_fechadas?.quantidade || 0],
+      [],
+      ['CUSTO POR DEPARTAMENTO', 'Folhas', 'Bruto', 'Descontos', 'Liquido', 'FGTS', 'Encargos', 'Custo Total'],
+      ...depts.map(d => [d.grupo, d.qtd_folhas, d.bruto, d.descontos, d.liquido, d.fgts, d.encargos, d.custo_total]),
+      [],
+      ['EVENTOS MAIS USADOS (Codigo)', 'Descricao', 'Tipo', 'Qtd Lancamentos', 'Valor Total'],
+      ...evs.map(e => [e.codigo, e.descricao, e.tipo, e.qtd_lancamentos, e.valor_total])
+    ];
+    const csv = '\uFEFF' + linhas.map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+    this._baixarBlobArquivo(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `relatorio_gerencial_${new Date().toISOString().slice(0, 10)}.csv`);
+    exibirToast('Relatório Gerencial CSV exportado!', 'success');
+  },
+
+  exportarRelatorioFinanceiroCSV() {
+    if (!this.ultimoRelatorio) {
+      exibirToast('Gere o relatório antes de exportar.', 'error');
+      return;
+    }
+    const fin = this.ultimoRelatorio.financeiro || {};
+    const tMes = fin.totais_por_mes || [];
+    const rec = fin.valores_a_recolher || {};
+    const enc = fin.encargos_empresa || {};
+    const linhas = [
+      ['RELATORIO FINANCEIRO DA FOLHA'],
+      ['Competencia', 'Qtd Folhas', 'Bruto', 'Descontos', 'Liquido', 'INSS Segurados', 'IRRF', 'FGTS', 'Encargos Empresa', 'Custo Total'],
+      ...tMes.map(m => [m.competencia, m.qtd, m.bruto, m.descontos, m.liquido, m.inss_segurados, m.irrf, m.fgts, m.encargos_empresa, m.custo_total]),
+      [],
+      ['ENCARGOS E VALORES A RECOLHER', 'Valor (R$)'],
+      ['INSS Segurados', rec.inss_segurados || 0],
+      ['INSS Patronal + RAT + Terceiros', rec.inss_patronal_e_terceiros || 0],
+      ['INSS Total a Recolher', rec.inss_total_recolher || 0],
+      ['IRRF a Recolher', rec.irrf_recolher || 0],
+      ['FGTS a Recolher', rec.fgts_recolher || 0],
+      ['Total Encargos da Empresa', enc.total_encargos_empresa || 0],
+      ['Total Geral a Recolher', rec.total_a_recolher || 0],
+    ];
+    const csv = '\uFEFF' + linhas.map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+    this._baixarBlobArquivo(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `relatorio_financeiro_${new Date().toISOString().slice(0, 10)}.csv`);
+    exibirToast('Relatório Financeiro CSV exportado!', 'success');
   },
 
   exportarRelatorioExcel() {
@@ -3603,22 +3744,31 @@ const FolhaManager = {
       return;
     }
 
+    const apagar = Boolean(document.getElementById('reabrir-apagar-folha')?.checked);
+
     try {
       const resp = await fetch(`${API_BASE}/folha/${folhaId}/reabrir`, {
         method: 'POST',
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: JSON.stringify({ motivo })
+        body: JSON.stringify({ motivo, apagar_para_relancar: apagar })
       });
       const json = await resp.json();
       if (!resp.ok) {
         exibirToast(json.mensagem || 'Falha ao reabrir folha.', 'error');
         return;
       }
-      exibirToast(`Folha #${folhaId} reaberta para edição!`, 'success');
+      exibirToast(json.mensagem || `Folha #${folhaId} reaberta!`, 'success');
       document.getElementById('modal-reabrir-folha-confirm').classList.add('hidden');
       document.getElementById('modal-holerite').classList.add('hidden');
       await this.carregarFolhas();
+      if (this.painelInd && Number(this.painelInd.folhaId) === Number(folhaId)) {
+        if (apagar) {
+          await this.selecionarColaboradorPainel(this.painelInd.colaboradorId);
+        } else if (json.dados) {
+          await this._carregarDadosPainel(this.painelInd.colaboradorId, json.dados);
+        }
+      }
     } catch (e) {
       console.error('Erro ao reabrir folha:', e);
       exibirToast('Erro de comunicação ao reabrir folha.', 'error');

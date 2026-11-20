@@ -327,6 +327,161 @@ class TestFolhaEnterpriseCompleta(unittest.TestCase):
         self.assertAlmostEqual(float(sim_resumo["irrf_descontado"]), float(salva["irrf_descontado"]), places=2)
         self.assertAlmostEqual(float(sim_resumo["valor_fgts_informativo"]), float(salva["valor_fgts_informativo"]), places=2)
 
+    def test_06_validacoes_fechamento_reabertura_exclusao_e_relatorios_gerencial_financeiro(self):
+        colab = self.colab_srv.cadastrar(self._dados_colab(data_admissao="2026-05-10", salario_base=3000.00, dependentes=[]))
+
+        # 1. Competência anterior à admissão deve falhar
+        with self.assertRaises(FolhaValidacaoException) as ctx_adm:
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-04",
+                periodo_inicio="2026-04-01", periodo_fim="2026-04-30",
+            )
+        self.assertIn("competencia", ctx_adm.exception.erros)
+
+        # 2. Evento inexistente no catálogo deve falhar
+        with self.assertRaises(FolhaValidacaoException) as ctx_inex:
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "9999", "valor_total": 100.00}],
+            )
+        self.assertIn("eventos", ctx_inex.exception.erros)
+
+        # 3. Evento inativo deve falhar
+        rub = self.folha_srv.salvar_rubrica({
+            "codigo": "0087", "descricao": "Bônus Temporário", "tipo": "provento"
+        })
+        self.folha_srv.alterar_status_rubrica(rub["id"], False)
+        with self.assertRaises(FolhaValidacaoException) as ctx_inat:
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "0087", "valor_total": 100.00}],
+            )
+        self.assertIn("eventos", ctx_inat.exception.erros)
+
+        # 4. Limite de horas (> 220), faltas (> 31) e percentual (> 100)
+        with self.assertRaises(FolhaValidacaoException):
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "0010", "quantidade": 250}],
+            )
+        with self.assertRaises(FolhaValidacaoException):
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "0530", "quantidade": 35}],
+            )
+        with self.assertRaises(FolhaValidacaoException):
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "0010", "quantidade": 5, "percentual": 150}],
+            )
+
+        # 5. Líquido negativo deve falhar
+        with self.assertRaises(FolhaValidacaoException) as ctx_neg:
+            self.folha_srv.criar_ou_atualizar_folha(
+                colaborador_id=colab["id"], competencia="2026-06",
+                periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+                eventos=[{"codigo": "0545", "valor_total": 4500.00}],
+            )
+        self.assertIn("salario_liquido", ctx_neg.exception.erros)
+
+        # 6. Criar folha válida, fechar, reabrir com apagar_para_relancar=True e relançar
+        f = self.folha_srv.criar_ou_atualizar_folha(
+            colaborador_id=colab["id"], competencia="2026-06",
+            periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+            eventos=[{"codigo": "0010", "quantidade": 4}],
+        )
+        self.folha_srv.fechar_folha(f["id"], usuario="Gestor")
+        res_reab = self.folha_srv.reabrir_folha(
+            f["id"], motivo="Apagar e relançar folha do mês", usuario="Gestor", apagar_para_relancar=True
+        )
+        self.assertTrue(res_reab["apagada"])
+
+        # Verifica auditoria gravada em auditoria_operacoes e possibilidade de novo lançamento
+        conn = self.folha_srv._conn()
+        cur = conn.cursor()
+        cur.execute("SELECT operacao, registro_id FROM auditoria_operacoes WHERE registro_id = ?", (str(f["id"]),))
+        aud = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(aud)
+        self.assertEqual(aud[0], "REABERTURA_EXCLUSAO")
+
+        f_nova = self.folha_srv.criar_ou_atualizar_folha(
+            colaborador_id=colab["id"], competencia="2026-06",
+            periodo_inicio="2026-06-01", periodo_fim="2026-06-30",
+            eventos=[{"codigo": "0010", "quantidade": 10}],
+        )
+        self.assertNotEqual(f_nova["id"], f["id"])
+
+        # 7. Relatórios Gerencial e Financeiro por período
+        self.folha_srv.criar_ou_atualizar_folha(
+            colaborador_id=colab["id"], competencia="2026-07",
+            periodo_inicio="2026-07-01", periodo_fim="2026-07-31",
+        )
+        rel = self.folha_srv.obter_relatorios_folha(competencia_inicio="2026-06", competencia_fim="2026-06")
+        ger = rel["gerencial"]
+        fin = rel["financeiro"]
+        self.assertEqual(ger["numero_colaboradores_ativos"], 1)
+        self.assertEqual(ger["salario_medio"], 3000.00)
+        self.assertEqual(ger["horas_extras"]["total_horas"], 10.0)
+        self.assertEqual(ger["folhas_nao_fechadas"]["quantidade"], 1)
+        self.assertTrue(any(e["codigo"] == "0010" for e in ger["eventos_mais_usados"]))
+        self.assertEqual(len(fin["totais_por_mes"]), 1)
+        self.assertGreater(fin["encargos_empresa"]["total_encargos_empresa"], 0.0)
+        self.assertGreater(fin["valores_a_recolher"]["total_a_recolher"], 0.0)
+
+    def test_07_rubrica_customizada_percentual_com_incidencias_reais(self):
+        self.auth_srv._conn().close()
+        conn = self.auth_srv._conn()
+        cur = conn.cursor()
+        h, s = hash_senha("SenhaForte#2026!")
+        cur.execute(
+            "INSERT INTO usuarios (email, usuario, nome_completo, senha_hash, salt, perfil, status, criado_em) VALUES (?,?,?,?,?,?, 'ativo', '2026-01-01 00:00:00')",
+            ("dp_rub@usina.com.br", "dp_rub_user", "Analista DP", h, s, "analista_dp"),
+        )
+        conn.commit()
+        conn.close()
+        _, hdrs, _ = _executar_handler("POST", "/api/auth/login", self.db_path, {
+            "identificador": "dp_rub_user", "senha": "SenhaForte#2026!"
+        })
+        cookie = hdrs["Set-Cookie"][0].split(";")[0]
+
+        # Cria rubrica customizada calculada em % sobre o salário-base com incidência INSS/IRRF/FGTS
+        st_r, _, _ = _executar_handler("POST", "/api/folha/eventos-catalogo", self.db_path, {
+            "codigo": "0095",
+            "descricao": "Adicional de Risco Customizado",
+            "tipo": "provento",
+            "forma_calculo": "percentual",
+            "incide_inss": 1,
+            "incide_irrf": 1,
+            "incide_fgts": 1,
+        }, cookie=cookie)
+        self.assertEqual(st_r, 201)
+
+        colab = self.colab_srv.cadastrar(self._dados_colab(salario_base=2000.00, dependentes=[]))
+        st_sim, _, res_sim = _executar_handler("POST", "/api/folha/simular", self.db_path, {
+            "colaborador_id": colab["id"],
+            "eventos": [{"codigo": "0095", "referencia": 10}],
+        }, cookie=cookie)
+        self.assertEqual(st_sim, 200)
+        # 10% de 2000 = 200 -> total proventos = 2200, base FGTS = 2200, FGTS = 176.00
+        self.assertAlmostEqual(res_sim["dados"]["total_proventos"], 2200.00, places=2)
+        self.assertAlmostEqual(res_sim["dados"]["base_inss"], 2200.00, places=2)
+        self.assertAlmostEqual(res_sim["dados"]["valor_fgts_informativo"], 176.00, places=2)
+
+        st_save, _, res_save = _executar_handler("POST", "/api/folha", self.db_path, {
+            "colaborador_id": colab["id"],
+            "competencia": "2026-10",
+            "eventos": [{"codigo": "0095", "referencia": 10}],
+        }, cookie=cookie)
+        self.assertEqual(st_save, 201)
+        self.assertAlmostEqual(res_save["dados"]["total_proventos"], 2200.00, places=2)
+        self.assertAlmostEqual(res_save["dados"]["salario_liquido"], res_sim["dados"]["salario_liquido"], places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

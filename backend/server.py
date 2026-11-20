@@ -475,6 +475,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador"):
                 return
             comp = query.get("competencia", [None])[0]
+            comp_ini = query.get("competencia_inicio", [None])[0]
+            comp_fim = query.get("competencia_fim", [None])[0]
             filial_id = query.get("filial_id", [None])[0]
             setor = query.get("setor", [None])[0]
             colab_id = query.get("colaborador_id", [None])[0]
@@ -484,6 +486,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 filial_id=filial_id,
                 setor=setor,
                 colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                competencia_inicio=comp_ini,
+                competencia_fim=comp_fim,
             )
             return self._enviar_json(200, {"sucesso": True, "dados": rel})
 
@@ -881,13 +885,18 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 tipo_contrato = (colab.get("tipo_contrato") or "CLT").strip().lower()
                 aliquota_fgts = 2.0 if tipo_contrato == "aprendiz" else param.get("aliquota_fgts", 8.0)
                 num_dep_irrf = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
+                dias_mes_sim = int(dados.get("dias_mes", 30))
+                divisor_sim = float(dados.get("horas_divisor", colab.get("carga_horaria_mensal") or 220.0))
+                eventos_validados = self.folha_service._validar_e_hidratar_eventos(
+                    dados.get("eventos", []), horas_divisor=divisor_sim, dias_mes=dias_mes_sim
+                )
                 from .folha_calculos import processar_calculo_folha
                 calc = processar_calculo_folha(
                     salario_base=float(colab.get("salario_base", 0.0)),
                     dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
-                    dias_mes=int(dados.get("dias_mes", 30)),
-                    divisor_horas=float(dados.get("horas_divisor", colab.get("carga_horaria_mensal") or 220.0)),
-                    eventos_informados=dados.get("eventos", []),
+                    dias_mes=dias_mes_sim,
+                    divisor_horas=divisor_sim,
+                    eventos_informados=eventos_validados,
                     numero_dependentes=num_dep_irrf,
                     parametros_config={
                         "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
@@ -905,13 +914,18 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     },
                 )
                 itens = calc["itens"]
-                inss_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0501", "0502")), 2)
-                irrf_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] in ("0505", "0506", "0507")), 2)
-                desc_lancados = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it["codigo_evento"] not in ("0501", "0502", "0505", "0506", "0507")), 2)
+                inss_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0501", "0502") or it["codigo_evento"] in ("501", "0501", "0502"))), 2)
+                irrf_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0505", "0506", "0507") or it["codigo_evento"] in ("502", "0505", "0506", "0507"))), 2)
+                desc_lancados = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and it.get("codigo_catalogo") not in ("0501", "0502", "0505", "0506", "0507") and it["codigo_evento"] not in ("501", "0501", "0502", "502", "0505", "0506", "0507")), 2)
                 calc["resumo"]["inss_descontado"] = inss_val
                 calc["resumo"]["irrf_descontado"] = irrf_val
                 calc["resumo"]["descontos_lancados"] = desc_lancados
+                for k_res, v_res in calc["resumo"].items():
+                    if k_res not in ("encargos_patronais",):
+                        calc.setdefault(k_res, v_res)
                 return self._enviar_json(200, {"sucesso": True, "dados": calc})
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
             except FolhaNaoEncontradaException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
@@ -1083,10 +1097,17 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     elif acao == "reabrir":
                         corpo = self._ler_json_body()
                         motivo = corpo.get("motivo", "")
-                        reaberta = self.folha_service.reabrir_folha(folha_id, motivo=motivo, usuario=nome_responsavel)
+                        apagar = bool(corpo.get("apagar_para_relancar", False))
+                        reaberta = self.folha_service.reabrir_folha(
+                            folha_id, motivo=motivo, usuario=nome_responsavel, apagar_para_relancar=apagar
+                        )
+                        msg_reab = (
+                            f"Folha #{folha_id} reaberta e apagada para novo lançamento."
+                            if apagar else f"Folha #{folha_id} reaberta para edição."
+                        )
                         return self._enviar_json(200, {
                             "sucesso": True,
-                            "mensagem": f"Folha #{folha_id} reaberta para edição.",
+                            "mensagem": msg_reab,
                             "dados": reaberta
                         })
                     elif acao == "calcular":
