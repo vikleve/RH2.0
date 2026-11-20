@@ -101,23 +101,9 @@ function formatarDataBR(dataIso) {
 }
 
 function validarCpf(cpf) {
-  const n = normalizarCpf(cpf);
-  if (n.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(n)) return false;
-
-  let soma = 0;
-  for (let i = 0; i < 9; i++) soma += parseInt(n[i], 10) * (10 - i);
-  let resto = (soma * 10) % 11;
-  let d1 = resto === 10 ? 0 : resto;
-  if (d1 !== parseInt(n[9], 10)) return false;
-
-  soma = 0;
-  for (let i = 0; i < 10; i++) soma += parseInt(n[i], 10) * (11 - i);
-  resto = (soma * 10) % 11;
-  let d2 = resto === 10 ? 0 : resto;
-  if (d2 !== parseInt(n[10], 10)) return false;
-
-  return true;
+  // O navegador valida apenas o formato. A validação matemática é autoritativa no backend,
+  // onde pode ser relaxada somente com RH2_ALLOW_FAKE_CPFS em ambiente não produtivo.
+  return normalizarCpf(cpf).length === 11;
 }
 
 function validarEmail(email) {
