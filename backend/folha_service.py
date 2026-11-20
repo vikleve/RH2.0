@@ -109,6 +109,14 @@ class FolhaService:
         desc = dados.get("descricao", "Parâmetros Customizados").strip()
         vig_ini = dados.get("vigencia_inicio", "2026-01-01").strip()
         vig_fim = dados.get("vigencia_fim") or None
+        padroes_2026 = {
+            "teto_inss": 8475.55,
+            "deducao_dependente_irrf": 189.59,
+            "desconto_simplificado_irrf": 607.20,
+            "salario_minimo": 1621.00,
+            "limite_salario_familia": 1980.38,
+            "valor_cota_salario_familia": 67.54,
+        }
 
         cursor.execute(f"SELECT id FROM folha_parametros WHERE codigo = {P}", (codigo,))
         existente = cursor.fetchone()
