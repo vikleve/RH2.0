@@ -266,7 +266,11 @@ _DDL_USUARIOS_PG = """
         senha_hash    TEXT NOT NULL,
         salt          TEXT NOT NULL,
         perfil        TEXT NOT NULL
-                      CHECK (perfil IN ('administrador', 'analista_rh', 'operador_dp')),
+                      CHECK (perfil IN (
+                          'superadmin', 'admin_empresa', 'gestor_rh', 'analista_dp',
+                          'financeiro', 'contabilidade', 'gestor_departamento', 'colaborador',
+                          'administrador', 'analista_rh', 'operador_dp', 'gestor', 'medico_sst', 'auditor'
+                      )),
         status        TEXT NOT NULL DEFAULT 'ativo'
                       CHECK (status IN ('ativo', 'inativo')),
         criado_em     TEXT NOT NULL,
@@ -282,7 +286,11 @@ _DDL_USUARIOS_SQLITE = """
         nome_completo TEXT NOT NULL,
         senha_hash    TEXT NOT NULL,
         salt          TEXT NOT NULL,
-        perfil        TEXT NOT NULL CHECK (perfil IN ('administrador', 'analista_rh', 'operador_dp')),
+        perfil        TEXT NOT NULL CHECK (perfil IN (
+                          'superadmin', 'admin_empresa', 'gestor_rh', 'analista_dp',
+                          'financeiro', 'contabilidade', 'gestor_departamento', 'colaborador',
+                          'administrador', 'analista_rh', 'operador_dp', 'gestor', 'medico_sst', 'auditor'
+                      )),
         status        TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'inativo')),
         criado_em     TEXT NOT NULL,
         ultimo_login  TEXT
