@@ -2929,25 +2929,46 @@ const FolhaManager = {
     }
   },
 
-  async baixarHoleritePDF() {
-    if (!this.folhaParaFecharOuReabrir) return;
-    const f = this.folhaParaFecharOuReabrir;
+  _baixarBlobArquivo(blob, nomeArq) {
+    if (window.navigator && typeof window.navigator.msSaveOrOpenBlob === 'function') {
+      window.navigator.msSaveOrOpenBlob(blob, nomeArq);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = nomeArq;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1500);
+  },
+
+  async baixarHoleritePDF(folhaId = null) {
+    const id = folhaId || (this.folhaParaFecharOuReabrir && this.folhaParaFecharOuReabrir.id);
+    if (!id) {
+      exibirToast('Abra um contracheque antes de baixar o PDF A4.', 'error');
+      return;
+    }
     try {
-      const resp = await fetch(`${API_BASE}/folha/${f.id}/pdf`, { headers: getAuthHeaders(), credentials: 'include' });
-      if (!resp.ok) {
-        exibirToast('Erro ao gerar PDF do contracheque.', 'error');
+      const resp = await fetch(`${API_BASE}/folha/${id}/pdf`, { headers: getAuthHeaders(), credentials: 'include' });
+      const contentType = (resp.headers.get('Content-Type') || '').toLowerCase();
+      if (!resp.ok || !contentType.includes('application/pdf')) {
+        const err = await resp.json().catch(() => ({}));
+        exibirToast(err.mensagem || `Erro ao gerar PDF do contracheque (HTTP ${resp.status}).`, 'error');
         return;
       }
       const blob = await resp.blob();
       const disp = resp.headers.get('Content-Disposition') || '';
-      const match = disp.match(/filename="([^"]+)"/);
-      const nomeArq = match ? match[1] : `CONTRACHEQUE_${f.id}.pdf`;
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = nomeArq;
-      a.click();
+      const match = disp.match(/filename="?([^";]+)"?/i);
+      const nomeArq = match ? match[1] : `CONTRACHEQUE_${id}.pdf`;
+      this._baixarBlobArquivo(blob, nomeArq);
       exibirToast('PDF A4 do contracheque baixado com sucesso!', 'success');
     } catch (e) {
+      console.error('Erro ao baixar PDF A4:', e);
       exibirToast('Falha ao baixar PDF do contracheque.', 'error');
     }
   },
@@ -2962,21 +2983,20 @@ const FolhaManager = {
     if (situacao && situacao !== 'todos') params.set('situacao', situacao);
     try {
       const resp = await fetch(`${API_BASE}/folha/holerites-lote/pdf?${params.toString()}`, { headers: getAuthHeaders(), credentials: 'include' });
-      if (!resp.ok) {
+      const contentType = (resp.headers.get('Content-Type') || '').toLowerCase();
+      if (!resp.ok || !contentType.includes('application/pdf')) {
         const err = await resp.json().catch(() => ({}));
-        exibirToast(err.mensagem || 'Nenhum contracheque encontrado para o lote.', 'error');
+        exibirToast(err.mensagem || `Nenhum contracheque encontrado para o lote (HTTP ${resp.status}).`, 'error');
         return;
       }
       const blob = await resp.blob();
       const disp = resp.headers.get('Content-Disposition') || '';
-      const match = disp.match(/filename="([^"]+)"/);
+      const match = disp.match(/filename="?([^";]+)"?/i);
       const nomeArq = match ? match[1] : `CONTRACHEQUES_LOTE_${comp || 'GERAL'}.pdf`;
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = nomeArq;
-      a.click();
+      this._baixarBlobArquivo(blob, nomeArq);
       exibirToast('PDF A4 em lote baixado com sucesso!', 'success');
     } catch (e) {
+      console.error('Erro ao baixar PDF A4 em lote:', e);
       exibirToast('Falha ao gerar PDF em lote.', 'error');
     }
   },
