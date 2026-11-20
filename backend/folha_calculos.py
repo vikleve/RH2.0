@@ -830,10 +830,20 @@ def calcular_irrf_progressivo(
     faixas = tabela_faixas if tabela_faixas is not None else TABELA_IRRF_PADRAO_2026
     aliquota = Decimal("0.00")
     parcela = Decimal("0.00")
-    for f_min, f_max, aliq, deduc in faixas:
-        if base_tributavel >= f_min and (f_max is None or base_tributavel <= f_max):
-            aliquota, parcela = aliq, deduc
-            break
+    if faixas is TABELA_IRRF_PADRAO_2026 or (
+        tabela_faixas is None and faixas == TABELA_IRRF_PADRAO_2026
+    ):
+        # Padrão oficial 2026 representado por limites superiores inclusivos.
+        for limite_superior, aliq, deduc in faixas:
+            if limite_superior is None or base_tributavel <= limite_superior:
+                aliquota, parcela = aliq, deduc
+                break
+    else:
+        # Compatibilidade com tabelas personalizadas no formato legado de quatro colunas.
+        for f_min, f_max, aliq, deduc in faixas:
+            if base_tributavel >= f_min and (f_max is None or base_tributavel <= f_max):
+                aliquota, parcela = aliq, deduc
+                break
 
     imposto_tabela = max(
         Decimal("0.00"),
