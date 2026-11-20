@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS folha_parametros (
     aplicar_inss                INTEGER NOT NULL DEFAULT 1,
     aplicar_irrf                INTEGER NOT NULL DEFAULT 1,
     aliquota_fgts               NUMERIC(5,2) NOT NULL DEFAULT 8.00,
-    teto_inss                   NUMERIC(15,2) NOT NULL DEFAULT 8157.41,
+    teto_inss                   NUMERIC(15,2) NOT NULL DEFAULT 8475.55,
     deducao_dependente_irrf     NUMERIC(15,2) NOT NULL DEFAULT 189.59,
     ativo                       INTEGER NOT NULL DEFAULT 1,
     validado_por_profissional   INTEGER NOT NULL DEFAULT 0,
@@ -118,7 +118,7 @@ INSERT INTO folha_parametros (
     'PADRAO_CLT_2026', 'Parâmetros Gerais CLT 220h / Vigência 2026 (Padrão)',
     '2026-01-01', NULL,
     220.00, 30, 50.00, 100.00, 20.00, 0, 1.142857,
-    1, 1, 8.00, 8157.41, 189.59, 1, 1,
+    1, 1, 8.00, 8475.55, 189.59, 1, 1,
     TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 ) ON CONFLICT (codigo) DO NOTHING;
 
