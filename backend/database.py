@@ -182,6 +182,7 @@ def get_connection(db_path: str = None):
 _DDL_COLABORADORES_PG = """
     CREATE TABLE IF NOT EXISTS colaboradores (
         id               SERIAL PRIMARY KEY,
+        empresa_id       TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
         matricula        TEXT UNIQUE NOT NULL,
         nome_completo    TEXT NOT NULL,
         cpf              TEXT UNIQUE NOT NULL,
@@ -209,6 +210,7 @@ _DDL_COLABORADORES_PG = """
 _DDL_COLABORADORES_SQLITE = """
     CREATE TABLE IF NOT EXISTS colaboradores (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        empresa_id       TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
         matricula        TEXT UNIQUE NOT NULL,
         nome_completo    TEXT NOT NULL,
         cpf              TEXT UNIQUE NOT NULL,
@@ -1143,6 +1145,28 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresas_autorizadas TEXT;",
         ]
         for col_sql in colunas_extras:
+            try:
+                cursor.execute(col_sql)
+            except Exception:
+                pass
+    else:
+        colunas_extras_sqlite = [
+            "ALTER TABLE colaboradores ADD COLUMN empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN filial_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN departamento_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN cargo_id TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN sexo TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN estado_civil TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN celular TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN complemento TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN observacoes TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN criado_por TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE colaboradores ADD COLUMN atualizado_por TEXT;",
+            "ALTER TABLE usuarios ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE usuarios ADD COLUMN filial_id TEXT;",
+            "ALTER TABLE usuarios ADD COLUMN empresas_autorizadas TEXT;",
+        ]
+        for col_sql in colunas_extras_sqlite:
             try:
                 cursor.execute(col_sql)
             except Exception:

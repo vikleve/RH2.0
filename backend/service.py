@@ -69,6 +69,22 @@ class ColaboradorService:
     def _insert_id(self, cursor, conn, sql_pg, sql_sqlite, params):
         return insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
 
+    def _tabela_tem_coluna(self, cursor, tabela: str, coluna: str) -> bool:
+        """Verifica de forma resiliente e compatível se a tabela possui a coluna informada."""
+        try:
+            if self._pg():
+                cursor.execute(
+                    "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+                    (tabela, coluna)
+                )
+                return cursor.fetchone() is not None
+            else:
+                cursor.execute(f"PRAGMA table_info({tabela})")
+                cols = [row[1] if isinstance(row, (tuple, list)) else row["name"] for row in cursor.fetchall()]
+                return coluna in cols
+        except Exception:
+            return False
+
     # ──────────────────────────────────────────────────────────
     # CRUD
     # ──────────────────────────────────────────────────────────
@@ -168,8 +184,9 @@ class ColaboradorService:
         nome: str = None,
         matricula: str = None,
         cpf: str = None,
+        empresa_id: str = None,
     ) -> list:
-        """Lista colaboradores com pesquisa e filtros por nome, matrícula, CPF, cargo e setor (RF-002)."""
+        """Lista colaboradores com pesquisa e filtros por nome, matrícula, CPF, cargo, setor e empresa (RF-002, Multiempresa)."""
         P = self._ph()
         pg = self._pg()
 
@@ -183,6 +200,11 @@ class ColaboradorService:
             WHERE 1=1
         """
         params = []
+
+        tem_empresa_col = self._tabela_tem_coluna(cursor, "colaboradores", "empresa_id")
+        if empresa_id and empresa_id.strip() and tem_empresa_col:
+            sql += f" AND (c.empresa_id = {P} OR c.empresa_id IS NULL)"
+            params.append(empresa_id.strip())
 
         if situacao and situacao.lower() in ("ativo", "inativo"):
             sql += f" AND c.situacao = {P}"
@@ -268,17 +290,23 @@ class ColaboradorService:
                 r["salario_base"] = float(r["salario_base"])
         return resultado
 
-    def obter_por_id(self, colaborador_id: int) -> dict:
-        """Retorna dados completos do colaborador, dependentes e historico."""
+    def obter_por_id(self, colaborador_id: int, empresa_id: str = None) -> dict:
+        """Retorna dados completos do colaborador, dependentes e historico com validação multi-tenant."""
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
 
-        cursor.execute(f"SELECT * FROM colaboradores WHERE id = {P}", (colaborador_id,))
+        sql = f"SELECT * FROM colaboradores WHERE id = {P}"
+        params = [colaborador_id]
+        if empresa_id and empresa_id.strip() and self._tabela_tem_coluna(cursor, "colaboradores", "empresa_id"):
+            sql += f" AND (empresa_id = {P} OR empresa_id IS NULL)"
+            params.append(empresa_id.strip())
+
+        cursor.execute(sql, tuple(params))
         colab = self._fetchone(cursor)
         if not colab:
             conn.close()
-            raise RecursoNaoEncontradoException(f"Colaborador com ID {colaborador_id} nao encontrado.")
+            raise RecursoNaoEncontradoException(f"Colaborador com ID {colaborador_id} nao encontrado ou acesso nao autorizado.")
 
         cursor.execute(
             f"SELECT id, nome, cpf, parentesco FROM dependentes WHERE colaborador_id = {P}",

@@ -19,8 +19,8 @@ export function toDecimal(val: any): Decimal {
       strVal = strVal.replace(/\./g, '').replace(',', '.');
     }
     return new Decimal(strVal);
-  } catch {
-    return new Decimal('0.00');
+  } catch (err) {
+    throw new Error(`[RF-FIN-001] Valor monetário inválido para conversão Decimal: "${val}"`);
   }
 }
 

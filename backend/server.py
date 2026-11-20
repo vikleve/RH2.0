@@ -294,8 +294,10 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         cl = self.headers.get("Content-Length") or self.headers.get("content-length") or 0
         content_length = int(cl)
         if content_length == 0:
+            self._body_lido = True
             return {}
         raw = self.rfile.read(content_length).decode("utf-8")
+        self._body_lido = True
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
@@ -341,6 +343,10 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            empresa_valida = self._validar_escopo_empresa(usuario, empresa_alvo)
+            if empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador"):
+                return
             termo = (query.get("q") or query.get("search") or [None])[0]
             situacao = query.get("situacao", [None])[0]
             setor = (query.get("setor") or query.get("departamentoId") or [None])[0]
@@ -356,6 +362,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 nome=nome,
                 matricula=matricula,
                 cpf=cpf,
+                empresa_id=empresa_valida,
             )
             return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
 
@@ -367,8 +374,11 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 if not usuario:
                     return
                 colab_id = int(partes[2])
+                empresa_valida = self._validar_escopo_empresa(usuario)
+                if empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador"):
+                    return
                 try:
-                    colab = self.service.obter_por_id(colab_id)
+                    colab = self.service.obter_por_id(colab_id, empresa_id=empresa_valida)
                     return self._enviar_json(200, {"sucesso": True, "dados": colab})
                 except RecursoNaoEncontradoException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})

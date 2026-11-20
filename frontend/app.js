@@ -147,6 +147,74 @@ function exibirToast(mensagem, tipo = 'success') {
 }
 
 // ============================================================================
+// Paginação Reutilizável Enterprise para Tabelas DOM
+// ============================================================================
+function aplicarPaginacaoTabela(tbodyId, pagerId, pageSize = 12) {
+  const tbody = document.getElementById(tbodyId);
+  const pager = document.getElementById(pagerId);
+  if (!tbody || !pager) return;
+
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const total = rows.length;
+  if (total <= pageSize) {
+    rows.forEach(r => { r.style.display = ''; });
+    if (total === 0) {
+      pager.classList.add('hidden');
+      pager.innerHTML = '';
+    } else {
+      pager.classList.remove('hidden');
+      pager.innerHTML = `<span class="pagination-info">Exibindo ${total} registro(s)</span><div class="pagination-controls"></div>`;
+    }
+    return;
+  }
+
+  const totalPages = Math.ceil(total / pageSize);
+  let currentPage = Number(pager.dataset.page || 1);
+  if (currentPage > totalPages) currentPage = 1;
+
+  const renderPage = (page) => {
+    currentPage = page;
+    pager.dataset.page = String(page);
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+
+    rows.forEach((row, idx) => {
+      row.style.display = (idx >= start && idx < end) ? '' : 'none';
+    });
+
+    const showingEnd = Math.min(end, total);
+    let buttonsHtml = `
+      <button type="button" class="page-btn" data-p="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Anterior</button>
+    `;
+    for (let p = 1; p <= totalPages; p++) {
+      if (totalPages > 7 && Math.abs(p - page) > 2 && p !== 1 && p !== totalPages) {
+        if (p === 2 || p === totalPages - 1) buttonsHtml += `<span class="text-muted" style="padding:0 0.25rem;">...</span>`;
+        continue;
+      }
+      buttonsHtml += `<button type="button" class="page-btn ${p === page ? 'active' : ''}" data-p="${p}">${p}</button>`;
+    }
+    buttonsHtml += `
+      <button type="button" class="page-btn" data-p="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Próxima</button>
+    `;
+
+    pager.classList.remove('hidden');
+    pager.innerHTML = `
+      <span class="pagination-info">Mostrando ${start + 1}–${showingEnd} de ${total} registros</span>
+      <div class="pagination-controls">${buttonsHtml}</div>
+    `;
+
+    pager.querySelectorAll('.page-btn[data-p]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetPage = Number(btn.getAttribute('data-p'));
+        if (targetPage >= 1 && targetPage <= totalPages) renderPage(targetPage);
+      });
+    });
+  };
+
+  renderPage(currentPage);
+}
+
+// ============================================================================
 // ============================================================================
 // Gerenciador de Autenticação e Sessão (RF-40, RF-41, RF-43)
 // ============================================================================
@@ -571,6 +639,7 @@ function renderizarTabela(lista) {
 
   if (!lista || lista.length === 0) {
     emptyState.classList.remove('hidden');
+    aplicarPaginacaoTabela('corpo-tabela', 'paginacao-colaboradores', 12);
     return;
   }
   emptyState.classList.add('hidden');
@@ -625,6 +694,7 @@ function renderizarTabela(lista) {
     `;
     tbody.appendChild(tr);
   });
+  aplicarPaginacaoTabela('corpo-tabela', 'paginacao-colaboradores', 12);
 }
 
 async function atualizarMetricas() {
@@ -1512,6 +1582,28 @@ const FolhaManager = {
     if (elProventos) elProventos.textContent = formatarMoeda(totalBruto);
     if (elDescontos) elDescontos.textContent = formatarMoeda(totalDesc);
     if (elLiquido) elLiquido.textContent = formatarMoeda(totalLiq);
+
+    // Atualiza Banner Executivo da Competência da Folha
+    const compInput = document.getElementById('filtro-folha-competencia')?.value;
+    const elBannerComp = document.getElementById('folha-banner-competencia');
+    const elBannerQtd = document.getElementById('folha-banner-qtd-func');
+    const elBannerEncargos = document.getElementById('folha-banner-encargos');
+    const elBannerStatus = document.getElementById('folha-banner-status');
+
+    if (elBannerComp) elBannerComp.textContent = compInput || 'Todas as Competências';
+    if (elBannerQtd) elBannerQtd.textContent = String(this.folhas.length);
+    if (elBannerEncargos) elBannerEncargos.textContent = formatarMoeda(totalBruto * 0.08);
+    if (elBannerStatus) {
+      if (this.folhas.length === 0) {
+        elBannerStatus.textContent = 'Sem Lançamentos';
+      } else if (this.folhas.every(f => f.situacao === 'fechada')) {
+        elBannerStatus.textContent = 'Competência Fechada';
+      } else if (this.folhas.some(f => f.situacao === 'rascunho')) {
+        elBannerStatus.textContent = 'Com Rascunhos Pendentes';
+      } else {
+        elBannerStatus.textContent = 'Calculada / Em Conferência';
+      }
+    }
   },
 
   renderizarTabelaFolhas() {
@@ -1523,6 +1615,7 @@ const FolhaManager = {
 
     if (this.folhas.length === 0) {
       if (estadoVazio) estadoVazio.classList.remove('hidden');
+      aplicarPaginacaoTabela('corpo-tabela-folha', 'paginacao-folha', 12);
       return;
     }
 
@@ -1628,6 +1721,8 @@ const FolhaManager = {
     corpo.querySelectorAll('.btn-action-reopen').forEach(btn => {
       btn.addEventListener('click', () => this.solicitarReabertura(btn.dataset.folhaId));
     });
+
+    aplicarPaginacaoTabela('corpo-tabela-folha', 'paginacao-folha', 12);
   },
 
   async abrirModalNovaFolha() {
@@ -2642,11 +2737,58 @@ const PlataformaManager = {
 
   inicializar() {
     this.configurarNavegacaoSidebar();
+    this.configurarCollapseSidebar();
     this.configurarMenuMobile();
     this.configurarNotificacoesHeader();
     this.configurarEventosModais();
     this.configurarSSTTabs();
     this.configurarBotoesAcao();
+  },
+
+  configurarCollapseSidebar() {
+    const sidebar = document.getElementById('platform-sidebar');
+    const btnCollapse = document.getElementById('btn-collapse-sidebar');
+    if (!sidebar || !btnCollapse) return;
+
+    if (localStorage.getItem('rh2_sidebar_collapsed') === '1') {
+      sidebar.classList.add('collapsed');
+    }
+
+    btnCollapse.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      const collapsed = sidebar.classList.contains('collapsed');
+      localStorage.setItem('rh2_sidebar_collapsed', collapsed ? '1' : '0');
+    });
+  },
+
+  atualizarBreadcrumb(viewName) {
+    const map = {
+      'dashboard': ['Estratégico', 'Dashboard & BI'],
+      'pendencias': ['Estratégico', 'Central de Pendências'],
+      'colaboradores': ['Pessoas & Admissão', 'Funcionários'],
+      'admissoes': ['Pessoas & Admissão', 'Admissões & Contratos'],
+      'beneficios': ['Pessoas & Admissão', 'Benefícios & Descontos'],
+      'ponto': ['Jornada & Desligamento', 'Controle de Ponto'],
+      'ferias': ['Jornada & Desligamento', 'Férias & Abono'],
+      'afastamentos': ['Jornada & Desligamento', 'Afastamentos'],
+      'rescisoes': ['Jornada & Desligamento', 'Rescisões'],
+      'folha': ['Folha & Remuneração', 'Folha de Pagamento'],
+      'integracoes': ['Folha & Remuneração', 'Bancos / CNAB 240'],
+      'relatorios': ['Compliance & Relatórios', 'Relatórios Gerenciais'],
+      'documentos': ['Compliance & Relatórios', 'Documentos Trabalhistas'],
+      'sst': ['Compliance & Relatórios', 'SST & Medicina'],
+      'esocial': ['Compliance & Relatórios', 'eSocial & Obrigações'],
+      'auditoria': ['Governança & Sistema', 'Auditoria & Logs'],
+      'multiempresa': ['Governança & Sistema', 'Multiempresa'],
+      'configuracoes': ['Governança & Sistema', 'Configurações & Parâmetros'],
+      'portal-colaborador': ['Portais Enterprise', 'Portal do Colaborador'],
+      'portal-gestor': ['Portais Enterprise', 'Portal do Gestor']
+    };
+    const [cat, pag] = map[viewName] || ['Módulo', viewName];
+    const elCat = document.getElementById('breadcrumb-categoria');
+    const elPag = document.getElementById('breadcrumb-pagina');
+    if (elCat) elCat.textContent = cat;
+    if (elPag) elPag.textContent = pag;
   },
 
   abrirDrawerMobile() {
@@ -2816,6 +2958,7 @@ const PlataformaManager = {
   async navegarPara(viewName) {
     this.visaoAtual = viewName;
     this.fecharDrawerMobile();
+    this.atualizarBreadcrumb(viewName);
 
     // Atualiza classe active nos botões da sidebar
     document.querySelectorAll('.sidebar-btn').forEach(b => {
@@ -2841,16 +2984,20 @@ const PlataformaManager = {
       'view-modulo-pendencias',
       'view-modulo-colaboradores',
       'view-modulo-admissoes',
+      'view-modulo-beneficios',
       'view-modulo-ponto',
       'view-modulo-ferias',
       'view-modulo-afastamentos',
       'view-modulo-folha',
       'view-modulo-rescisoes',
+      'view-modulo-relatorios',
+      'view-modulo-documentos',
       'view-modulo-sst',
       'view-modulo-esocial',
       'view-modulo-integracoes',
       'view-modulo-auditoria',
       'view-modulo-multiempresa',
+      'view-modulo-configuracoes',
       'view-modulo-portal-colaborador',
       'view-modulo-portal-gestor'
     ];
@@ -2873,6 +3020,7 @@ const PlataformaManager = {
         if (typeof carregarColaboradores === 'function') await carregarColaboradores();
       }
       else if (viewName === 'admissoes') await this.carregarAdmissoes();
+      else if (viewName === 'beneficios') await this.carregarBeneficiosCatalogo();
       else if (viewName === 'ponto') await this.carregarPonto();
       else if (viewName === 'ferias') await this.carregarFerias();
       else if (viewName === 'afastamentos') await this.carregarAfastamentos();
@@ -4331,7 +4479,7 @@ const PlataformaManager = {
       btnLote.addEventListener('click', () => {
         const selecionados = document.querySelectorAll('.chk-gestor-item:checked');
         if (selecionados.length === 0) {
-          mostrarToast('Selecione ao menos uma pendência para aprovar.', 'warning');
+          exibirToast('Selecione ao menos uma pendência para aprovar.', 'warning');
           return;
         }
         selecionados.forEach(chk => {
@@ -4344,8 +4492,125 @@ const PlataformaManager = {
         });
         const badgePend = document.getElementById('kpi-gestor-aprovacoes-pendentes');
         if (badgePend) badgePend.textContent = '0';
-        mostrarToast(`${selecionados.length} pendência(s) aprovada(s) com sucesso em lote!`, 'success');
+        exibirToast(`${selecionados.length} pendência(s) aprovada(s) com sucesso em lote!`, 'success');
       });
+    }
+  },
+
+  processarAcaoGestor(btn, mensagem, aprovado) {
+    const tr = btn ? btn.closest('tr') : null;
+    if (tr) {
+      tr.style.opacity = '0.6';
+      const tdAcoes = tr.querySelector('.btn-group-actions');
+      if (tdAcoes) {
+        tdAcoes.innerHTML = aprovado
+          ? '<span class="badge-status badge-calculada">Aprovado pelo Gestor</span>'
+          : '<span class="badge-status badge-pendente">Rejeitado pelo Gestor</span>';
+      }
+    }
+    exibirToast(mensagem, aprovado ? 'success' : 'warning');
+  },
+
+  async carregarBeneficiosCatalogo() {
+    const tbody = document.getElementById('tbody-beneficios-catalogo');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:1rem;"><div class="skeleton-bar" style="width:100%;"></div></td></tr>';
+    try {
+      const resp = await fetch(`${API_BASE}/folha/eventos-catalogo`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (!resp.ok) throw new Error('Falha ao consultar catálogo');
+      const json = await resp.json();
+      const todos = json.dados || [];
+      const benef = todos.filter(e =>
+        /vale|plano|saude|saúde|odonto|alimenta|refeic|refeiç|cesta|auxilio|auxílio|seguro/i.test(e.descricao || '')
+      );
+      if (benef.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted" style="padding:1.5rem;">Nenhuma rubrica de benefício encontrada no catálogo.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      benef.forEach(item => {
+        const tr = document.createElement('tr');
+        const incide = (item.incide_inss || item.incide_fgts) ? 'Sim (Salário-Utilidade)' : 'Não (Indenizatório / PAT)';
+        tr.innerHTML = `
+          <td><strong>${item.codigo}</strong></td>
+          <td>${item.descricao}</td>
+          <td><span class="badge-status ${item.tipo === 'provento' ? 'badge-calculada' : 'badge-aberta'}">${item.tipo}</span></td>
+          <td>${incide}</td>
+          <td><span class="badge-status badge-calculada">Ativo</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger" style="padding:1.5rem;">Erro ao carregar catálogo de benefícios.</td></tr>';
+    }
+  },
+
+  async exportarColaboradoresCSV() {
+    try {
+      const lista = await DadosService.listar({ situacao: 'todos' });
+      if (!lista || lista.length === 0) {
+        exibirToast('Nenhum colaborador disponível para exportação.', 'warning');
+        return;
+      }
+      const cabecalho = ['Matricula', 'Nome Completo', 'CPF', 'Cargo', 'Setor', 'Salario Base', 'Situacao'];
+      const linhas = lista.map(c => [
+        `"${c.matricula || ''}"`,
+        `"${(c.nome_completo || '').replace(/"/g, '""')}"`,
+        `"${c.cpf || ''}"`,
+        `"${(c.cargo || '').replace(/"/g, '""')}"`,
+        `"${(c.setor || '').replace(/"/g, '""')}"`,
+        Number(c.salario_base || 0).toFixed(2),
+        `"${c.situacao || ''}"`
+      ].join(';'));
+      const csv = '\uFEFF' + [cabecalho.join(';'), ...linhas].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rh20_funcionarios_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      exibirToast(`Exportação de ${lista.length} funcionário(s) concluída!`, 'success');
+    } catch (e) {
+      exibirToast('Falha ao exportar relatório de funcionários.', 'error');
+    }
+  },
+
+  async exportarFolhasCSV() {
+    try {
+      const resp = await fetch(`${API_BASE}/folha`, { headers: getAuthHeaders(), credentials: 'include' });
+      if (!resp.ok) throw new Error('Erro API');
+      const json = await resp.json();
+      const folhas = json.dados || [];
+      if (folhas.length === 0) {
+        exibirToast('Nenhuma folha processada encontrada para exportação.', 'warning');
+        return;
+      }
+      const cabecalho = ['Competencia', 'Colaborador', 'Matricula', 'Salario Base', 'Proventos', 'Descontos', 'Liquido', 'Situacao'];
+      const linhas = folhas.map(f => [
+        `"${f.competencia || ''}"`,
+        `"${(f.colaborador_nome || '').replace(/"/g, '""')}"`,
+        `"${f.colaborador_matricula || ''}"`,
+        Number(f.salario_base_contratual || 0).toFixed(2),
+        Number(f.total_proventos || 0).toFixed(2),
+        Number(f.total_descontos || 0).toFixed(2),
+        Number(f.salario_liquido || 0).toFixed(2),
+        `"${f.situacao || ''}"`
+      ].join(';'));
+      const csv = '\uFEFF' + [cabecalho.join(';'), ...linhas].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rh20_folha_analitica_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      exibirToast(`Exportação de ${folhas.length} folha(s) concluída!`, 'success');
+    } catch (e) {
+      exibirToast('Falha ao exportar relatório de folha.', 'error');
     }
   },
 

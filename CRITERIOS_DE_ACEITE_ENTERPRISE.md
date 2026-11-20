@@ -93,7 +93,8 @@ Este documento estabelece os **Critérios de Aceite (CA)** objetivos, mensuráve
 | `tests/test_rate_limit_csrf.py` | 13 | 🟢 100% OK | Rate limiting 5 tentativas, validação CSRF/Origin, cookies HttpOnly. |
 | `tests/test_responsividade_desktop_mobile.py` | 5 | 🟢 100% OK | Breakpoints 360-1920px, menu desktop/mobile, bottom nav e cards de BI. |
 | `tests/test_rbac_enterprise.py` | 5 | 🟢 100% OK | 8 perfis Enterprise, matriz RBAC, checagem curinga e portais no frontend. |
-| **TOTAL CONSOLIDADO** | **122** | 🟢 **100% SUCESSO** | **Zero regressões, zero falhas, zero erros.** |
+| `tests/test_motor_unificado_e_empresarial.py` | 9 | 🟢 100% OK | Motor unificado, conversão estrita Decimal, tabelas legais, eSocial e CNAB240 multibanco. |
+| **TOTAL CONSOLIDADO** | **131** | 🟢 **100% SUCESSO** | **Zero regressões, zero falhas, zero erros.** |
 
 ---
 *Homologação técnica concluída e aprovada para liberação comercial do RH2.0 Enterprise.*

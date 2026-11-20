@@ -32,8 +32,11 @@ except ImportError:
 # Conversão e Arredondamento Monetário
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _to_decimal(val: Any) -> Decimal:
-    """Converte com segurança qualquer valor numérico ou string para Decimal."""
+def _to_decimal(val: Any, estrito: bool = False) -> Decimal:
+    """
+    Converte com precisão e segurança qualquer valor numérico ou string para Decimal.
+    Não silencia erros em valores malformados (RF-FIN-001, Seção 4.5).
+    """
     if val is None or val == "":
         return Decimal("0.00")
     if isinstance(val, Decimal):
@@ -46,8 +49,12 @@ def _to_decimal(val: Any) -> Decimal:
             # Exemplo: 1.234,56
             str_val = str_val.replace(".", "").replace(",", ".")
         return Decimal(str_val)
-    except Exception:
-        return Decimal("0.00")
+    except Exception as e:
+        if estrito or not isinstance(val, (int, float, str)):
+            from .tabelas_legais import ConversaoFinanceiraException
+            raise ConversaoFinanceiraException(f"Valor monetário inválido para cálculo: {val}") from e
+        from .tabelas_legais import ConversaoFinanceiraException
+        raise ConversaoFinanceiraException(f"Erro de conversão numérica para Decimal no valor '{val}'") from e
 
 
 def arredondar_moeda(val: Any) -> Decimal:

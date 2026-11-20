@@ -24,6 +24,7 @@ from tests.test_folha_calculos import TestFolhaCalculos
 from tests.test_folha_service import TestFolhaService
 from tests.test_rate_limit_csrf import TestAutenticacaoRH20
 from tests.test_rn_oficiais_2026 import TestRegrasNegocioOficiais2026
+from tests.test_motor_unificado_e_empresarial import TestMotorUnificadoEEmpresarial
 from tests.test_plataforma_ciclo_trabalhista import TestPlataformaCicloTrabalhista
 from tests.test_rbac_enterprise import TestRBACEnterprise
 from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
@@ -58,6 +59,9 @@ def executar():
 
     # 4c. Testes de RBAC Enterprise e Portais do Colaborador e do Gestor
     suite.addTests(carregador.loadTestsFromTestCase(TestRBACEnterprise))
+
+    # 4d. Testes do Motor Unificado, Tabelas Legais, eSocial e CNAB240
+    suite.addTests(carregador.loadTestsFromTestCase(TestMotorUnificadoEEmpresarial))
 
     # 5. Testes de Serviço e Persistência da Folha (Ciclo de Vida e Auditoria)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))
