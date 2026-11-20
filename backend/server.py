@@ -12,6 +12,7 @@ import os
 import socketserver
 from typing import Any
 import urllib.parse
+from decimal import Decimal
 
 # Carrega variaveis de ambiente do arquivo .env (se existir)
 try:
@@ -243,52 +244,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return True
 
-    def _validar_escopo_empresa(self, usuario: dict, empresa_alvo_id: str | None = None) -> str | None:
-        """
-        Valida isolamento multi-tenant (Seção 7).
-        Se o usuário for superadmin/administrador, tem acesso global ou à empresa alvo solicitada.
-        Se for qualquer outro perfil, o acesso é estritamente restrito à empresa autenticada em sua sessão.
-        Retorna o empresa_id autorizado ou envia HTTP 403 Forbidden caso haja tentativa de violação (IDOR/BOLA).
-        """
-        perfil = usuario.get("perfil", "colaborador")
-        empresa_usuario = usuario.get("empresa_id") or "a0000000-0000-0000-0000-000000000001"
+    def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None, extra_headers: dict = None):
+        """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store, suporte a cookies HttpOnly e serialização segura de Decimais."""
+        def _json_serial(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            return str(obj)
 
-        if perfil in ("superadmin", "administrador"):
-            return empresa_alvo_id or empresa_usuario
-
-        if empresa_alvo_id and empresa_alvo_id != empresa_usuario:
-            self._enviar_json(403, {
-                "sucesso": False,
-                "mensagem": "Acesso negado: Tentativa de acesso a dados de outra organização não autorizada (Isolamento Multi-tenant).",
-                "codigo": "VIOLACAO_ISOLAMENTO_TENANT"
-            })
-            return None
-
-        return empresa_usuario
-
-    def _drenar_body_se_necessario(self):
-        """Consome bytes restantes no stream do corpo para evitar abortos de conexão TCP no cliente."""
-        try:
-            if not getattr(self, "_body_lido", False):
-                cl = self.headers.get("Content-Length") or self.headers.get("content-length") or 0
-                content_length = int(cl)
-                if content_length > 0:
-                    self.rfile.read(content_length)
-                self._body_lido = True
-        except Exception:
-            pass
-
-    def _enviar_json(
-        self,
-        status_code: int,
-        dados: dict[str, Any] | list[Any],
-        set_cookie: str | None = None,
-        delete_cookie: str | None = None,
-        extra_headers: dict[str, Any] | None = None,
-    ):
-        """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store e suporte a cookies HttpOnly."""
-        self._drenar_body_se_necessario()
-        corpo = json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
+        corpo = json.dumps(dados, ensure_ascii=False, indent=2, default=_json_serial).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
