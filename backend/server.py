@@ -97,13 +97,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         """Garante acesso ao ColaboradorService tanto em TCPServer quanto em Serverless Functions."""
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "colab_service"):
-                setattr(self.server, "colab_service", ColaboradorService(auto_init=False))
+                setattr(self.server, "colab_service", ColaboradorService())
             return getattr(self.server, "colab_service")
 
         if getattr(self, "_local_colab_service", None) is None:
             global _global_colab_service
             if _global_colab_service is None:
-                _global_colab_service = ColaboradorService(auto_init=False)
+                _global_colab_service = ColaboradorService()
             self._local_colab_service = _global_colab_service
         return self._local_colab_service
 
@@ -113,14 +113,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "auth_service"):
                 db_path = getattr(self.service, "db_path", None)
-                setattr(self.server, "auth_service", AuthService(db_path=db_path, auto_init=False))
+                setattr(self.server, "auth_service", AuthService(db_path=db_path))
             return getattr(self.server, "auth_service")
 
         if getattr(self, "_local_auth_service", None) is None:
             global _global_auth_service
             if _global_auth_service is None:
                 db_path = getattr(self.service, "db_path", None)
-                _global_auth_service = AuthService(db_path=db_path, auto_init=False)
+                _global_auth_service = AuthService(db_path=db_path)
             self._local_auth_service = _global_auth_service
         return self._local_auth_service
 
@@ -130,14 +130,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "folha_service"):
                 db_path = getattr(self.service, "db_path", None)
-                setattr(self.server, "folha_service", FolhaService(db_path=db_path, auto_init=False))
+                setattr(self.server, "folha_service", FolhaService(db_path=db_path))
             return getattr(self.server, "folha_service")
 
         if getattr(self, "_local_folha_service", None) is None:
             global _global_folha_service
             if _global_folha_service is None:
                 db_path = getattr(self.service, "db_path", None)
-                _global_folha_service = FolhaService(db_path=db_path, auto_init=False)
+                _global_folha_service = FolhaService(db_path=db_path)
             self._local_folha_service = _global_folha_service
         return self._local_folha_service
 
@@ -368,7 +368,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
-    def do_OPTIONS(self):
+    def send_error(self, code, message=None, explain=None):
+        """Garante resposta JSON padronizada em rotas /api/* mesmo em erros HTTP inesperados (evita HTML/Unexpected token)."""
+        path = getattr(self, "path", "") or ""
+        if path.startswith("/api/"):
+            return self._enviar_json(code, {
+                "sucesso": False,
+                "mensagem": message or f"Erro HTTP {code} ao processar a requisição.",
+                "codigo": f"HTTP_{code}",
+            })
+        return super().send_error(code, message, explain)
         """Suporte a pre-flight CORS com credenciais."""
         self.send_response(204)
         origem = self.headers.get("Origin", "*")
@@ -1313,7 +1322,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
                 return
             from .tabelas_legais_service import TabelasLegaisService
-            tab_srv = TabelasLegaisService(db_path=getattr(self.service, "db_path", None), auto_init=False)
+            tab_srv = TabelasLegaisService(db_path=getattr(self.service, "db_path", None))
             comp_q = (query.get("competencia") or [None])[0]
             if comp_q:
                 return self._enviar_json(200, {"sucesso": True, "dados": tab_srv.obter_tabela_vigente(comp_q)})
@@ -1328,7 +1337,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return
             from .tabelas_legais_service import TabelasLegaisService
             ano_q = query.get("ano", [None])[0]
-            fer = TabelasLegaisService(db_path=getattr(self.service, "db_path", None), auto_init=False).listar_feriados(
+            fer = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).listar_feriados(
                 empresa_id=empresa_valida, ano=int(ano_q) if ano_q and ano_q.isdigit() else None
             )
             return self._enviar_json(200, {"sucesso": True, "total": len(fer), "dados": fer})
@@ -1612,7 +1621,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 tipo_contrato = (colab.get("tipo_contrato") or "CLT").strip().lower()
                 comp_sim = (dados.get("competencia") or datetime.now().strftime("%Y-%m")).strip()[:7]
                 from .tabelas_legais_service import TabelasLegaisService
-                tab_srv_sim = TabelasLegaisService(db_path=self.folha_service.db_path, auto_init=False)
+                tab_srv_sim = TabelasLegaisService(db_path=self.folha_service.db_path)
                 tab_sim = tab_srv_sim.obter_tabela_vigente(comp_sim)
                 cal_sim = tab_srv_sim.contar_dias_uteis_dsr_competencia(comp_sim, colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001")
                 aliquota_fgts = float(tab_sim.get("aliquota_fgts_aprendiz", 2.0)) if tipo_contrato == "aprendiz" else float(param.get("aliquota_fgts", tab_sim.get("aliquota_fgts_padrao", 8.0)))
@@ -2729,7 +2738,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 from .tabelas_legais_service import TabelasLegaisService
                 dados = self._ler_json_body()
-                salvo = TabelasLegaisService(db_path=getattr(self.service, "db_path", None), auto_init=False).salvar_tabela_legal(
+                salvo = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).salvar_tabela_legal(
                     dados, usuario=usuario_auth["nome_completo"]
                 )
                 return self._enviar_json(201, {"sucesso": True, "mensagem": "Tabela legal gravada com histórico normativo!", "dados": salvo})
@@ -2748,7 +2757,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
                 if not ok_escopo:
                     return
-                feriado = TabelasLegaisService(db_path=getattr(self.service, "db_path", None), auto_init=False).cadastrar_feriado(
+                feriado = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).cadastrar_feriado(
                     data_feriado=dados.get("data_feriado") or dados.get("data") or "",
                     descricao=dados.get("descricao") or "",
                     abrangencia=dados.get("abrangencia") or "municipal",
@@ -3459,8 +3468,8 @@ def run_server(port: int = PORT, db_path: str | None = None):
     server_address = ("", port)
     httpd = socketserver.TCPServer(server_address, ApiColaboradorHandler)
     setattr(httpd, "colab_service", ColaboradorService(db_path=db_path))
-    setattr(httpd, "auth_service", AuthService(db_path=db_path, auto_init=False))
-    setattr(httpd, "folha_service", FolhaService(db_path=db_path, auto_init=False))
+    setattr(httpd, "auth_service", AuthService(db_path=db_path))
+    setattr(httpd, "folha_service", FolhaService(db_path=db_path))
     setattr(httpd, "plataforma_service", PlataformaService(db_path=db_path))
     print(f"Servidor rodando em http://localhost:{port}")
     try:

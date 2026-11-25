@@ -165,14 +165,17 @@ class TestAuditoriaAuthSessoesDesempenho(unittest.TestCase):
         _, token = self.auth_service.autenticar("admin.dp@empresa.com.br", os.environ["ADMIN_INITIAL_PASSWORD"])
         token_hash = hash_token(token)
 
-        # Simula 20 minutos desde a última atividade (acima do threshold padrão de 15 min)
+        # Simula 20 minutos transcorridos desde o login (acima do threshold padrão de 15 min)
         conn = get_connection(self.db_path)
         cur = conn.cursor()
         vinte_min_atras = (datetime.now() - timedelta(minutes=20)).strftime("%Y-%m-%d %H:%M:%S")
-        cur.execute("UPDATE sessoes SET ultima_atividade = ? WHERE token = ?", (vinte_min_atras, token_hash))
+        expira_antigo = (datetime.now() + timedelta(minutes=100)).strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute(
+            "UPDATE sessoes SET ultima_atividade = ?, expira_em = ? WHERE token = ?",
+            (vinte_min_atras, expira_antigo, token_hash),
+        )
         conn.commit()
-        cur.execute("SELECT expira_em FROM sessoes WHERE token = ?", (token_hash,))
-        expira_antes = cur.fetchone()[0]
+        expira_antes = expira_antigo
         conn.close()
 
         # Recarrega /api/auth/me (como F5 ou monitoramento de atividade)
@@ -278,6 +281,36 @@ class TestAuditoriaAuthSessoesDesempenho(unittest.TestCase):
         payload_str = json.dumps(data_m)
         self.assertNotIn(tok, payload_str)
         self.assertNotIn(os.environ["ADMIN_INITIAL_PASSWORD"], payload_str)
+
+    def test_10_csrf_compativel_com_proxy_vercel_e_bloqueia_cross_site(self):
+        from backend.csrf import get_csrf_protector
+        csrf = get_csrf_protector()
+
+        # Proxy Vercel: Origin corresponde a X-Forwarded-Host mesmo quando Host interno difere
+        ok_vercel, _ = csrf.validar_requisicao(
+            "POST",
+            {
+                "Origin": "https://rh2-0.vercel.app",
+                "Host": "127.0.0.1:3000",
+                "X-Forwarded-Host": "rh2-0.vercel.app",
+                "Sec-Fetch-Site": "same-origin",
+            },
+            host_esperado="127.0.0.1:3000",
+        )
+        self.assertTrue(ok_vercel)
+
+        # Ataque cross-site continua rigorosamente bloqueado
+        ok_evil, _ = csrf.validar_requisicao(
+            "POST",
+            {
+                "Origin": "https://atacante.evil.com",
+                "Host": "rh2-0.vercel.app",
+                "X-Forwarded-Host": "rh2-0.vercel.app",
+                "Sec-Fetch-Site": "cross-site",
+            },
+            host_esperado="rh2-0.vercel.app",
+        )
+        self.assertFalse(ok_evil)
 
 
 if __name__ == "__main__":

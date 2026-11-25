@@ -451,12 +451,7 @@ const AuthManager = {
         body: JSON.stringify({ identificador, senha })
       });
 
-      let data = null;
-      try {
-        data = await resp.json();
-      } catch (parseError) {
-        console.warn('A resposta do servidor não é um JSON válido:', resp.status, parseError);
-      }
+      const data = await parseJsonSeguro(resp);
 
       if (resp.ok && data && data.sucesso) {
         this.token = data.token;
@@ -472,8 +467,14 @@ const AuthManager = {
       } else if (data && data.mensagem) {
         if (alertaMsg) alertaMsg.textContent = data.mensagem;
         if (alerta) alerta.classList.remove('hidden');
+      } else if (resp.status === 429) {
+        if (alertaMsg) alertaMsg.textContent = 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.';
+        if (alerta) alerta.classList.remove('hidden');
       } else if (resp.status === 404) {
         if (alertaMsg) alertaMsg.textContent = 'Serviço de autenticação não encontrado (HTTP 404). Verifique se o backend está ativo.';
+        if (alerta) alerta.classList.remove('hidden');
+      } else if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
+        if (alertaMsg) alertaMsg.textContent = `Servidor temporariamente indisponível (HTTP ${resp.status}). Tente novamente em instantes.`;
         if (alerta) alerta.classList.remove('hidden');
       } else if (resp.status >= 500) {
         if (alertaMsg) alertaMsg.textContent = `Erro interno no servidor de autenticação (HTTP ${resp.status}). Tente novamente mais tarde.`;
@@ -3069,17 +3070,22 @@ const FolhaManager = {
     if (btnSalvar) btnSalvar.disabled = true;
 
     try {
-      const resp = await fetch(url, {
+      const resp = await requisitarApi(url, {
         method: metodo,
         headers: getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify(payload)
       });
 
-      const resJson = await resp.json();
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sua sessão expirou. Faça login novamente.');
+        return;
+      }
 
-      if (!resp.ok) {
-        mostrarErro((resJson.erros && resJson.erros.competencia) || resJson.mensagem || 'Ocorreu um erro ao processar a folha.');
+      const resJson = await parseJsonSeguro(resp);
+
+      if (!resp.ok || !resJson) {
+        mostrarErro((resJson && resJson.erros && resJson.erros.competencia) || (resJson && resJson.mensagem) || `Ocorreu um erro ao processar a folha (HTTP ${resp.status}).`);
         return;
       }
 
@@ -3100,7 +3106,7 @@ const FolhaManager = {
       }
     } catch (e) {
       console.error('Falha ao salvar folha:', e);
-      mostrarErro('Erro de comunicação com o servidor backend.');
+      mostrarErro((e && e.message) || 'Erro de comunicação com o servidor backend.');
     } finally {
       if (btnSalvar) btnSalvar.disabled = false;
     }
