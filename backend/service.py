@@ -78,9 +78,11 @@ class RecursoNaoEncontradoException(Exception):
 
 
 class ColaboradorService:
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, auto_init: bool = True):
         self.db_path = db_path
-        init_db(self.db_path)
+        # Em produção serverless, migrations não devem rodar em cada requisição.
+        if auto_init:
+            init_db(self.db_path)
 
     # ──────────────────────────────────────────────────────────
     # Shortcut helpers
