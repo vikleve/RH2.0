@@ -1786,11 +1786,21 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_RECUPERACAO_SENHA.format(pk=pk),
         _DDL_RATE_LIMIT_TENTATIVAS.format(pk=pk),
     ]
-    for ddl_sql in tabelas_plataforma:
+    # Cada DDL tolerante precisa de SAVEPOINT próprio: no PostgreSQL,
+    # uma instrução com erro aborta a transação inteira. Sem rollback ao savepoint,
+    # todos os DDL seguintes falham silenciosamente e tabelas críticas ficam ausentes.
+    def _executar_migracao_tolerante(sql, etapa):
+        cursor.execute("SAVEPOINT rh2_migracao_item")
         try:
-            cursor.execute(ddl_sql)
-        except Exception:
-            pass
+            cursor.execute(sql)
+            cursor.execute("RELEASE SAVEPOINT rh2_migracao_item")
+        except Exception as exc:
+            cursor.execute("ROLLBACK TO SAVEPOINT rh2_migracao_item")
+            cursor.execute("RELEASE SAVEPOINT rh2_migracao_item")
+            print(f"[RH2-MIGRATION] Falha em {etapa}: {type(exc).__name__}: {exc}")
+
+    for ddl_sql in tabelas_plataforma:
+        _executar_migracao_tolerante(ddl_sql, "DDL de tabela")
 
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_colab_matricula ON colaboradores(matricula);",
@@ -1856,20 +1866,14 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_chave_time ON rate_limit_tentativas(chave, timestamp);",
     ]
     for idx_sql in indices:
-        try:
-            cursor.execute(idx_sql)
-        except Exception:
-            pass
+        _executar_migracao_tolerante(idx_sql, "índice")
 
     # Garantir colunas de hash para encadeamento criptográfico e rastreabilidade (RF-200, RN-072)
     for col_audit in [
-        "ALTER TABLE auditoria_operacoes ADD COLUMN hash_anterior TEXT;",
-        "ALTER TABLE auditoria_operacoes ADD COLUMN hash_atual TEXT;",
+        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_anterior TEXT;",
+        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_atual TEXT;",
     ]:
-        try:
-            cursor.execute(col_audit)
-        except Exception:
-            pass
+        _executar_migracao_tolerante(col_audit, "coluna de auditoria")
 
     # Triggers de imutabilidade de logs de auditoria no banco de dados (RN-073)
     if not pg:
@@ -2128,10 +2132,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE esocial_eventos ADD COLUMN IF NOT EXISTS xml_retificador TEXT;",
         ]
         for col_sql in colunas_extras:
-            try:
-                cursor.execute(col_sql)
-            except Exception:
-                pass
+            _executar_migracao_tolerante(col_sql, "coluna complementar PostgreSQL")
     else:
         colunas_extras_sqlite = [
             "ALTER TABLE colaboradores ADD COLUMN empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
@@ -2695,6 +2696,9 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     except Exception:
         pass
 
+    # Seed de tabelas legais também fica isolado: uma falha não pode deixar
+    # a transação PostgreSQL abortada nem impedir as próximas inicializações.
+    cursor.execute("SAVEPOINT rh2_seed_legal")
     # Garante novas rubricas RF041-RF050 e tabelas legais/feriados versionados (Fase 2)
     try:
         import json as _json_leg
@@ -2805,8 +2809,12 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                 """,
                     ("a0000000-0000-0000-0000-000000000001", dt_f, desc_f, abr_f, agora_leg),
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        cursor.execute("ROLLBACK TO SAVEPOINT rh2_seed_legal")
+        cursor.execute("RELEASE SAVEPOINT rh2_seed_legal")
+        print(f"[RH2-MIGRATION] Falha no seed de tabelas legais: {type(exc).__name__}: {exc}")
+    else:
+        cursor.execute("RELEASE SAVEPOINT rh2_seed_legal")
 
     conn.commit()
     conn.close()
