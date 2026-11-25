@@ -1,0 +1,81 @@
+{
+  "executed_at": "2026-11-24T21:22:49.256Z",
+  "base_url": "http://127.0.0.1:8766",
+  "frontend_checks": {
+    "rubrica_bug_0031_0032_removido": true,
+    "rubrica_0512_0513_presente": true,
+    "tem_btn_novo_vinculo": true,
+    "tem_btn_novo_catalogo": true,
+    "tem_modais_beneficios": true,
+    "tem_btn_importar_beneficios_folha": true,
+    "tem_beneficios_manager_js": true
+  },
+  "rfs": {
+    "RF071": {
+      "status": "APROVADO",
+      "vinculo_id": 1,
+      "desconto_pos_edicao": 180
+    },
+    "RF072": {
+      "status": "APROVADO",
+      "vinculo_id": 2,
+      "custo_pos_edicao": 720
+    },
+    "RF073": {
+      "status": "APROVADO",
+      "vinculo_id": 3,
+      "custo_pos_edicao": 700
+    },
+    "RF074": {
+      "status": "APROVADO",
+      "vinculo_id": 4,
+      "desconto_pos_edicao": 120
+    },
+    "RF075": {
+      "status": "APROVADO",
+      "vinculo_id": 5,
+      "custo_pos_edicao": 55
+    },
+    "RF076": {
+      "status": "APROVADO",
+      "vinculo_id": 6,
+      "desconto_pos_edicao": 150
+    },
+    "RF077": {
+      "status": "APROVADO",
+      "vinculo_id": 7,
+      "alocacao": {
+        "alimentacao": 400,
+        "cultura": 200
+      }
+    },
+    "RF078": {
+      "status": "APROVADO",
+      "mensagem_bloqueio": "Colaborador inelegível para este benefício: Tipo de contrato 'Estagiário' inelegível (permitido: CLT)."
+    },
+    "RF079": {
+      "status": "APROVADO",
+      "total_descontos_beneficios": 455,
+      "folha_id": 1,
+      "folha_total_descontos": 708.41,
+      "folha_salario_liquido": 2291.59
+    },
+    "RF080": {
+      "status": "APROVADO",
+      "resumo": {
+        "total_vinculos_ativos": 7,
+        "total_colaboradores_beneficiados": 1,
+        "custo_total_mensal": 3045,
+        "total_custo_empresa": 2590,
+        "total_desconto_colaboradores": 455,
+        "custo_medio_por_colaborador": 3045
+      }
+    }
+  },
+  "screenshot": {
+    "attempted": false,
+    "ok": false,
+    "path": null,
+    "note": ""
+  }
+}

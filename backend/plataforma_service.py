@@ -4,11 +4,12 @@ Implementa a lógica de negócio, persistência relacional e validações para o
 Módulos 01 a 20 (RF-001 a RF-200), Regras Transversais (RT-01 a RT-13) e
 Regras de Negócio Trabalhistas e Compliance (RN-001 a RN-083).
 """
+import calendar
 import json
 import os
 import re
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.database import (
@@ -35,21 +36,22 @@ from backend.folha_calculos_2026 import (
 )
 
 
-class PlataformaValidacaoException(Exception):
-    """Exceção para violações de validação ou regras de negócio (HTTP 400)."""
-
-
-class PlataformaAcessoNegadoException(Exception):
-    """Exceção para permissão ou segregação de funções violada (HTTP 403)."""
-
-
-class PlataformaRecursoNaoEncontradoException(Exception):
-    """Exceção para recurso inexistente (HTTP 404)."""
+from .admissao_service import AdmissaoService
+from .plataforma_exceptions import (
+    PlataformaAcessoNegadoException,
+    PlataformaRecursoNaoEncontradoException,
+    PlataformaValidacaoException,
+)
 
 
 class PlataformaService:
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
+        self.admissao_service = AdmissaoService(
+            db_path=self.db_path,
+            auditoria_cb=self.registrar_auditoria,
+            calcular_beneficio_cb=self._calcular_valores_beneficio,
+        )
 
     def _conn(self):
         return get_connection(self.db_path)
@@ -140,327 +142,103 @@ class PlataformaService:
             conn.close()
 
     # ─────────────────────────────────────────────────────────────────────────
-    # MÓDULO 02: ADMISSÃO (RF-011 a RF-020)
+    # MÓDULO 02: ADMISSÃO (RF-011 a RF-020 — Delegado ao AdmissaoService)
     # ─────────────────────────────────────────────────────────────────────────
     def registrar_admissao(self, dados: Dict[str, Any], usuario: str) -> Dict[str, Any]:
-        """RF-011 / RF-013: Cria processo admissional com pré-validações de piso salarial e eSocial."""
-        # Normaliza aliases vindos de diferentes formulários
-        dados = dict(dados)
-        if not dados.get("candidato_nome") and dados.get("nome_candidato"):
-            dados["candidato_nome"] = dados["nome_candidato"]
-        if not dados.get("candidato_cpf") and dados.get("cpf"):
-            dados["candidato_cpf"] = dados["cpf"]
-        if not dados.get("candidato_email") and dados.get("email"):
-            dados["candidato_email"] = dados["email"]
-        elif not dados.get("candidato_email"):
-            dados["candidato_email"] = "candidato@forcaverde.com.br"
-        if not dados.get("cargo") and dados.get("cargo_proposto"):
-            dados["cargo"] = dados["cargo_proposto"]
-        if not dados.get("setor"):
-            dados["setor"] = "Operações"
-        if not dados.get("data_prevista_admissao") and dados.get("data_admissao_prevista"):
-            dados["data_prevista_admissao"] = dados["data_admissao_prevista"]
+        return self.admissao_service.registrar_admissao(dados, usuario=usuario)
 
-        obrigatorios = ["candidato_nome", "candidato_cpf", "candidato_email", "cargo", "setor", "salario_proposto", "data_prevista_admissao"]
-        for c in obrigatorios:
-            if not dados.get(c):
-                raise PlataformaValidacaoException(f"O campo '{c}' é obrigatório para registrar a admissão (RF-011).")
+    def atualizar_admissao(self, admissao_id: int, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.atualizar_admissao(admissao_id, dados, usuario=usuario, empresa_id=empresa_id)
 
-        salario = to_d(dados.get("salario_proposto"))
-        if salario < SALARIO_MINIMO_2026:
-            raise PlataformaValidacaoException(f"Salário proposto (R$ {salario:.2f}) não pode ser inferior ao salário mínimo legal vigente de R$ {SALARIO_MINIMO_2026:.2f} (RN-008, RF-013).")
+    def cancelar_admissao(self, admissao_id: int, motivo: str, usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.cancelar_admissao(admissao_id, motivo=motivo, usuario=usuario, empresa_id=empresa_id)
 
-        cpf_limpo = re.sub(r"\D", "", dados["candidato_cpf"])
-        if len(cpf_limpo) != 11:
-            raise PlataformaValidacaoException("CPF do candidato inválido (RT-07).")
+    def obter_admissao(self, admissao_id: int, empresa_id: Optional[str] = None, perfil_usuario: str = "gestor_rh") -> Dict[str, Any]:
+        return self.admissao_service.obter_admissao(admissao_id, empresa_id=empresa_id, perfil_usuario=perfil_usuario)
 
-        empresa_id = dados.get("empresa_id", "a0000000-0000-0000-0000-000000000001")
-        filial_id = dados.get("filial_id", "b0000000-0000-0000-0000-000000000001")
-        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    def listar_admissoes(self, status: Optional[str] = None, empresa_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.admissao_service.listar_admissoes(status=status, empresa_id=empresa_id)
 
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            sql_pg = f"""
-                INSERT INTO admissoes (
-                    empresa_id, filial_id, candidato_nome, candidato_cpf, candidato_email,
-                    cargo, setor, salario_proposto, tipo_contrato, prazo_experiencia_dias,
-                    prorrogacao_experiencia_dias, data_prevista_admissao, status,
-                    aso_admissional_status, contrato_gerado, criado_por, criado_em, atualizado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'em_andamento', 'pendente', 0, {p}, {p}, {p})
-                RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO admissoes (
-                    empresa_id, filial_id, candidato_nome, candidato_cpf, candidato_email,
-                    cargo, setor, salario_proposto, tipo_contrato, prazo_experiencia_dias,
-                    prorrogacao_experiencia_dias, data_prevista_admissao, status,
-                    aso_admissional_status, contrato_gerado, criado_por, criado_em, atualizado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'em_andamento', 'pendente', 0, {p}, {p}, {p});
-            """
-            params = (
-                empresa_id,
-                filial_id,
-                dados["candidato_nome"].strip(),
-                cpf_limpo,
-                dados["candidato_email"].strip(),
-                dados["cargo"].strip(),
-                dados["setor"].strip(),
-                float(salario),
-                dados.get("tipo_contrato", "experiencia"),
-                int(dados.get("prazo_experiencia_dias", 45)),
-                int(dados.get("prorrogacao_experiencia_dias", 45)),
-                dados["data_prevista_admissao"],
-                usuario,
-                agora,
-                agora,
-            )
-            adm_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
+    def configurar_item_checklist(self, admissao_id: int, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.configurar_item_checklist(admissao_id, dados, usuario=usuario, empresa_id=empresa_id)
 
-            # Gera itens do checklist admissional padrão (RF-012)
-            checklist_padrao = [
-                "Documento de Identidade com Foto (RG / CNH)",
-                "Cadastro de Pessoa Física (CPF)",
-                "Carteira de Trabalho Digital (CTPS)",
-                "Comprovante de Residência Atualizado",
-                "Comprovante de Escolaridade",
-                "Atestado de Saúde Ocupacional (ASO Admissional Apto)",
-            ]
-            for item in checklist_padrao:
-                cur.execute(
-                    f"""
-                    INSERT INTO checklist_admissional (admissao_id, item_descricao, obrigatorio, status)
-                    VALUES ({p}, {p}, 1, 'pendente');
-                """,
-                    (adm_id, item),
-                )
+    def upload_documento_checklist(self, admissao_id: int, item_id: int, nome_arquivo: str, conteudo_base64: str, mime_type: str = "application/octet-stream", usuario: str = "Operador", observacao: str = "", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.upload_documento_checklist(admissao_id, item_id, nome_arquivo, conteudo_base64, mime_type=mime_type, usuario=usuario, observacao=observacao, empresa_id=empresa_id)
 
-            conn.commit()
+    def atualizar_item_checklist(self, item_id: int, status: str, usuario: str, justificativa: Optional[str] = None, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.atualizar_item_checklist(item_id, status=status, usuario=usuario, justificativa=justificativa, empresa_id=empresa_id)
 
-            # Registra auditoria
-            self.registrar_auditoria(
-                modulo="Admissao",
-                operacao="inclusao",
-                registro_tipo="admissoes",
-                registro_id=adm_id,
-                usuario=usuario,
-                detalhes=f"Admissão registrada para {dados['candidato_nome']} - Cargo: {dados['cargo']}",
-                empresa_id=empresa_id,
-            )
+    def obter_documento_checklist_download(self, admissao_id: int, item_id: int, usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.obter_documento_checklist_download(admissao_id, item_id, usuario=usuario, empresa_id=empresa_id)
 
-            return self.obter_admissao(adm_id)
-        finally:
-            conn.close()
+    def validar_admissao(self, admissao_id: int, usuario: str, empresa_id: Optional[str] = None, exigir_centro_custo: bool = False) -> Dict[str, Any]:
+        return self.admissao_service.validar_admissao(admissao_id, usuario=usuario, empresa_id=empresa_id, exigir_centro_custo=exigir_centro_custo)
 
-    def obter_admissao(self, admissao_id: int) -> Dict[str, Any]:
-        """Obtém detalhes do processo admissional e seu checklist."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            cur.execute(f"SELECT * FROM admissoes WHERE id = {p};", (admissao_id,))
-            adm = fetchone_dict(cur, self.db_path)
-            if not adm:
-                raise PlataformaRecursoNaoEncontradoException("Processo de admissão não encontrado.")
+    def registrar_aso_admissional(self, admissao_id: int, dados: Dict[str, Any], usuario: str = "SST", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.registrar_aso_admissional(admissao_id, dados, usuario=usuario, empresa_id=empresa_id)
 
-            cur.execute(f"SELECT * FROM checklist_admissional WHERE admissao_id = {p} ORDER BY id ASC;", (admissao_id,))
-            adm["checklist"] = fetchall_dict(cur, self.db_path)
-            return adm
-        finally:
-            conn.close()
+    def consultar_aso_admissional(self, admissao_id: int, perfil_usuario: str, empresa_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return self.admissao_service.consultar_aso_admissional(admissao_id, perfil_usuario=perfil_usuario, empresa_id=empresa_id)
 
-    def listar_admissoes(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Lista processos admissionais com filtros."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            query = "SELECT * FROM admissoes WHERE 1=1"
-            params = []
-            if status:
-                query += f" AND status = {self._p()}"
-                params.append(status)
-            query += " ORDER BY id DESC"
-            cur.execute(query, tuple(params))
-            admissoes = fetchall_dict(cur, self.db_path)
-            for a in admissoes:
-                cur.execute(f"SELECT COUNT(*) as total, SUM(CASE WHEN status='validado' THEN 1 ELSE 0 END) as validados FROM checklist_admissional WHERE admissao_id = {self._p()};", (a["id"],))
-                row = cur.fetchone()
-                if row:
-                    tot = row[0] if isinstance(row, tuple) else row["total"]
-                    val = row[1] if isinstance(row, tuple) else row["validados"]
-                    a["checklist_resumo"] = f"{val or 0}/{tot or 0} validados"
-            return admissoes
-        finally:
-            conn.close()
+    def obter_documento_aso_download(self, admissao_id: int, usuario: str, perfil_usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.obter_documento_aso_download(admissao_id, usuario=usuario, perfil_usuario=perfil_usuario, empresa_id=empresa_id)
 
-    def atualizar_item_checklist(self, item_id: int, status: str, usuario: str, justificativa: Optional[str] = None) -> Dict[str, Any]:
-        """RF-012: Atualiza status de documento do checklist admissional."""
-        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            cur.execute(
-                f"""
-                UPDATE checklist_admissional
-                SET status = {p}, justificativa_dispensa = {p}, validado_por = {p}, validado_em = {p}
-                WHERE id = {p};
-            """,
-                (status, justificativa, usuario, agora, item_id),
-            )
-            conn.commit()
-            return {"sucesso": True, "mensagem": f"Item {item_id} atualizado para status '{status}'."}
-        finally:
-            conn.close()
+    def listar_escalas_jornada(self, empresa_id: Optional[str] = None, apenas_ativas: bool = True) -> List[Dict[str, Any]]:
+        return self.admissao_service.listar_escalas_jornada(empresa_id=empresa_id, apenas_ativas=apenas_ativas)
 
-    def aprovar_admissao(self, admissao_id: int, aprovador: str) -> Dict[str, Any]:
-        """
-        RF-020: Aprova admissão, valida ASO e documentos, cria colaborador ativo e gera eventos eSocial.
-        Aplica segregação de funções (RN-080: quem cadastrou não pode aprovar a própria admissão).
-        """
-        adm = self.obter_admissao(admissao_id)
-        if adm["status"] == "aprovada":
-            raise PlataformaValidacaoException("Esta admissão já foi aprovada e o colaborador já está ativo.")
+    def criar_escala_jornada(self, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.criar_escala_jornada(dados, usuario=usuario, empresa_id=empresa_id)
 
-        # Segregação de funções (RN-080)
-        if adm["criado_por"].strip().lower() == aprovador.strip().lower():
-            raise PlataformaAcessoNegadoException(
-                "Violação de Segregação de Funções (RN-080): O usuário que registrou a admissão não pode aprovar a própria admissão."
-            )
+    def definir_jornada_admissao(self, admissao_id: int, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.definir_jornada_admissao(admissao_id, dados, usuario=usuario, empresa_id=empresa_id)
 
-        # Validação do checklist (RF-012)
-        pendencias_docs = [i["item_descricao"] for i in adm["checklist"] if i["obrigatorio"] and i["status"] not in ("validado", "dispensado")]
-        if pendencias_docs:
-            raise PlataformaValidacaoException(
-                f"Admissão não pode ser aprovada com itens obrigatórios pendentes: {', '.join(pendencias_docs)} (RF-012, RF-020)."
-            )
+    def listar_centros_custo(self, empresa_id: Optional[str] = None, apenas_ativos: bool = True) -> List[Dict[str, Any]]:
+        return self.admissao_service.listar_centros_custo(empresa_id=empresa_id, apenas_ativos=apenas_ativos)
 
-        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
+    def criar_centro_custo(self, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.criar_centro_custo(dados, usuario=usuario, empresa_id=empresa_id)
 
-            # Gera matrícula única corporativa (RN-005, RF-011)
-            cur.execute("SELECT COUNT(*) FROM colaboradores;")
-            count_colab = cur.fetchone()[0]
-            matricula_gerada = f"FV-{1000 + count_colab + 1}"
+    def definir_centro_custo_admissao(self, admissao_id: int, dados: Dict[str, Any], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.definir_centro_custo_admissao(admissao_id, dados, usuario=usuario, empresa_id=empresa_id)
 
-            # Cria registro do colaborador (RF-001, RF-011)
-            sql_colab_pg = f"""
-                INSERT INTO colaboradores (
-                    matricula, nome_completo, cpf, email, data_nascimento,
-                    data_admissao, cargo, setor, salario_base, situacao,
-                    criado_em, atualizado_em, empresa_id, filial_id, criado_por
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'ativo', {p}, {p}, {p}, {p}, {p})
-                RETURNING id;
-            """
-            sql_colab_sqlite = f"""
-                INSERT INTO colaboradores (
-                    matricula, nome_completo, cpf, email, data_nascimento,
-                    data_admissao, cargo, setor, salario_base, situacao,
-                    criado_em, atualizado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'ativo', {p}, {p});
-            """
-            params_colab = (
-                matricula_gerada,
-                adm["candidato_nome"],
-                adm["candidato_cpf"],
-                adm["candidato_email"],
-                "1990-01-01",  # default caso não coletado preliminarmente
-                adm["data_prevista_admissao"],
-                adm["cargo"],
-                adm["setor"],
-                float(adm["salario_proposto"]),
-                agora,
-                agora,
-            )
-            if self._pg():
-                params_colab += (adm["empresa_id"], adm.get("filial_id"), aprovador)
+    def listar_beneficios_elegiveis_admissao(self, admissao_id: int, empresa_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.admissao_service.listar_beneficios_elegiveis_admissao(admissao_id, empresa_id=empresa_id)
 
-            novo_colab_id = insert_returning_id(cur, conn, sql_colab_pg, sql_colab_sqlite, params_colab, self.db_path)
+    def definir_beneficios_admissao(self, admissao_id: int, itens_beneficios: List[Dict[str, Any]], usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.definir_beneficios_admissao(admissao_id, itens_beneficios, usuario=usuario, empresa_id=empresa_id)
 
-            # Atualiza status da admissão (RF-020)
-            cur.execute(
-                f"""
-                UPDATE admissoes
-                SET status = 'aprovada', aprovado_por = {p}, aprovado_em = {p},
-                    colaborador_id = {p}, atualizado_em = {p}
-                WHERE id = {p};
-            """,
-                (aprovador, agora, novo_colab_id, agora, admissao_id),
-            )
+    def listar_modelos_contrato(self, empresa_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.admissao_service.listar_modelos_contrato(empresa_id=empresa_id)
 
-            # Cria período aquisitivo de férias inicial automático (RF-051)
-            dt_inicio_aq = adm["data_prevista_admissao"]
-            dt_fim_aq = (datetime.strptime(dt_inicio_aq, "%Y-%m-%d") + timedelta(days=365)).strftime("%Y-%m-%d")
-            dt_lim_conc = (datetime.strptime(dt_fim_aq, "%Y-%m-%d") + timedelta(days=365)).strftime("%Y-%m-%d")
-            cur.execute(
-                f"""
-                INSERT INTO periodos_aquisitivos (
-                    colaborador_id, inicio_aquisitivo, fim_aquisitivo, limite_concessivo,
-                    faltas_injustificadas, dias_direito, dias_gozados, saldo_dias, situacao,
-                    criado_em, atualizado_em
-                ) VALUES ({p}, {p}, {p}, {p}, 0, 30, 0, 30, 'em_aquisicao', {p}, {p});
-            """,
-                (novo_colab_id, dt_inicio_aq, dt_fim_aq, dt_lim_conc, agora, agora),
-            )
+    def gerar_contrato_trabalho(self, admissao_id: int, usuario: str, modelo_id: Optional[int] = None, condicoes_adicionais: str = "", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.gerar_contrato_trabalho(admissao_id, usuario=usuario, modelo_id=modelo_id, condicoes_adicionais=condicoes_adicionais, empresa_id=empresa_id)
 
-            # Gera evento eSocial S-2200 preliminar/admissional (RF-015, RN-010)
-            xml_s2200 = f"""<eSocial><evtAdmissao><ideEmpregador><nrInsc>{adm['empresa_id']}</nrInsc></ideEmpregador><trabalhador><cpfTrab>{adm['candidato_cpf']}</cpfTrab><nmTrab>{adm['candidato_nome']}</nmTrab></trabalhador><vinculo><matricula>{matricula_gerada}</matricula><dtAdm>{adm['data_prevista_admissao']}</dtAdm><cargo>{adm['cargo']}</cargo><vrSalFx>{adm['salario_proposto']}</vrSalFx></vinculo></evtAdmissao></eSocial>"""
-            cur.execute(
-                f"""
-                INSERT INTO esocial_eventos (
-                    empresa_id, tipo_evento, identificador_origem, ambiente, status,
-                    xml_conteudo, criado_por, criado_em
-                ) VALUES ({p}, 'S-2200', {p}, 'homologacao', 'validado', {p}, {p}, {p});
-            """,
-                (adm["empresa_id"], str(novo_colab_id), xml_s2200, aprovador, agora),
-            )
+    def formalizar_contrato(self, admissao_id: int, contrato_id: int, usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.formalizar_contrato(admissao_id, contrato_id, usuario=usuario, empresa_id=empresa_id)
 
-            # Registra pendência de Contrato de Experiência na Central (RF-151, RN-079)
-            if adm["tipo_contrato"] == "experiencia":
-                prazo_1 = int(adm.get("prazo_experiencia_dias") or 45)
-                dt_venc_exp = (datetime.strptime(dt_inicio_aq, "%Y-%m-%d") + timedelta(days=prazo_1)).strftime("%Y-%m-%d")
-                cur.execute(
-                    f"""
-                    INSERT INTO pendencias_operacionais (
-                        empresa_id, modulo, tipo_pendencia, titulo, descricao, severidade,
-                        colaborador_id, prazo_limite, responsavel, status, criado_em
-                    ) VALUES ({p}, 'Admissão', 'experiencia_vencendo', {p}, {p}, 'alta', {p}, {p}, 'DP / Gestor', 'pendente', {p});
-                """,
-                    (
-                        adm["empresa_id"],
-                        f"Término do 1º Período de Experiência ({prazo_1} dias) — {adm['candidato_nome']}",
-                        f"Colaborador {adm['candidato_nome']} ({matricula_gerada}) atinge o término do 1º período de experiência em {dt_venc_exp}. Decidir prorrogação ou efetivação.",
-                        novo_colab_id,
-                        dt_venc_exp,
-                        agora,
-                    ),
-                )
+    def obter_contrato_pdf_download(self, admissao_id: int, contrato_id: int, usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.obter_contrato_pdf_download(admissao_id, contrato_id, usuario=usuario, empresa_id=empresa_id)
 
-            conn.commit()
+    def gerar_evento_esocial_admissao(self, admissao_id: int, tipo_evento: Optional[str], usuario: str, ambiente: str = "homologacao", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.gerar_evento_esocial_admissao(admissao_id, tipo_evento, usuario=usuario, ambiente=ambiente, empresa_id=empresa_id)
 
-            self.registrar_auditoria(
-                modulo="Admissao",
-                operacao="aprovacao",
-                registro_tipo="admissoes",
-                registro_id=admissao_id,
-                usuario=aprovador,
-                detalhes=f"Admissão {admissao_id} aprovada por {aprovador}. Colaborador ID {novo_colab_id} ativado com matrícula {matricula_gerada}.",
-                empresa_id=adm["empresa_id"],
-            )
+    def registrar_retorno_esocial(self, evento_id: int, status_retorno: str, codigo_resposta: str, mensagem_resposta: str, protocolo_envio: Optional[str] = None, numero_recibo: Optional[str] = None, usuario: str = "eSocial", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.registrar_retorno_esocial(evento_id, status_retorno, codigo_resposta, mensagem_resposta, protocolo_envio=protocolo_envio, numero_recibo=numero_recibo, usuario=usuario, empresa_id=empresa_id)
 
-            return {
-                "sucesso": True,
-                "admissao_id": admissao_id,
-                "colaborador_id": novo_colab_id,
-                "matricula": matricula_gerada,
-                "mensagem": f"Admissão aprovada com sucesso! Colaborador {adm['candidato_nome']} ativado sob matrícula {matricula_gerada}.",
-            }
-        finally:
-            conn.close()
+    def reprocessar_evento_esocial(self, evento_id: int, usuario: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.reprocessar_evento_esocial(evento_id, usuario=usuario, empresa_id=empresa_id)
+
+    def solicitar_aprovacao_admissao(self, admissao_id: int, usuario: str, justificativa: str = "", empresa_id: Optional[str] = None, exigir_centro_custo: bool = False) -> Dict[str, Any]:
+        return self.admissao_service.solicitar_aprovacao_admissao(admissao_id, usuario=usuario, justificativa=justificativa, empresa_id=empresa_id, exigir_centro_custo=exigir_centro_custo)
+
+    def aprovar_admissao(self, admissao_id: int, aprovador: str, justificativa: str = "", empresa_id: Optional[str] = None, exigir_centro_custo: bool = False) -> Dict[str, Any]:
+        return self.admissao_service.aprovar_admissao(admissao_id, aprovador=aprovador, justificativa=justificativa, empresa_id=empresa_id, exigir_centro_custo=exigir_centro_custo)
+
+    def reprovar_admissao(self, admissao_id: int, aprovador: str, motivo: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.admissao_service.reprovar_admissao(admissao_id, aprovador=aprovador, motivo=motivo, empresa_id=empresa_id)
+
+    def obter_painel_admissao(self, admissao_id: int, empresa_id: Optional[str] = None, perfil_usuario: str = "gestor_rh") -> Dict[str, Any]:
+        return self.admissao_service.obter_painel_admissao(admissao_id, empresa_id=empresa_id, perfil_usuario=perfil_usuario)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 03: JORNADA E PONTO (RF-021 a RF-030)
@@ -1778,14 +1556,40 @@ class PlataformaService:
                 val_centavos = int(to_d(f["salario_liquido"]) * 100)
                 colab_id_num = f["colab_id"]
 
-                # Segmento A (Crédito em Conta Corrente/Salário)
+                # Segmento A (Crédito em Conta Corrente/Salário - integrado com RF-009)
+                banco_fav = "000"
+                agencia_fav = "01234"
+                conta_fav_num = f"{colab_id_num:012d}"
+                conta_dv = "9"
+                try:
+                    cur.execute(
+                        f"SELECT banco_codigo, agencia, conta, conta_digito FROM colaborador_dados_bancarios WHERE colaborador_id = {p} AND ativo = 1 ORDER BY principal DESC, id DESC LIMIT 1",
+                        (colab_id_num,),
+                    )
+                    conta_row = fetchone_dict(cur, self.db_path)
+                    if conta_row:
+                        b_cod = re.sub(r"\D", "", str(conta_row.get("banco_codigo") or ""))
+                        ag_num = re.sub(r"\D", "", str(conta_row.get("agencia") or ""))
+                        cc_num = re.sub(r"\D", "", str(conta_row.get("conta") or ""))
+                        cc_dv = str(conta_row.get("conta_digito") or "0")[:1]
+                        if b_cod:
+                            banco_fav = b_cod.zfill(3)[:3]
+                        if ag_num:
+                            agencia_fav = ag_num.zfill(5)[:5]
+                        if cc_num:
+                            conta_fav_num = cc_num.zfill(12)[:12]
+                        if cc_dv:
+                            conta_dv = cc_dv
+                except Exception:
+                    pass
+
                 seg_a = (
                     f"{banco_cod}00013{seq_lote:05d}A000"
-                    f"00000"
-                    f"01234"
+                    f"00{banco_fav}"
+                    f"{agencia_fav}"
                     f" "
-                    f"{colab_id_num:012d}"
-                    f"9"
+                    f"{conta_fav_num}"
+                    f"{conta_dv}"
                     f" "
                     f"{nome}"
                     f"{'FOLHA':20}"
@@ -2024,3 +1828,1077 @@ class PlataformaService:
             return {"empresas": empresas}
         finally:
             conn.close()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # MÓDULO 08: GESTÃO DE BENEFÍCIOS E DESCONTOS (RF-071 a RF-080)
+    # ─────────────────────────────────────────────────────────────────────────
+    TIPOS_BENEFICIO_VALIDOS = {
+        "vale_transporte",
+        "vale_alimentacao",
+        "vale_refeicao",
+        "plano_saude",
+        "plano_odontologico",
+        "seguro_vida",
+        "farmacia",
+        "beneficio_flexivel",
+        "outros",
+    }
+
+    RUBRICA_POR_TIPO_BENEFICIO = {
+        "vale_transporte": "0510",
+        "vale_alimentacao": "0511",
+        "vale_refeicao": "0511",
+        "plano_saude": "0512",
+        "plano_odontologico": "0513",
+        "seguro_vida": "0514",
+        "farmacia": "0516",
+        "beneficio_flexivel": "0517",
+        "outros": "0511",
+    }
+
+    @staticmethod
+    def _d2(valor: Any) -> Decimal:
+        try:
+            d = Decimal(str(valor if valor not in (None, "") else "0"))
+        except Exception:
+            d = Decimal("0")
+        return d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _parse_json_dict(raw: Any) -> Dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(str(raw))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _validar_data_iso(valor: str, campo: str) -> str:
+        s = str(valor or "").strip()
+        try:
+            datetime.strptime(s, "%Y-%m-%d")
+        except ValueError:
+            raise PlataformaValidacaoException(f"Data inválida para '{campo}'. Use o formato AAAA-MM-DD.")
+        return s
+
+    def _normalizar_dados_catalogo_beneficio(self, dados: Dict[str, Any], atual: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        codigo = str(dados.get("codigo") if dados.get("codigo") is not None else (atual or {}).get("codigo", "")).strip().upper()
+        nome = str(dados.get("nome") if dados.get("nome") is not None else (atual or {}).get("nome", "")).strip()
+        tipo = str(dados.get("tipo") if dados.get("tipo") is not None else (atual or {}).get("tipo", "")).strip().lower()
+
+        if not codigo or not nome or not tipo:
+            raise PlataformaValidacaoException("Código, nome e tipo do benefício são obrigatórios.")
+        if tipo not in self.TIPOS_BENEFICIO_VALIDOS:
+            raise PlataformaValidacaoException(
+                f"Tipo de benefício inválido: '{tipo}'. Permitidos: {', '.join(sorted(self.TIPOS_BENEFICIO_VALIDOS))}."
+            )
+
+        copart_tipo = str(dados.get("coparticipacao_tipo", (atual or {}).get("coparticipacao_tipo", "percentual")) or "percentual").strip().lower()
+        if copart_tipo not in ("fixo", "percentual"):
+            raise PlataformaValidacaoException("Tipo de coparticipação inválido. Use 'fixo' ou 'percentual'.")
+
+        def _num_nao_neg(chave: str, padrao: float = 0.0) -> float:
+            raw = dados.get(chave) if chave in dados else (atual or {}).get(chave, padrao)
+            try:
+                val = float(raw if raw not in (None, "") else padrao)
+            except (TypeError, ValueError):
+                raise PlataformaValidacaoException(f"Valor numérico inválido para '{chave}'.")
+            if val < 0:
+                raise PlataformaValidacaoException(f"O campo '{chave}' não pode ser negativo.")
+            return round(val, 2)
+
+        copart_val = _num_nao_neg("coparticipacao_valor", 0.0)
+        teto_pct = _num_nao_neg("teto_legal_percentual", 6.0 if tipo == "vale_transporte" else (20.0 if tipo in ("vale_alimentacao", "vale_refeicao") else 100.0))
+        v_mensal = _num_nao_neg("valor_mensal_padrao", 0.0)
+        v_diario = _num_nao_neg("valor_diario_padrao", 0.0)
+        lim_padrao = _num_nao_neg("limite_padrao", 0.0)
+
+        if teto_pct > 100.0:
+            raise PlataformaValidacaoException("O teto legal percentual não pode ultrapassar 100%.")
+        if copart_tipo == "percentual" and copart_val > 100.0:
+            raise PlataformaValidacaoException("Coparticipação percentual não pode ultrapassar 100%.")
+        if tipo == "vale_transporte" and teto_pct > 6.0:
+            raise PlataformaValidacaoException("Lei 7.418/85: O teto legal do Vale-Transporte não pode exceder 6% do salário-base.")
+        if tipo in ("vale_alimentacao", "vale_refeicao") and teto_pct > 20.0:
+            raise PlataformaValidacaoException("Regra PAT: O desconto de Vale-Alimentação/Refeição não pode exceder 20% do benefício.")
+
+        rubrica_codigo = str(
+            dados.get("rubrica_codigo") or (atual or {}).get("rubrica_codigo") or self.RUBRICA_POR_TIPO_BENEFICIO.get(tipo, "0511")
+        ).strip()
+        regra_raw = dados.get("regra_elegibilidade") if "regra_elegibilidade" in dados else (atual or {}).get("regra_elegibilidade")
+        if isinstance(regra_raw, str):
+            try:
+                regra_dict = json.loads(regra_raw) if regra_raw.strip() else {}
+            except Exception:
+                raise PlataformaValidacaoException("Regra de elegibilidade deve ser um JSON válido.")
+        elif isinstance(regra_raw, dict):
+            regra_dict = regra_raw
+        elif regra_raw is None:
+            regra_dict = {"situacoes_permitidas": ["ativo"]}
+        else:
+            raise PlataformaValidacaoException("Formato inválido para regra de elegibilidade.")
+
+        if "tempo_minimo_dias" in regra_dict and int(regra_dict.get("tempo_minimo_dias") or 0) < 0:
+            raise PlataformaValidacaoException("Tempo mínimo de casa (dias) na regra de elegibilidade não pode ser negativo.")
+
+        ativo_val = dados.get("ativo", (atual or {}).get("ativo", 1))
+        ativo = 1 if ativo_val in (1, True, "1", "true", "sim") else 0
+
+        return {
+            "empresa_id": str(dados.get("empresa_id") or (atual or {}).get("empresa_id") or "a0000000-0000-0000-0000-000000000001").strip(),
+            "codigo": codigo,
+            "nome": nome,
+            "tipo": tipo,
+            "coparticipacao_tipo": copart_tipo,
+            "coparticipacao_valor": copart_val,
+            "teto_legal_percentual": teto_pct,
+            "regra_elegibilidade": json.dumps(regra_dict, ensure_ascii=False),
+            "rubrica_codigo": rubrica_codigo,
+            "valor_mensal_padrao": v_mensal,
+            "valor_diario_padrao": v_diario,
+            "limite_padrao": lim_padrao,
+            "descricao": str(dados.get("descricao") if "descricao" in dados else ((atual or {}).get("descricao") or "")).strip(),
+            "ativo": ativo,
+        }
+
+    def listar_beneficios_catalogo(self, apenas_ativos: bool = False, tipo: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lista os benefícios cadastrados no catálogo corporativo."""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            sql = "SELECT * FROM beneficios_catalogo WHERE 1=1"
+            params: List[Any] = []
+            if apenas_ativos:
+                sql += " AND ativo = 1"
+            if tipo and tipo != "todos":
+                sql += f" AND tipo = {p}"
+                params.append(tipo.strip().lower())
+            sql += " ORDER BY id ASC;"
+            cur.execute(sql, tuple(params))
+            rows = fetchall_dict(cur, self.db_path)
+            for r in rows:
+                r["regra_elegibilidade_obj"] = self._parse_json_dict(r.get("regra_elegibilidade"))
+                if not r.get("rubrica_codigo"):
+                    r["rubrica_codigo"] = self.RUBRICA_POR_TIPO_BENEFICIO.get(r.get("tipo", ""), "0511")
+            return rows
+        finally:
+            conn.close()
+
+    def obter_beneficio_catalogo(self, beneficio_id: int) -> Dict[str, Any]:
+        """Obtém um benefício do catálogo por ID."""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"SELECT * FROM beneficios_catalogo WHERE id = {self._p()};", (beneficio_id,))
+            row = fetchone_dict(cur, self.db_path)
+            if not row:
+                raise PlataformaRecursoNaoEncontradoException(f"Benefício #{beneficio_id} não encontrado no catálogo.")
+            row["regra_elegibilidade_obj"] = self._parse_json_dict(row.get("regra_elegibilidade"))
+            if not row.get("rubrica_codigo"):
+                row["rubrica_codigo"] = self.RUBRICA_POR_TIPO_BENEFICIO.get(row.get("tipo", ""), "0511")
+            return row
+        finally:
+            conn.close()
+
+    def criar_beneficio_catalogo(self, dados: Dict[str, Any], usuario: str = "DP") -> Dict[str, Any]:
+        """Cria um novo tipo/plano de benefício no catálogo."""
+        norm = self._normalizar_dados_catalogo_beneficio(dados)
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT id FROM beneficios_catalogo WHERE UPPER(codigo) = UPPER({p});", (norm["codigo"],))
+            if cur.fetchone():
+                raise PlataformaValidacaoException(f"Já existe um benefício no catálogo com o código '{norm['codigo']}'.")
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sql_pg = f"""
+                INSERT INTO beneficios_catalogo (
+                    empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor,
+                    teto_legal_percentual, regra_elegibilidade, rubrica_codigo, valor_mensal_padrao,
+                    valor_diario_padrao, limite_padrao, descricao, ativo, criado_em, atualizado_em
+                ) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
+                RETURNING id;
+            """
+            sql_sqlite = f"""
+                INSERT INTO beneficios_catalogo (
+                    empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor,
+                    teto_legal_percentual, regra_elegibilidade, rubrica_codigo, valor_mensal_padrao,
+                    valor_diario_padrao, limite_padrao, descricao, ativo, criado_em, atualizado_em
+                ) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p});
+            """
+            params = (
+                norm["empresa_id"], norm["codigo"], norm["nome"], norm["tipo"],
+                norm["coparticipacao_tipo"], norm["coparticipacao_valor"], norm["teto_legal_percentual"],
+                norm["regra_elegibilidade"], norm["rubrica_codigo"], norm["valor_mensal_padrao"],
+                norm["valor_diario_padrao"], norm["limite_padrao"], norm["descricao"],
+                norm["ativo"], agora, agora,
+            )
+            bid = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="inclusao",
+            registro_tipo="beneficios_catalogo",
+            registro_id=bid,
+            usuario=usuario,
+            detalhes=f"Benefício '{norm['codigo']} - {norm['nome']}' ({norm['tipo']}) criado no catálogo.",
+        )
+        return self.obter_beneficio_catalogo(bid)
+
+    def atualizar_beneficio_catalogo(self, beneficio_id: int, dados: Dict[str, Any], usuario: str = "DP") -> Dict[str, Any]:
+        """Atualiza um benefício existente no catálogo."""
+        atual = self.obter_beneficio_catalogo(beneficio_id)
+        norm = self._normalizar_dados_catalogo_beneficio(dados, atual=atual)
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(
+                f"SELECT id FROM beneficios_catalogo WHERE UPPER(codigo) = UPPER({p}) AND id != {p};",
+                (norm["codigo"], beneficio_id),
+            )
+            if cur.fetchone():
+                raise PlataformaValidacaoException(f"Já existe outro benefício com o código '{norm['codigo']}'.")
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute(
+                f"""
+                UPDATE beneficios_catalogo SET
+                    codigo = {p}, nome = {p}, tipo = {p}, coparticipacao_tipo = {p},
+                    coparticipacao_valor = {p}, teto_legal_percentual = {p}, regra_elegibilidade = {p},
+                    rubrica_codigo = {p}, valor_mensal_padrao = {p}, valor_diario_padrao = {p},
+                    limite_padrao = {p}, descricao = {p}, ativo = {p}, atualizado_em = {p}
+                WHERE id = {p};
+                """,
+                (
+                    norm["codigo"], norm["nome"], norm["tipo"], norm["coparticipacao_tipo"],
+                    norm["coparticipacao_valor"], norm["teto_legal_percentual"], norm["regra_elegibilidade"],
+                    norm["rubrica_codigo"], norm["valor_mensal_padrao"], norm["valor_diario_padrao"],
+                    norm["limite_padrao"], norm["descricao"], norm["ativo"], agora, beneficio_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="alteracao",
+            registro_tipo="beneficios_catalogo",
+            registro_id=beneficio_id,
+            usuario=usuario,
+            detalhes=f"Benefício #{beneficio_id} ({norm['codigo']}) atualizado no catálogo.",
+        )
+        return self.obter_beneficio_catalogo(beneficio_id)
+
+    def excluir_beneficio_catalogo(self, beneficio_id: int, usuario: str = "DP", forcar_inativacao: bool = False) -> Dict[str, Any]:
+        """Exclui um item do catálogo se não tiver vínculos, ou inativa se solicitado."""
+        atual = self.obter_beneficio_catalogo(beneficio_id)
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT COUNT(*) FROM beneficios_colaborador WHERE beneficio_id = {p};", (beneficio_id,))
+            qtd_vinc = int(cur.fetchone()[0] or 0)
+            if qtd_vinc > 0:
+                if not forcar_inativacao:
+                    raise PlataformaValidacaoException(
+                        f"Não é possível excluir '{atual['nome']}': existem {qtd_vinc} vínculo(s) de colaborador associados."
+                    )
+                agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cur.execute(
+                    f"UPDATE beneficios_catalogo SET ativo = 0, atualizado_em = {p} WHERE id = {p};",
+                    (agora, beneficio_id),
+                )
+                conn.commit()
+                acao = "inativacao"
+            else:
+                cur.execute(f"DELETE FROM beneficios_catalogo WHERE id = {p};", (beneficio_id,))
+                conn.commit()
+                acao = "exclusao"
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao=acao,
+            registro_tipo="beneficios_catalogo",
+            registro_id=beneficio_id,
+            usuario=usuario,
+            detalhes=f"Benefício '{atual['codigo']} - {atual['nome']}' ({acao}).",
+        )
+        return {"sucesso": True, "id": beneficio_id, "acao": acao}
+
+    def verificar_elegibilidade_beneficio(
+        self,
+        colaborador_id: int,
+        beneficio_id: int,
+        data_referencia: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        RF078: Avalia regras de elegibilidade de um benefício para o colaborador.
+        Verifica situação contratual, tipo de contrato, tempo mínimo de casa, setor, cargo e faixa salarial.
+        """
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT * FROM colaboradores WHERE id = {p};", (colaborador_id,))
+            colab = fetchone_dict(cur, self.db_path)
+            if not colab:
+                raise PlataformaRecursoNaoEncontradoException(f"Colaborador #{colaborador_id} não encontrado.")
+            cur.execute(f"SELECT * FROM beneficios_catalogo WHERE id = {p};", (beneficio_id,))
+            benef = fetchone_dict(cur, self.db_path)
+            if not benef:
+                raise PlataformaRecursoNaoEncontradoException(f"Benefício #{beneficio_id} não encontrado no catálogo.")
+        finally:
+            conn.close()
+
+        regras = self._parse_json_dict(benef.get("regra_elegibilidade"))
+        motivos: List[str] = []
+
+        if int(benef.get("ativo", 1)) == 0:
+            motivos.append(f"Benefício '{benef['nome']}' está inativo no catálogo.")
+
+        sit_colab = str(colab.get("situacao") or "ativo").strip().lower()
+        situacoes_perm = [str(s).strip().lower() for s in (regras.get("situacoes_permitidas") or ["ativo"])]
+        if sit_colab not in situacoes_perm:
+            motivos.append(
+                f"Situação do colaborador ('{sit_colab}') não é elegível (permitido: {', '.join(situacoes_perm)})."
+            )
+
+        contratos_perm = [str(c).strip().lower() for c in (regras.get("tipos_contrato_permitidos") or []) if str(c).strip()]
+        tipo_contrato_colab = str(colab.get("tipo_contrato") or "CLT").strip().lower()
+        if contratos_perm and tipo_contrato_colab not in contratos_perm:
+            motivos.append(
+                f"Tipo de contrato '{colab.get('tipo_contrato') or 'CLT'}' inelegível (permitido: {', '.join(regras['tipos_contrato_permitidos'])})."
+            )
+
+        tempo_min_dias = int(regras.get("tempo_minimo_dias") or 0)
+        if tempo_min_dias > 0:
+            adm_str = str(colab.get("data_admissao") or "").strip()[:10]
+            ref_str = (data_referencia or datetime.now().strftime("%Y-%m-%d"))[:10]
+            if adm_str:
+                try:
+                    dias_casa = (datetime.strptime(ref_str, "%Y-%m-%d") - datetime.strptime(adm_str, "%Y-%m-%d")).days
+                    if dias_casa < tempo_min_dias:
+                        motivos.append(
+                            f"Tempo de casa ({dias_casa} dias) inferior ao mínimo exigido ({tempo_min_dias} dias)."
+                        )
+                except ValueError:
+                    pass
+
+        setores_perm = [str(s).strip().lower() for s in (regras.get("setores_permitidos") or []) if str(s).strip()]
+        if setores_perm:
+            setor_c = str(colab.get("setor") or "").strip().lower()
+            depto_c = str(colab.get("departamento") or "").strip().lower()
+            if setor_c not in setores_perm and depto_c not in setores_perm:
+                motivos.append(
+                    f"Setor '{colab.get('setor') or '-'}' fora dos setores elegíveis ({', '.join(regras['setores_permitidos'])})."
+                )
+
+        cargos_perm = [str(c).strip().lower() for c in (regras.get("cargos_permitidos") or []) if str(c).strip()]
+        if cargos_perm:
+            cargo_c = str(colab.get("cargo") or "").strip().lower()
+            if cargo_c not in cargos_perm:
+                motivos.append(
+                    f"Cargo '{colab.get('cargo') or '-'}' não contemplado pela regra de elegibilidade."
+                )
+
+        sal_colab = float(colab.get("salario_base") or 0.0)
+        sal_min = float(regras.get("salario_minimo") or 0.0)
+        sal_max = float(regras.get("salario_maximo") or 0.0)
+        if sal_min > 0 and sal_colab < sal_min:
+            motivos.append(f"Salário-base (R$ {sal_colab:.2f}) abaixo do piso de elegibilidade (R$ {sal_min:.2f}).")
+        if sal_max > 0 and sal_colab > sal_max:
+            motivos.append(f"Salário-base (R$ {sal_colab:.2f}) acima do teto de elegibilidade (R$ {sal_max:.2f}).")
+
+        return {
+            "elegivel": len(motivos) == 0,
+            "colaborador_id": colaborador_id,
+            "colaborador_nome": colab.get("nome_completo"),
+            "beneficio_id": beneficio_id,
+            "beneficio_codigo": benef.get("codigo"),
+            "beneficio_nome": benef.get("nome"),
+            "beneficio_tipo": benef.get("tipo"),
+            "motivos": motivos,
+            "regras": regras,
+        }
+
+    def listar_elegibilidade_colaborador(self, colaborador_id: int, data_referencia: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lista o status de elegibilidade de todos os benefícios ativos do catálogo para o colaborador."""
+        catalogo = self.listar_beneficios_catalogo(apenas_ativos=True)
+        return [
+            self.verificar_elegibilidade_beneficio(colaborador_id, int(b["id"]), data_referencia=data_referencia)
+            for b in catalogo
+        ]
+
+    def _calcular_valores_beneficio(
+        self,
+        colab: Dict[str, Any],
+        catalogo: Dict[str, Any],
+        dados: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Calcula custo_total_mes, desconto_colaborador e custo_empresa conforme regras RF071-RF077."""
+        tipo = str(catalogo.get("tipo") or catalogo.get("beneficio_tipo") or "").strip().lower()
+        salario_base = self._d2(colab.get("salario_base") or 0)
+        optante = 1 if dados.get("optante", 1) in (1, True, "1", "true", "sim") else 0
+
+        def _f_nao_neg(chave: str, padrao: float = 0.0) -> Decimal:
+            raw = dados.get(chave)
+            if raw in (None, ""):
+                return self._d2(padrao)
+            try:
+                val = self._d2(raw)
+            except Exception:
+                raise PlataformaValidacaoException(f"Valor inválido informado para '{chave}'.")
+            if val < Decimal("0.00"):
+                raise PlataformaValidacaoException(f"O campo '{chave}' não pode ser negativo.")
+            return val
+
+        dias_uteis = int(dados.get("dias_uteis_mes") if dados.get("dias_uteis_mes") not in (None, "") else 22)
+        if dias_uteis < 0 or dias_uteis > 31:
+            raise PlataformaValidacaoException("Dias úteis do mês deve estar entre 0 e 31.")
+
+        valor_diario = _f_nao_neg("valor_diario", float(catalogo.get("valor_diario_padrao") or 0.0))
+        valor_mensal_base = _f_nao_neg("valor_mensal_base", float(catalogo.get("valor_mensal_padrao") or 0.0))
+        qtd_dep = int(dados.get("qtd_dependentes") if dados.get("qtd_dependentes") not in (None, "") else 0)
+        if qtd_dep < 0:
+            raise PlataformaValidacaoException("Quantidade de dependentes não pode ser negativa.")
+        valor_dep = _f_nao_neg("valor_dependente", 0.0)
+        copart_extra = _f_nao_neg("coparticipacao_extra", 0.0)
+        limite_mensal = _f_nao_neg("limite_mensal", float(catalogo.get("limite_padrao") or 0.0))
+        valor_utilizado = _f_nao_neg("valor_utilizado_mes", 0.0)
+        saldo_flex = _f_nao_neg("saldo_flexivel", float(valor_mensal_base or catalogo.get("valor_mensal_padrao") or 0.0))
+
+        aloc_raw = dados.get("alocacao_json")
+        aloc_dict = self._parse_json_dict(aloc_raw)
+        aloc_clean: Dict[str, float] = {}
+        soma_aloc = Decimal("0.00")
+        for k, v in aloc_dict.items():
+            try:
+                dv = self._d2(v)
+            except Exception:
+                raise PlataformaValidacaoException(f"Valor inválido na alocação flexível '{k}'.")
+            if dv < Decimal("0.00"):
+                raise PlataformaValidacaoException(f"Alocação flexível '{k}' não pode ser negativa.")
+            aloc_clean[str(k)] = float(dv)
+            soma_aloc += dv
+
+        copart_tipo = str(catalogo.get("coparticipacao_tipo") or "percentual").strip().lower()
+        copart_val = self._d2(catalogo.get("coparticipacao_valor") or 0.0)
+        teto_pct = self._d2(catalogo.get("teto_legal_percentual") or 0.0)
+
+        custo_total = Decimal("0.00")
+        desconto = Decimal("0.00")
+
+        if tipo == "vale_transporte":
+            if optante == 0:
+                custo_total = Decimal("0.00")
+                desconto = Decimal("0.00")
+            else:
+                if valor_diario > Decimal("0.00") and dias_uteis > 0:
+                    custo_total = self._d2(valor_diario * Decimal(str(dias_uteis)))
+                else:
+                    custo_total = valor_mensal_base
+                if custo_total <= Decimal("0.00"):
+                    raise PlataformaValidacaoException("Informe o valor diário (e dias úteis) ou valor mensal do Vale-Transporte.")
+                perc_vt = min(teto_pct if teto_pct > Decimal("0.00") else Decimal("6.00"), Decimal("6.00"))
+                teto_legal_vt = self._d2(salario_base * (perc_vt / Decimal("100.00")))
+                desconto = min(custo_total, teto_legal_vt)
+
+        elif tipo in ("vale_alimentacao", "vale_refeicao"):
+            if optante == 1:
+                if valor_diario > Decimal("0.00") and dias_uteis > 0:
+                    custo_total = self._d2(valor_diario * Decimal(str(dias_uteis)))
+                else:
+                    custo_total = valor_mensal_base
+                if custo_total <= Decimal("0.00"):
+                    raise PlataformaValidacaoException("Informe o valor mensal ou valor diário do Vale-Alimentação/Refeição.")
+                if copart_tipo == "percentual":
+                    desconto_calc = self._d2(custo_total * (copart_val / Decimal("100.00")))
+                else:
+                    desconto_calc = min(copart_val, custo_total)
+                teto_pat = min(teto_pct if teto_pct > Decimal("0.00") else Decimal("20.00"), Decimal("20.00"))
+                limite_pat = self._d2(custo_total * (teto_pat / Decimal("100.00")))
+                desconto = min(custo_total, min(desconto_calc, limite_pat) + copart_extra)
+
+        elif tipo in ("plano_saude", "plano_odontologico"):
+            if optante == 1:
+                custo_total = self._d2(valor_mensal_base + (Decimal(str(qtd_dep)) * valor_dep))
+                if custo_total <= Decimal("0.00"):
+                    raise PlataformaValidacaoException("Informe a mensalidade base do plano de saúde/odontológico.")
+                if copart_tipo == "percentual":
+                    desc_base = self._d2(custo_total * (copart_val / Decimal("100.00")))
+                else:
+                    desc_base = min(copart_val, custo_total)
+                desconto = min(custo_total, desc_base + copart_extra)
+
+        elif tipo == "seguro_vida":
+            if optante == 1:
+                custo_total = valor_mensal_base
+                if custo_total <= Decimal("0.00"):
+                    raise PlataformaValidacaoException("Informe o valor do prêmio mensal do Seguro de Vida.")
+                if copart_tipo == "percentual":
+                    desc_base = self._d2(custo_total * (copart_val / Decimal("100.00")))
+                else:
+                    desc_base = min(copart_val, custo_total)
+                desconto = min(custo_total, desc_base + copart_extra)
+
+        elif tipo == "farmacia":
+            if limite_mensal > Decimal("0.00") and valor_utilizado > limite_mensal:
+                raise PlataformaValidacaoException(
+                    f"Valor utilizado no convênio farmácia (R$ {valor_utilizado}) excede o limite mensal autorizado (R$ {limite_mensal})."
+                )
+            if optante == 1:
+                custo_total = valor_utilizado
+                if copart_tipo == "percentual":
+                    desc_base = self._d2(custo_total * (copart_val / Decimal("100.00")))
+                else:
+                    desc_base = min(copart_val, custo_total)
+                desconto = min(custo_total, desc_base + copart_extra)
+
+        elif tipo == "beneficio_flexivel":
+            if optante == 1:
+                if saldo_flex <= Decimal("0.00"):
+                    raise PlataformaValidacaoException("Informe o saldo mensal positivo para Benefícios Flexíveis.")
+                if soma_aloc > saldo_flex:
+                    raise PlataformaValidacaoException(
+                        f"A soma das alocações flexíveis (R$ {soma_aloc}) excede o saldo disponível (R$ {saldo_flex})."
+                    )
+                custo_total = saldo_flex
+                desconto = min(custo_total, copart_extra)
+
+        else:
+            if optante == 1:
+                custo_total = valor_mensal_base if valor_mensal_base > Decimal("0.00") else self._d2(valor_diario * Decimal(str(dias_uteis)))
+                if copart_tipo == "percentual":
+                    desc_base = self._d2(custo_total * (copart_val / Decimal("100.00")))
+                else:
+                    desc_base = min(copart_val, custo_total)
+                desconto = min(custo_total, desc_base + copart_extra)
+
+        custo_empresa = max(Decimal("0.00"), self._d2(custo_total - desconto))
+
+        return {
+            "optante": optante,
+            "valor_diario": float(valor_diario),
+            "dias_uteis_mes": dias_uteis,
+            "valor_mensal_base": float(valor_mensal_base),
+            "qtd_dependentes": qtd_dep,
+            "valor_dependente": float(valor_dep),
+            "coparticipacao_extra": float(copart_extra),
+            "limite_mensal": float(limite_mensal),
+            "valor_utilizado_mes": float(valor_utilizado),
+            "saldo_flexivel": float(saldo_flex),
+            "alocacao_json": json.dumps(aloc_clean, ensure_ascii=False) if aloc_clean else "",
+            "custo_total_mes": float(custo_total),
+            "desconto_colaborador": float(desconto),
+            "custo_empresa": float(custo_empresa),
+        }
+
+    def listar_beneficios_colaboradores(
+        self,
+        colaborador_id: Optional[int] = None,
+        tipo: Optional[str] = None,
+        apenas_ativos: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Lista benefícios vinculados aos colaboradores com dados de colaborador e catálogo."""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            sql = """
+                SELECT bc.*,
+                       c.nome_completo AS colaborador_nome,
+                       c.matricula AS colaborador_matricula,
+                       c.cargo AS colaborador_cargo,
+                       c.setor AS colaborador_setor,
+                       c.salario_base AS colaborador_salario_base,
+                       c.situacao AS colaborador_situacao,
+                       cat.codigo AS beneficio_codigo,
+                       cat.nome AS beneficio_nome,
+                       cat.tipo AS beneficio_tipo,
+                       cat.rubrica_codigo AS rubrica_codigo,
+                       cat.coparticipacao_tipo,
+                       cat.coparticipacao_valor,
+                       cat.teto_legal_percentual
+                FROM beneficios_colaborador bc
+                JOIN colaboradores c ON c.id = bc.colaborador_id
+                JOIN beneficios_catalogo cat ON cat.id = bc.beneficio_id
+                WHERE 1=1
+            """
+            params: List[Any] = []
+            if colaborador_id:
+                sql += f" AND bc.colaborador_id = {p}"
+                params.append(int(colaborador_id))
+            if tipo and tipo != "todos":
+                sql += f" AND cat.tipo = {p}"
+                params.append(tipo.strip().lower())
+            if apenas_ativos:
+                sql += " AND bc.ativo = 1"
+            sql += " ORDER BY bc.id DESC;"
+            cur.execute(sql, tuple(params))
+            rows = fetchall_dict(cur, self.db_path)
+            for r in rows:
+                r["alocacao_obj"] = self._parse_json_dict(r.get("alocacao_json"))
+                if not r.get("rubrica_codigo"):
+                    r["rubrica_codigo"] = self.RUBRICA_POR_TIPO_BENEFICIO.get(r.get("beneficio_tipo", ""), "0511")
+            return rows
+        finally:
+            conn.close()
+
+    def obter_beneficio_colaborador(self, vinculo_id: int) -> Dict[str, Any]:
+        """Obtém um vínculo específico de benefício por ID."""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT bc.*,
+                       c.nome_completo AS colaborador_nome,
+                       c.matricula AS colaborador_matricula,
+                       c.cargo AS colaborador_cargo,
+                       c.setor AS colaborador_setor,
+                       c.salario_base AS colaborador_salario_base,
+                       c.situacao AS colaborador_situacao,
+                       cat.codigo AS beneficio_codigo,
+                       cat.nome AS beneficio_nome,
+                       cat.tipo AS beneficio_tipo,
+                       cat.rubrica_codigo AS rubrica_codigo
+                FROM beneficios_colaborador bc
+                JOIN colaboradores c ON c.id = bc.colaborador_id
+                JOIN beneficios_catalogo cat ON cat.id = bc.beneficio_id
+                WHERE bc.id = {self._p()};
+                """,
+                (vinculo_id,),
+            )
+            row = fetchone_dict(cur, self.db_path)
+            if not row:
+                raise PlataformaRecursoNaoEncontradoException(f"Vínculo de benefício #{vinculo_id} não encontrado.")
+            row["alocacao_obj"] = self._parse_json_dict(row.get("alocacao_json"))
+            return row
+        finally:
+            conn.close()
+
+    def vincular_beneficio_colaborador(self, dados: Dict[str, Any], usuario: str = "DP") -> Dict[str, Any]:
+        """RF071-RF078: Concede/vincula benefício a colaborador após validar elegibilidade e calcular custos/descontos."""
+        if not dados.get("colaborador_id") or not dados.get("beneficio_id"):
+            raise PlataformaValidacaoException("Colaborador e benefício são obrigatórios.")
+        colaborador_id = int(dados["colaborador_id"])
+        beneficio_id = int(dados["beneficio_id"])
+        vig_inicio = self._validar_data_iso(dados.get("vigencia_inicio") or datetime.now().strftime("%Y-%m-%d"), "vigencia_inicio")
+        vig_fim_raw = str(dados.get("vigencia_fim") or "").strip()
+        vig_fim = self._validar_data_iso(vig_fim_raw, "vigencia_fim") if vig_fim_raw else None
+        if vig_fim and vig_fim < vig_inicio:
+            raise PlataformaValidacaoException("A data de fim de vigência não pode ser anterior à data de início.")
+
+        elig = self.verificar_elegibilidade_beneficio(colaborador_id, beneficio_id, data_referencia=vig_inicio)
+        if not elig["elegivel"]:
+            raise PlataformaValidacaoException("Colaborador inelegível para este benefício: " + " ".join(elig["motivos"]))
+
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT * FROM colaboradores WHERE id = {p};", (colaborador_id,))
+            colab = fetchone_dict(cur, self.db_path)
+            cur.execute(f"SELECT * FROM beneficios_catalogo WHERE id = {p};", (beneficio_id,))
+            catalogo = fetchone_dict(cur, self.db_path)
+
+            cur.execute(
+                f"SELECT id FROM beneficios_colaborador WHERE colaborador_id = {p} AND beneficio_id = {p} AND ativo = 1;",
+                (colaborador_id, beneficio_id),
+            )
+            if cur.fetchone():
+                raise PlataformaValidacaoException(
+                    f"Colaborador já possui vínculo ativo com '{catalogo['nome']}'. Edite o vínculo existente."
+                )
+
+            calc = self._calcular_valores_beneficio(colab, catalogo, dados)
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ativo = 1 if dados.get("ativo", 1) in (1, True, "1", "true", "sim") else 0
+            obs = str(dados.get("observacoes") or "").strip()
+
+            sql_pg = f"""
+                INSERT INTO beneficios_colaborador (
+                    colaborador_id, beneficio_id, optante, valor_diario, dias_uteis_mes,
+                    valor_mensal_base, qtd_dependentes, valor_dependente, coparticipacao_extra,
+                    limite_mensal, valor_utilizado_mes, saldo_flexivel, alocacao_json,
+                    custo_total_mes, desconto_colaborador, custo_empresa,
+                    vigencia_inicio, vigencia_fim, observacoes, ativo, criado_em, atualizado_em
+                ) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
+                RETURNING id;
+            """
+            sql_sqlite = f"""
+                INSERT INTO beneficios_colaborador (
+                    colaborador_id, beneficio_id, optante, valor_diario, dias_uteis_mes,
+                    valor_mensal_base, qtd_dependentes, valor_dependente, coparticipacao_extra,
+                    limite_mensal, valor_utilizado_mes, saldo_flexivel, alocacao_json,
+                    custo_total_mes, desconto_colaborador, custo_empresa,
+                    vigencia_inicio, vigencia_fim, observacoes, ativo, criado_em, atualizado_em
+                ) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p});
+            """
+            params = (
+                colaborador_id, beneficio_id, calc["optante"], calc["valor_diario"], calc["dias_uteis_mes"],
+                calc["valor_mensal_base"], calc["qtd_dependentes"], calc["valor_dependente"], calc["coparticipacao_extra"],
+                calc["limite_mensal"], calc["valor_utilizado_mes"], calc["saldo_flexivel"], calc["alocacao_json"],
+                calc["custo_total_mes"], calc["desconto_colaborador"], calc["custo_empresa"],
+                vig_inicio, vig_fim, obs, ativo, agora, agora,
+            )
+            vinc_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="inclusao",
+            registro_tipo="beneficios_colaborador",
+            registro_id=vinc_id,
+            usuario=usuario,
+            detalhes=f"Benefício '{catalogo['codigo']}' concedido ao colaborador #{colaborador_id} (Desc. R$ {calc['desconto_colaborador']:.2f}).",
+        )
+        return self.obter_beneficio_colaborador(vinc_id)
+
+    def atualizar_beneficio_colaborador(self, vinculo_id: int, dados: Dict[str, Any], usuario: str = "DP") -> Dict[str, Any]:
+        """Atualiza parâmetros de um benefício vinculado e recalcula valores."""
+        atual = self.obter_beneficio_colaborador(vinculo_id)
+        merged = dict(atual)
+        merged.update({k: v for k, v in dados.items() if v is not None})
+
+        vig_inicio = self._validar_data_iso(merged.get("vigencia_inicio"), "vigencia_inicio")
+        vig_fim_raw = str(merged.get("vigencia_fim") or "").strip()
+        vig_fim = self._validar_data_iso(vig_fim_raw, "vigencia_fim") if vig_fim_raw else None
+        if vig_fim and vig_fim < vig_inicio:
+            raise PlataformaValidacaoException("A data de fim de vigência não pode ser anterior à data de início.")
+
+        ativo = 1 if merged.get("ativo", 1) in (1, True, "1", "true", "sim") else 0
+        if ativo == 1:
+            elig = self.verificar_elegibilidade_beneficio(int(atual["colaborador_id"]), int(atual["beneficio_id"]), data_referencia=vig_inicio)
+            if not elig["elegivel"]:
+                raise PlataformaValidacaoException("Colaborador inelegível para manter benefício ativo: " + " ".join(elig["motivos"]))
+
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT * FROM colaboradores WHERE id = {p};", (atual["colaborador_id"],))
+            colab = fetchone_dict(cur, self.db_path)
+            cur.execute(f"SELECT * FROM beneficios_catalogo WHERE id = {p};", (atual["beneficio_id"],))
+            catalogo = fetchone_dict(cur, self.db_path)
+
+            calc = self._calcular_valores_beneficio(colab, catalogo, merged)
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            obs = str(merged.get("observacoes") or "").strip()
+            cur.execute(
+                f"""
+                UPDATE beneficios_colaborador SET
+                    optante = {p}, valor_diario = {p}, dias_uteis_mes = {p},
+                    valor_mensal_base = {p}, qtd_dependentes = {p}, valor_dependente = {p},
+                    coparticipacao_extra = {p}, limite_mensal = {p}, valor_utilizado_mes = {p},
+                    saldo_flexivel = {p}, alocacao_json = {p}, custo_total_mes = {p},
+                    desconto_colaborador = {p}, custo_empresa = {p},
+                    vigencia_inicio = {p}, vigencia_fim = {p}, observacoes = {p},
+                    ativo = {p}, atualizado_em = {p}
+                WHERE id = {p};
+                """,
+                (
+                    calc["optante"], calc["valor_diario"], calc["dias_uteis_mes"],
+                    calc["valor_mensal_base"], calc["qtd_dependentes"], calc["valor_dependente"],
+                    calc["coparticipacao_extra"], calc["limite_mensal"], calc["valor_utilizado_mes"],
+                    calc["saldo_flexivel"], calc["alocacao_json"], calc["custo_total_mes"],
+                    calc["desconto_colaborador"], calc["custo_empresa"],
+                    vig_inicio, vig_fim, obs, ativo, agora, vinculo_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="alteracao",
+            registro_tipo="beneficios_colaborador",
+            registro_id=vinculo_id,
+            usuario=usuario,
+            detalhes=f"Vínculo de benefício #{vinculo_id} atualizado (Desc. R$ {calc['desconto_colaborador']:.2f}).",
+        )
+        return self.obter_beneficio_colaborador(vinculo_id)
+
+    def excluir_beneficio_colaborador(self, vinculo_id: int, usuario: str = "DP") -> Dict[str, Any]:
+        """Exclui um vínculo de benefício do colaborador."""
+        atual = self.obter_beneficio_colaborador(vinculo_id)
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"DELETE FROM beneficios_colaborador WHERE id = {self._p()};", (vinculo_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="exclusao",
+            registro_tipo="beneficios_colaborador",
+            registro_id=vinculo_id,
+            usuario=usuario,
+            detalhes=f"Vínculo #{vinculo_id} ({atual['beneficio_nome']} - {atual['colaborador_nome']}) excluído.",
+        )
+        return {"sucesso": True, "id": vinculo_id}
+
+    def obter_descontos_beneficios_folha(self, colaborador_id: int, competencia: str) -> Dict[str, Any]:
+        """
+        RF079: Consolida os descontos de benefícios vigentes do colaborador na competência (AAAA-MM),
+        recalculando pelo salário-base atual e retornando eventos prontos para a Folha de Pagamento.
+        """
+        comp = str(competencia or "").strip()
+        if not re.match(r"^\d{4}-\d{2}$", comp):
+            raise PlataformaValidacaoException("Competência inválida para descontos de benefícios. Use AAAA-MM.")
+        ano, mes = map(int, comp.split("-"))
+        if mes < 1 or mes > 12:
+            raise PlataformaValidacaoException("Mês inválido na competência informada.")
+        primeiro_dia = f"{comp}-01"
+        ultimo_dia = f"{comp}-{calendar.monthrange(ano, mes)[1]:02d}"
+
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(f"SELECT * FROM colaboradores WHERE id = {p};", (colaborador_id,))
+            colab = fetchone_dict(cur, self.db_path)
+            if not colab:
+                raise PlataformaRecursoNaoEncontradoException(f"Colaborador #{colaborador_id} não encontrado.")
+            cur.execute(
+                f"""
+                SELECT bc.*, cat.codigo AS beneficio_codigo, cat.nome AS beneficio_nome,
+                       cat.tipo AS tipo, cat.tipo AS beneficio_tipo, cat.rubrica_codigo,
+                       cat.coparticipacao_tipo, cat.coparticipacao_valor,
+                       cat.teto_legal_percentual, cat.valor_mensal_padrao,
+                       cat.valor_diario_padrao, cat.limite_padrao
+                FROM beneficios_colaborador bc
+                JOIN beneficios_catalogo cat ON cat.id = bc.beneficio_id
+                WHERE bc.colaborador_id = {p}
+                  AND bc.ativo = 1
+                  AND cat.ativo = 1
+                  AND bc.vigencia_inicio <= {p}
+                  AND (bc.vigencia_fim IS NULL OR bc.vigencia_fim = '' OR bc.vigencia_fim >= {p})
+                ORDER BY bc.id ASC;
+                """,
+                (colaborador_id, ultimo_dia, primeiro_dia),
+            )
+            vinculos = fetchall_dict(cur, self.db_path)
+        finally:
+            conn.close()
+
+        itens: List[Dict[str, Any]] = []
+        eventos_folha: List[Dict[str, Any]] = []
+        tot_custo = Decimal("0.00")
+        tot_desc = Decimal("0.00")
+        tot_emp = Decimal("0.00")
+
+        for v in vinculos:
+            calc = self._calcular_valores_beneficio(colab, v, v)
+            rub = str(v.get("rubrica_codigo") or self.RUBRICA_POR_TIPO_BENEFICIO.get(v.get("beneficio_tipo", ""), "0511")).strip()
+            tot_custo += self._d2(calc["custo_total_mes"])
+            tot_desc += self._d2(calc["desconto_colaborador"])
+            tot_emp += self._d2(calc["custo_empresa"])
+
+            item_res = {
+                "vinculo_id": v["id"],
+                "beneficio_id": v["beneficio_id"],
+                "codigo": v["beneficio_codigo"],
+                "nome": v["beneficio_nome"],
+                "tipo": v["beneficio_tipo"],
+                "rubrica_codigo": rub,
+                "optante": calc["optante"],
+                "custo_total_mes": calc["custo_total_mes"],
+                "desconto_colaborador": calc["desconto_colaborador"],
+                "custo_empresa": calc["custo_empresa"],
+                "vigencia_inicio": v["vigencia_inicio"],
+                "vigencia_fim": v.get("vigencia_fim"),
+            }
+            itens.append(item_res)
+
+            if calc["desconto_colaborador"] > 0:
+                if rub == "0510":
+                    teto_vt = min(float(v.get("teto_legal_percentual") or 6.0), 6.0)
+                    eventos_folha.append({
+                        "codigo": "0510",
+                        "descricao": f"{v['beneficio_nome']} (VT 6%)",
+                        "tipo": "desconto",
+                        "percentual": teto_vt,
+                        "referencia": teto_vt,
+                        "valor_informado": calc["custo_total_mes"],
+                        "desconto_previsto": calc["desconto_colaborador"],
+                        "origem_beneficio_id": v["id"],
+                    })
+                else:
+                    eventos_folha.append({
+                        "codigo": rub,
+                        "descricao": v["beneficio_nome"],
+                        "tipo": "desconto",
+                        "referencia": 1,
+                        "valor_informado": calc["desconto_colaborador"],
+                        "desconto_previsto": calc["desconto_colaborador"],
+                        "origem_beneficio_id": v["id"],
+                    })
+
+        return {
+            "colaborador_id": colaborador_id,
+            "colaborador_nome": colab.get("nome_completo"),
+            "salario_base": float(colab.get("salario_base") or 0.0),
+            "competencia": comp,
+            "itens": itens,
+            "eventos_folha": eventos_folha,
+            "total_custo_mensal": float(tot_custo),
+            "total_descontos_beneficios": float(tot_desc),
+            "total_custo_empresa": float(tot_emp),
+        }
+
+    def gerar_relatorio_beneficios(
+        self,
+        competencia: Optional[str] = None,
+        tipo: Optional[str] = None,
+        setor: Optional[str] = None,
+        colaborador_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """RF080: Gera relatório consolidado e analítico de custos e descontos de benefícios."""
+        comp = str(competencia or "").strip()
+        primeiro_dia = None
+        ultimo_dia = None
+        if comp:
+            if not re.match(r"^\d{4}-\d{2}$", comp):
+                raise PlataformaValidacaoException("Competência inválida para relatório. Use AAAA-MM.")
+            ano, mes = map(int, comp.split("-"))
+            primeiro_dia = f"{comp}-01"
+            ultimo_dia = f"{comp}-{calendar.monthrange(ano, mes)[1]:02d}"
+
+        vinculos = self.listar_beneficios_colaboradores(
+            colaborador_id=colaborador_id,
+            tipo=tipo if tipo and tipo != "todos" else None,
+            apenas_ativos=True,
+        )
+
+        itens: List[Dict[str, Any]] = []
+        por_tipo_map: Dict[str, Dict[str, Any]] = {}
+        por_setor_map: Dict[str, Dict[str, Any]] = {}
+        colabs_unicos = set()
+
+        total_custo = Decimal("0.00")
+        total_empresa = Decimal("0.00")
+        total_desc = Decimal("0.00")
+
+        for v in vinculos:
+            if setor and setor != "todos":
+                if str(v.get("colaborador_setor") or "").strip().lower() != setor.strip().lower():
+                    continue
+            if primeiro_dia and ultimo_dia:
+                vi = str(v.get("vigencia_inicio") or "")
+                vf = str(v.get("vigencia_fim") or "")
+                if vi > ultimo_dia or (vf and vf < primeiro_dia):
+                    continue
+
+            custo = self._d2(v.get("custo_total_mes") or 0)
+            desc = self._d2(v.get("desconto_colaborador") or 0)
+            emp = self._d2(v.get("custo_empresa") or 0)
+
+            total_custo += custo
+            total_desc += desc
+            total_empresa += emp
+            colabs_unicos.add(int(v["colaborador_id"]))
+
+            t_key = v.get("beneficio_tipo") or "outros"
+            if t_key not in por_tipo_map:
+                por_tipo_map[t_key] = {
+                    "tipo": t_key,
+                    "quantidade": 0,
+                    "custo_total": Decimal("0.00"),
+                    "custo_empresa": Decimal("0.00"),
+                    "desconto_colaborador": Decimal("0.00"),
+                }
+            por_tipo_map[t_key]["quantidade"] += 1
+            por_tipo_map[t_key]["custo_total"] += custo
+            por_tipo_map[t_key]["custo_empresa"] += emp
+            por_tipo_map[t_key]["desconto_colaborador"] += desc
+
+            s_key = v.get("colaborador_setor") or "Não informado"
+            if s_key not in por_setor_map:
+                por_setor_map[s_key] = {
+                    "setor": s_key,
+                    "colaboradores_ids": set(),
+                    "vinculos": 0,
+                    "custo_total": Decimal("0.00"),
+                    "custo_empresa": Decimal("0.00"),
+                    "desconto_colaborador": Decimal("0.00"),
+                }
+            por_setor_map[s_key]["colaboradores_ids"].add(int(v["colaborador_id"]))
+            por_setor_map[s_key]["vinculos"] += 1
+            por_setor_map[s_key]["custo_total"] += custo
+            por_setor_map[s_key]["custo_empresa"] += emp
+            por_setor_map[s_key]["desconto_colaborador"] += desc
+
+            itens.append({
+                "vinculo_id": v["id"],
+                "colaborador_id": v["colaborador_id"],
+                "colaborador_nome": v["colaborador_nome"],
+                "matricula": v.get("colaborador_matricula"),
+                "setor": s_key,
+                "beneficio_codigo": v["beneficio_codigo"],
+                "beneficio_nome": v["beneficio_nome"],
+                "tipo": t_key,
+                "rubrica_codigo": v.get("rubrica_codigo"),
+                "vigencia_inicio": v.get("vigencia_inicio"),
+                "vigencia_fim": v.get("vigencia_fim"),
+                "custo_total_mes": float(custo),
+                "desconto_colaborador": float(desc),
+                "custo_empresa": float(emp),
+            })
+
+        por_tipo = [
+            {
+                "tipo": d["tipo"],
+                "quantidade": d["quantidade"],
+                "custo_total": float(d["custo_total"]),
+                "custo_empresa": float(d["custo_empresa"]),
+                "desconto_colaborador": float(d["desconto_colaborador"]),
+            }
+            for d in sorted(por_tipo_map.values(), key=lambda x: x["tipo"])
+        ]
+        por_setor = [
+            {
+                "setor": d["setor"],
+                "colaboradores": len(d["colaboradores_ids"]),
+                "vinculos": d["vinculos"],
+                "custo_total": float(d["custo_total"]),
+                "custo_empresa": float(d["custo_empresa"]),
+                "desconto_colaborador": float(d["desconto_colaborador"]),
+            }
+            for d in sorted(por_setor_map.values(), key=lambda x: x["setor"])
+        ]
+
+        qtd_colabs = len(colabs_unicos)
+        media_colab = float(self._d2(total_custo / Decimal(str(qtd_colabs)))) if qtd_colabs > 0 else 0.0
+
+        return {
+            "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "filtros": {"competencia": comp or None, "tipo": tipo, "setor": setor, "colaborador_id": colaborador_id},
+            "resumo": {
+                "total_vinculos_ativos": len(itens),
+                "total_colaboradores_beneficiados": qtd_colabs,
+                "custo_total_mensal": float(total_custo),
+                "total_custo_empresa": float(total_empresa),
+                "total_desconto_colaboradores": float(total_desc),
+                "custo_medio_por_colaborador": media_colab,
+            },
+            "por_tipo": por_tipo,
+            "por_setor": por_setor,
+            "itens": itens,
+        }

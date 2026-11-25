@@ -172,6 +172,39 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         return str(empresa_usuario).strip()
 
+    def _resolver_empresa_escopo(self, usuario: dict, empresa_alvo: str = None) -> tuple[bool, Optional[str]]:
+        """Resolve escopo multi-tenant com segurança sem deixar requisição sem resposta HTTP."""
+        empresa_valida = self._validar_escopo_empresa(usuario, empresa_alvo)
+        if empresa_alvo and empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador") and usuario.get("empresa_id"):
+            return False, None
+        return True, empresa_valida
+
+    def _exigir_permissao(self, usuario: dict, permissao: str) -> bool:
+        """Aplica checagem estrita de RBAC para operações sensíveis (HTTP 403)."""
+        from .auth import checar_permissao
+        if not checar_permissao(usuario.get("perfil", ""), permissao):
+            self._enviar_json(403, {
+                "sucesso": False,
+                "mensagem": f"Acesso negado por RBAC: permissão '{permissao}' requerida.",
+                "codigo": "RBAC_ACESSO_NEGADO",
+            })
+            return False
+        return True
+
+    def _enviar_binario(self, conteudo_bytes: bytes, mime: str, nome_arquivo: str, inline: bool = False):
+        nome_safe = str(nome_arquivo or "documento").replace('"', "_")
+        disp = "inline" if inline else "attachment"
+        self.send_response(200)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Content-Length", str(len(conteudo_bytes)))
+        self.send_header("Content-Disposition", f'{disp}; filename="{nome_safe}"')
+        self.send_header("Access-Control-Allow-Origin", self.headers.get("Origin", "*"))
+        self.send_header("Access-Control-Allow-Credentials", "true")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(conteudo_bytes)
+
     def _obter_caminho_e_query(self) -> tuple[str, dict]:
         """
         Extrai o caminho da requisição e os parâmetros de query.
@@ -404,42 +437,132 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 "matricula": self.service.gerar_proxima_matricula()
             })
 
-        # Rota protegida: Obter colaborador, histórico ou documentos GET /api/colaboradores/<id>[/historico|/documentos]
+        # Rota protegida: Colaborador e submódulos RF-005 a RF-010 GET /api/colaboradores/<id>[/...]
         if path.startswith("/api/colaboradores/"):
             partes = path.strip("/").split("/")
-            if len(partes) == 3 and partes[2].isdigit():
+            if len(partes) >= 3 and partes[2].isdigit():
                 usuario = self._exigir_autenticacao()
                 if not usuario:
                     return
                 colab_id = int(partes[2])
-                empresa_valida = self._validar_escopo_empresa(usuario)
-                if empresa_valida is None and usuario.get("perfil") not in ("superadmin", "administrador"):
+                empresa_alvo = (query.get("empresa_id") or [None])[0]
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+                if not ok_escopo:
                     return
-                try:
-                    colab = self.service.obter_por_id(colab_id, empresa_id=empresa_valida)
-                    return self._enviar_json(200, {"sucesso": True, "dados": colab})
-                except RecursoNaoEncontradoException as e:
-                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
-            if len(partes) == 4 and partes[2].isdigit() and partes[3] == "historico":
-                usuario = self._exigir_autenticacao()
-                if not usuario:
-                    return
-                colab_id = int(partes[2])
-                try:
-                    historico = self.service.obter_historico(colab_id)
-                    return self._enviar_json(200, {"sucesso": True, "total": len(historico), "dados": historico})
-                except RecursoNaoEncontradoException as e:
-                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
-            if len(partes) == 4 and partes[2].isdigit() and partes[3] == "documentos":
-                usuario = self._exigir_autenticacao()
-                if not usuario:
-                    return
-                colab_id = int(partes[2])
-                try:
-                    docs = self.service.listar_documentos(colab_id)
-                    return self._enviar_json(200, {"sucesso": True, "total": len(docs), "dados": docs})
-                except RecursoNaoEncontradoException as e:
-                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 3:
+                    try:
+                        colab = self.service.obter_por_id(colab_id, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "dados": colab})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[3] == "historico":
+                    try:
+                        historico = self.service.obter_historico(colab_id)
+                        return self._enviar_json(200, {"sucesso": True, "total": len(historico), "dados": historico})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[3] == "dependentes":
+                    try:
+                        incluir_inativos = query.get("incluir_inativos", ["0"])[0] in ("1", "true", "sim")
+                        deps = self.service.listar_dependentes(colab_id, incluir_inativos=incluir_inativos, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "total": len(deps), "dados": deps})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[3] == "historico-funcional":
+                    try:
+                        tipo_mov = query.get("tipo", [None])[0] or query.get("tipo_movimentacao", [None])[0]
+                        dt_ini = query.get("data_inicio", [None])[0]
+                        dt_fim = query.get("data_fim", [None])[0]
+                        movs = self.service.listar_historico_funcional(
+                            colab_id, tipo_movimentacao=tipo_mov, data_inicio=dt_ini, data_fim=dt_fim, empresa_id=empresa_valida
+                        )
+                        return self._enviar_json(200, {"sucesso": True, "total": len(movs), "dados": movs})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[3] == "documentos":
+                    try:
+                        cat = query.get("categoria", [None])[0]
+                        termo = (query.get("q") or query.get("termo") or [None])[0]
+                        incluir_inativos = query.get("incluir_inativos", ["0"])[0] in ("1", "true", "sim")
+                        docs = self.service.listar_documentos(
+                            colab_id, categoria=cat, termo=termo, incluir_inativos=incluir_inativos, empresa_id=empresa_valida
+                        )
+                        return self._enviar_json(200, {"sucesso": True, "total": len(docs), "dados": docs})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 6 and partes[3] == "documentos" and partes[4].isdigit() and partes[5] == "versoes":
+                    try:
+                        versoes = self.service.listar_versoes_documento(colab_id, int(partes[4]), empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "total": len(versoes), "dados": versoes})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 6 and partes[3] == "documentos" and partes[4].isdigit() and partes[5] == "download":
+                    try:
+                        modo = (query.get("modo") or ["download"])[0]
+                        acao = "visualizacao" if modo == "visualizar" else "download"
+                        nome_resp = f"{usuario['nome_completo']} ({usuario['perfil']})"
+                        res_doc = self.service.obter_documento_para_download(
+                            colab_id,
+                            int(partes[4]),
+                            usuario=nome_resp,
+                            empresa_id=empresa_valida,
+                            ip_origem=self._obter_ip_cliente(),
+                            acao=acao,
+                        )
+                        conteudo_bytes = res_doc["conteudo_bytes"]
+                        mime = res_doc.get("mime_type") or "application/octet-stream"
+                        nome_arq = str(res_doc.get("nome_arquivo") or f"documento_{partes[4]}").replace('"', "_")
+                        disp = "inline" if modo == "visualizar" else "attachment"
+                        self.send_response(200)
+                        self.send_header("Content-Type", mime)
+                        self.send_header("Content-Length", str(len(conteudo_bytes)))
+                        self.send_header("Content-Disposition", f'{disp}; filename="{nome_arq}"')
+                        self.send_header("Access-Control-Allow-Origin", self.headers.get("Origin", "*"))
+                        self.send_header("Access-Control-Allow-Credentials", "true")
+                        self.send_header("X-Content-Type-Options", "nosniff")
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        self.wfile.write(conteudo_bytes)
+                        return
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+                    except Exception as e:
+                        return self._enviar_json(*erro_http(e))
+
+                if len(partes) == 4 and partes[3] == "dados-bancarios":
+                    try:
+                        incluir_inativos = query.get("incluir_inativos", ["0"])[0] in ("1", "true", "sim")
+                        contas = self.service.listar_dados_bancarios(colab_id, incluir_inativos=incluir_inativos, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "total": len(contas), "dados": contas})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[3] == "auditoria":
+                    try:
+                        entidade = query.get("entidade", [None])[0]
+                        usr_filtro = query.get("usuario", [None])[0]
+                        campo_filtro = query.get("campo", [None])[0]
+                        dt_ini = query.get("data_inicio", [None])[0]
+                        dt_fim = query.get("data_fim", [None])[0]
+                        logs = self.service.listar_auditoria_cadastral(
+                            colaborador_id=colab_id,
+                            entidade=entidade,
+                            usuario=usr_filtro,
+                            campo=campo_filtro,
+                            data_inicio=dt_ini,
+                            data_fim=dt_fim,
+                            empresa_id=empresa_valida,
+                        )
+                        return self._enviar_json(200, {"sucesso": True, "total": len(logs), "dados": logs})
+                    except RecursoNaoEncontradoException as e:
+                        return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
         # Rota protegida: Catálogo parametrizável de eventos da folha GET /api/folha/eventos-catalogo
         if path == "/api/folha/eventos-catalogo":
@@ -567,16 +690,19 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             P = self.service._ph()
             resultado = []
             for c in colabs:
-                cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P}", (c["id"],))
+                cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo'", (c["id"],))
                 c["total_dependentes"] = cursor.fetchone()[0]
                 try:
-                    cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(eh_dependente_irrf, 1) = 1", (c["id"],))
+                    cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_dependente_irrf, 1) = 1", (c["id"],))
                     c["total_dependentes_irrf"] = cursor.fetchone()[0]
-                    cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(eh_elegivel_salario_familia, 0) = 1", (c["id"],))
+                    cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_elegivel_salario_familia, 0) = 1", (c["id"],))
                     c["total_dependentes_salario_familia"] = cursor.fetchone()[0]
+                    cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_plano_saude, 0) = 1", (c["id"],))
+                    c["total_dependentes_plano_saude"] = cursor.fetchone()[0]
                 except Exception:
                     c["total_dependentes_irrf"] = c["total_dependentes"]
                     c["total_dependentes_salario_familia"] = 0
+                    c["total_dependentes_plano_saude"] = 0
                 resultado.append(c)
             conn.close()
             return self._enviar_json(200, {"sucesso": True, "total": len(resultado), "dados": resultado})
@@ -639,37 +765,115 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except FolhaNaoEncontradaException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
-        # Rotas da Plataforma de Gestão do Ciclo Trabalhista (Módulos 01 a 20)
+        # Rotas da Plataforma de Gestão do Ciclo Trabalhista (Módulo 02: Admissão RF-011 a RF-020)
         if path == "/api/admissoes":
             usuario = self._exigir_autenticacao()
-            if not usuario:
+            if not usuario or not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
                 return
             status = query.get("status", [None])[0]
-            admissoes = self.plataforma_service.listar_admissoes(status=status)
+            admissoes = self.plataforma_service.listar_admissoes(status=status, empresa_id=empresa_valida)
             return self._enviar_json(200, {"sucesso": True, "total": len(admissoes), "dados": admissoes})
+
+        if path == "/api/admissoes/escalas":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
+                return
+            escalas = self.plataforma_service.listar_escalas_jornada(empresa_id=empresa_valida or "a0000000-0000-0000-0000-000000000001")
+            return self._enviar_json(200, {"sucesso": True, "total": len(escalas), "dados": escalas})
+
+        if path == "/api/admissoes/centros-custo":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
+                return
+            ccs = self.plataforma_service.listar_centros_custo(empresa_id=empresa_valida or "a0000000-0000-0000-0000-000000000001")
+            return self._enviar_json(200, {"sucesso": True, "total": len(ccs), "dados": ccs})
+
+        if path == "/api/admissoes/contratos/modelos":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario)
+            if not ok_escopo:
+                return
+            modelos = self.plataforma_service.listar_modelos_contrato(empresa_id=empresa_valida)
+            return self._enviar_json(200, {"sucesso": True, "total": len(modelos), "dados": modelos})
 
         if path.startswith("/api/admissoes/"):
             partes = path.strip("/").split("/")
-            if len(partes) == 4 and partes[2] == "checklist" and partes[3].isdigit():
-                usuario = self._exigir_autenticacao()
-                if not usuario:
-                    return
-                adm_id = int(partes[3])
-                try:
-                    adm = self.plataforma_service.obter_admissao(adm_id)
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario)
+            if not ok_escopo:
+                return
+            perfil_u = usuario.get("perfil", "")
+            nome_resp = f"{usuario['nome_completo']} ({perfil_u})"
+
+            try:
+                if len(partes) == 4 and partes[2] == "checklist" and partes[3].isdigit():
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    adm = self.plataforma_service.obter_admissao(int(partes[3]), empresa_id=empresa_valida, perfil_usuario=perfil_u)
                     return self._enviar_json(200, {"sucesso": True, "dados": adm.get("checklist", [])})
-                except PlataformaRecursoNaoEncontradoException as e:
-                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
-            if len(partes) == 3 and partes[2].isdigit():
-                usuario = self._exigir_autenticacao()
-                if not usuario:
-                    return
-                adm_id = int(partes[2])
-                try:
-                    adm = self.plataforma_service.obter_admissao(adm_id)
+
+                if len(partes) == 3 and partes[2].isdigit():
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    adm = self.plataforma_service.obter_admissao(int(partes[2]), empresa_id=empresa_valida, perfil_usuario=perfil_u)
                     return self._enviar_json(200, {"sucesso": True, "dados": adm})
-                except PlataformaRecursoNaoEncontradoException as e:
-                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
+                if len(partes) == 4 and partes[2].isdigit() and partes[3] == "painel":
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    painel = self.plataforma_service.obter_painel_admissao(int(partes[2]), empresa_id=empresa_valida, perfil_usuario=perfil_u)
+                    return self._enviar_json(200, {"sucesso": True, "dados": painel})
+
+                if len(partes) == 4 and partes[2].isdigit() and partes[3] == "beneficios-elegiveis":
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    benefs = self.plataforma_service.listar_beneficios_elegiveis_admissao(int(partes[2]), empresa_id=empresa_valida)
+                    return self._enviar_json(200, {"sucesso": True, "total": len(benefs), "dados": benefs})
+
+                if len(partes) == 4 and partes[2].isdigit() and partes[3] == "aso":
+                    from .auth import checar_permissao
+                    if not (checar_permissao(perfil_u, "admissoes:visualizar") or checar_permissao(perfil_u, "sst:visualizar")):
+                        return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso negado ao controle de ASO."})
+                    aso = self.plataforma_service.consultar_aso_admissional(int(partes[2]), perfil_usuario=perfil_u, empresa_id=empresa_valida)
+                    return self._enviar_json(200, {"sucesso": True, "dados": aso})
+
+                if len(partes) == 5 and partes[2].isdigit() and partes[3] == "aso" and partes[4] == "download":
+                    res_aso = self.plataforma_service.obter_documento_aso_download(int(partes[2]), usuario=nome_resp, perfil_usuario=perfil_u, empresa_id=empresa_valida)
+                    return self._enviar_binario(res_aso["conteudo_bytes"], res_aso["mime_type"], res_aso["nome_arquivo"], inline=(query.get("modo", [""])[0] == "visualizar"))
+
+                if len(partes) == 6 and partes[2].isdigit() and partes[3] == "checklist" and partes[4].isdigit() and partes[5] == "download":
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    res_doc = self.plataforma_service.obter_documento_checklist_download(int(partes[2]), int(partes[4]), usuario=nome_resp, empresa_id=empresa_valida)
+                    return self._enviar_binario(res_doc["conteudo_bytes"], res_doc["mime_type"], res_doc["nome_arquivo"], inline=(query.get("modo", [""])[0] == "visualizar"))
+
+                if len(partes) == 6 and partes[2].isdigit() and partes[3] == "contratos" and partes[4].isdigit() and partes[5] == "download":
+                    if not self._exigir_permissao(usuario, "admissoes:visualizar"):
+                        return
+                    res_ctr = self.plataforma_service.obter_contrato_pdf_download(int(partes[2]), int(partes[4]), usuario=nome_resp, empresa_id=empresa_valida)
+                    return self._enviar_binario(res_ctr["conteudo_bytes"], res_ctr["mime_type"], res_ctr["nome_arquivo"], inline=(query.get("modo", [""])[0] == "visualizar"))
+            except PlataformaAcessoNegadoException as e:
+                return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
 
         if path == "/api/ponto/espelho":
             usuario = self._exigir_autenticacao()
@@ -754,6 +958,139 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             logs = self.plataforma_service.listar_auditoria(modulo=mod, operacao=op, usuario=usr)
             return self._enviar_json(200, {"sucesso": True, "total": len(logs), "dados": logs})
 
+        # Rotas de Gestão de Benefícios e Descontos (RF071 a RF080)
+        if path == "/api/beneficios/catalogo":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            apenas_ativas = query.get("apenas_ativos", ["0"])[0] in ("1", "true", "sim")
+            tipo = query.get("tipo", [None])[0]
+            itens = self.plataforma_service.listar_beneficios_catalogo(apenas_ativos=apenas_ativas, tipo=tipo)
+            return self._enviar_json(200, {"sucesso": True, "total": len(itens), "dados": itens})
+
+        if path == "/api/beneficios/colaboradores":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            tipo = query.get("tipo", [None])[0]
+            apenas_ativos = query.get("apenas_ativos", ["0"])[0] in ("1", "true", "sim")
+            itens = self.plataforma_service.listar_beneficios_colaboradores(
+                colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                tipo=tipo,
+                apenas_ativos=apenas_ativos,
+            )
+            return self._enviar_json(200, {"sucesso": True, "total": len(itens), "dados": itens})
+
+        if path == "/api/beneficios/elegibilidade":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            benef_id = query.get("beneficio_id", [None])[0]
+            data_ref = query.get("data_referencia", [None])[0]
+            if not colab_id or not colab_id.isdigit():
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Parâmetro 'colaborador_id' é obrigatório."})
+            try:
+                if benef_id and benef_id.isdigit():
+                    res = self.plataforma_service.verificar_elegibilidade_beneficio(int(colab_id), int(benef_id), data_referencia=data_ref)
+                else:
+                    res = self.plataforma_service.listar_elegibilidade_colaborador(int(colab_id), data_referencia=data_ref)
+                return self._enviar_json(200, {"sucesso": True, "dados": res})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/beneficios/descontos-folha":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            comp = (query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
+            if not colab_id or not colab_id.isdigit():
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Parâmetro 'colaborador_id' é obrigatório."})
+            try:
+                res = self.plataforma_service.obter_descontos_beneficios_folha(int(colab_id), comp)
+                return self._enviar_json(200, {"sucesso": True, "dados": res})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/beneficios/relatorio":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            comp = query.get("competencia", [None])[0]
+            tipo = query.get("tipo", [None])[0]
+            setor = query.get("setor", [None])[0]
+            colab_id = query.get("colaborador_id", [None])[0]
+            try:
+                res = self.plataforma_service.gerar_relatorio_beneficios(
+                    competencia=comp,
+                    tipo=tipo,
+                    setor=setor,
+                    colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                )
+                return self._enviar_json(200, {"sucesso": True, "dados": res})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # RF-008: Rotas de Controle de Documentação, Categorias e Config de Alertas
+        if path == "/api/documentos/controle":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
+                return
+            situacao = query.get("situacao", [None])[0]
+            cat = query.get("categoria", [None])[0]
+            colab_id = query.get("colaborador_id", [None])[0]
+            dt_ref = query.get("data_referencia", [None])[0]
+            sync_pend = query.get("sincronizar", ["0"])[0] in ("1", "true", "sim")
+            try:
+                ctrl = self.service.obter_controle_documentacao(
+                    empresa_id=empresa_valida,
+                    situacao=situacao,
+                    categoria=cat,
+                    colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                    data_referencia=dt_ref,
+                    sincronizar_pendencias=sync_pend,
+                )
+                return self._enviar_json(200, {"sucesso": True, "dados": ctrl})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/documentos/categorias":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
+                return
+            apenas_ativas = query.get("apenas_ativas", ["1"])[0] in ("1", "true", "sim")
+            cats = self.service.listar_categorias_documentos(empresa_id=empresa_valida, apenas_ativas=apenas_ativas)
+            return self._enviar_json(200, {"sucesso": True, "total": len(cats), "dados": cats})
+
+        if path == "/api/documentos/config-alertas":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresa_alvo = (query.get("empresa_id") or [None])[0]
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, empresa_alvo)
+            if not ok_escopo:
+                return
+            cfg = self.service.obter_config_alertas_documentos(empresa_id=empresa_valida)
+            return self._enviar_json(200, {"sucesso": True, "dados": cfg})
+
         # Servir Frontend estático (index.html, styles.css, app.js) se arquivo existir
         return super().do_GET()
 
@@ -836,7 +1173,12 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 dados = self._ler_json_body()
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
-                novo = self.service.cadastrar(dados, usuario=nome_responsavel)
+                novo = self.service.cadastrar(
+                    dados,
+                    usuario=nome_responsavel,
+                    origem="POST /api/colaboradores",
+                    ip_origem=self._obter_ip_cliente(),
+                )
                 return self._enviar_json(201, {
                     "sucesso": True,
                     "mensagem": "Colaborador cadastrado com sucesso!",
@@ -887,8 +1229,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 num_dep_irrf = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
                 dias_mes_sim = int(dados.get("dias_mes", 30))
                 divisor_sim = float(dados.get("horas_divisor", colab.get("carga_horaria_mensal") or 220.0))
+                eventos_brutos = list(dados.get("eventos", []))
+                if dados.get("incluir_beneficios_ativos"):
+                    comp_sim = (dados.get("competencia") or datetime.now().strftime("%Y-%m")).strip()
+                    res_ben = self.plataforma_service.obter_descontos_beneficios_folha(int(colab_id), comp_sim)
+                    cods_ex = {str(e.get("codigo") or e.get("codigo_evento") or "").strip() for e in eventos_brutos}
+                    for ev_b in res_ben.get("eventos_folha", []):
+                        if str(ev_b.get("codigo") or "").strip() not in cods_ex:
+                            eventos_brutos.append(ev_b)
                 eventos_validados = self.folha_service._validar_e_hidratar_eventos(
-                    dados.get("eventos", []), horas_divisor=divisor_sim, dias_mes=dias_mes_sim
+                    eventos_brutos, horas_divisor=divisor_sim, dias_mes=dias_mes_sim
                 )
                 from .folha_calculos import processar_calculo_folha
                 calc = processar_calculo_folha(
@@ -964,6 +1314,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     empresa_id=dados.get("empresa_id"),
                     filial_id=dados.get("filial_id"),
                     salvar_como_rascunho=bool(dados.get("salvar_como_rascunho", False)),
+                    incluir_beneficios_ativos=bool(dados.get("incluir_beneficios_ativos", False)),
                 )
                 return self._enviar_json(201, {
                     "sucesso": True,
@@ -1047,6 +1398,9 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 usuario_auth = self._exigir_autenticacao()
                 if not usuario_auth:
                     return
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+                if not ok_escopo:
+                    return
                 try:
                     dados = self._ler_json_body()
                     nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
@@ -1059,6 +1413,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                         tamanho_bytes=int(dados.get("tamanho_bytes", 0) or 0),
                         observacao=dados.get("observacao", ""),
                         usuario=nome_responsavel,
+                        categoria=dados.get("categoria"),
+                        data_emissao=dados.get("data_emissao"),
+                        data_validade=dados.get("data_validade"),
+                        documento_raiz_id=dados.get("documento_raiz_id"),
+                        empresa_id=empresa_valida,
+                        origem="POST /api/colaboradores/documentos",
+                        ip_origem=self._obter_ip_cliente(),
                     )
                     return self._enviar_json(201, {"sucesso": True, "mensagem": "Documento anexado com sucesso!", "dados": doc})
                 except ValidacaoException as e:
@@ -1141,13 +1502,18 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as e:
                     return self._enviar_json(*erro_http(e))
 
-        # Rotas POST da Plataforma de Gestão do Ciclo Trabalhista
+        # Rotas POST da Plataforma de Gestão do Ciclo Trabalhista (Módulo 02: Admissão RF-011 a RF-020)
         if path == "/api/admissoes":
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "admissoes:criar"):
                 return
             try:
                 dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                if empresa_valida:
+                    dados["empresa_id"] = empresa_valida
                 resp = self.plataforma_service.registrar_admissao(dados, usuario_auth["nome_completo"])
                 return self._enviar_json(201, {"sucesso": True, "mensagem": "Admissão registrada com sucesso!", "dados": resp})
             except PlataformaValidacaoException as e:
@@ -1155,22 +1521,191 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
-        if path.startswith("/api/admissoes/") and path.endswith("/aprovar"):
+        if path == "/api/admissoes/escalas":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "admissoes:criar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                res = self.plataforma_service.criar_escala_jornada(dados, usuario=usuario_auth["nome_completo"], empresa_id=empresa_valida)
+                return self._enviar_json(201, {"sucesso": True, "dados": res})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/admissoes/centros-custo":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "admissoes:criar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                res = self.plataforma_service.criar_centro_custo(dados, usuario=usuario_auth["nome_completo"], empresa_id=empresa_valida)
+                return self._enviar_json(201, {"sucesso": True, "dados": res})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/admissoes/"):
+            partes = path.strip("/").split("/")
             usuario_auth = self._exigir_autenticacao()
             if not usuario_auth:
                 return
-            partes = path.strip("/").split("/")
-            if len(partes) == 4 and partes[2].isdigit():
-                adm_id = int(partes[2])
-                try:
-                    resp = self.plataforma_service.aprovar_admissao(adm_id, aprovador=usuario_auth["nome_completo"])
-                    return self._enviar_json(200, resp)
-                except PlataformaAcessoNegadoException as e:
-                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
-                except PlataformaValidacaoException as e:
-                    return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
-                except Exception as e:
-                    return self._enviar_json(*erro_http(e))
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            perfil_u = usuario_auth.get("perfil", "")
+            usr_nome = usuario_auth["nome_completo"]
+            try:
+                dados = self._ler_json_body()
+                if len(partes) == 4 and partes[2].isdigit():
+                    adm_id = int(partes[2])
+                    acao = partes[3]
+                    if acao == "aprovar":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:aprovar"):
+                            return
+                        resp = self.plataforma_service.aprovar_admissao(
+                            adm_id,
+                            aprovador=usr_nome,
+                            justificativa=dados.get("justificativa", ""),
+                            empresa_id=empresa_valida,
+                            exigir_centro_custo=bool(dados.get("exigir_centro_custo", False)),
+                        )
+                        return self._enviar_json(200, resp)
+                    if acao == "reprovar":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:aprovar"):
+                            return
+                        resp = self.plataforma_service.reprovar_admissao(adm_id, aprovador=usr_nome, motivo=dados.get("motivo", ""), empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "dados": resp})
+                    if acao == "cancelar":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        resp = self.plataforma_service.cancelar_admissao(adm_id, motivo=dados.get("motivo", ""), usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "dados": resp})
+                    if acao == "solicitar-aprovacao":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        resp = self.plataforma_service.solicitar_aprovacao_admissao(adm_id, usuario=usr_nome, justificativa=dados.get("justificativa", ""), empresa_id=empresa_valida)
+                        return self._enviar_json(200, resp)
+                    if acao == "validar":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:validar"):
+                            return
+                        resp = self.plataforma_service.validar_admissao(
+                            adm_id, usuario=usr_nome, empresa_id=empresa_valida, exigir_centro_custo=bool(dados.get("exigir_centro_custo", False))
+                        )
+                        return self._enviar_json(200, {"sucesso": True, "dados": resp})
+                    if acao == "checklist":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        resp = self.plataforma_service.configurar_item_checklist(adm_id, dados, usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(201, resp)
+                    if acao == "aso":
+                        from .auth import checar_permissao
+                        if not (checar_permissao(perfil_u, "admissoes:editar") or checar_permissao(perfil_u, "sst:criar")):
+                            return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para registrar ASO."})
+                        resp = self.plataforma_service.registrar_aso_admissional(adm_id, dados, usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(201, {"sucesso": True, "dados": resp})
+                    if acao == "jornada":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        resp = self.plataforma_service.definir_jornada_admissao(adm_id, dados, usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "dados": resp})
+                    if acao == "centro-custo":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        resp = self.plataforma_service.definir_centro_custo_admissao(adm_id, dados, usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(200, {"sucesso": True, "dados": resp})
+                    if acao == "beneficios":
+                        if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                            return
+                        itens_b = dados.get("beneficios") if isinstance(dados.get("beneficios"), list) else dados.get("itens", [])
+                        resp = self.plataforma_service.definir_beneficios_admissao(adm_id, itens_b, usuario=usr_nome, empresa_id=empresa_valida)
+                        return self._enviar_json(200, resp)
+
+                if len(partes) == 6 and partes[2].isdigit() and partes[3] == "checklist" and partes[4].isdigit() and partes[5] == "upload":
+                    if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                        return
+                    resp = self.plataforma_service.upload_documento_checklist(
+                        int(partes[2]), int(partes[4]),
+                        nome_arquivo=dados.get("nome_arquivo", ""),
+                        conteudo_base64=dados.get("conteudo_base64", ""),
+                        mime_type=dados.get("mime_type", "application/octet-stream"),
+                        usuario=usr_nome,
+                        observacao=dados.get("observacao", ""),
+                        empresa_id=empresa_valida,
+                    )
+                    return self._enviar_json(201, resp)
+
+                if len(partes) == 5 and partes[2].isdigit() and partes[3] == "contratos" and partes[4] == "gerar":
+                    if not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                        return
+                    resp = self.plataforma_service.gerar_contrato_trabalho(
+                        int(partes[2]),
+                        usuario=usr_nome,
+                        modelo_id=dados.get("modelo_id"),
+                        condicoes_adicionais=dados.get("condicoes_adicionais", ""),
+                        empresa_id=empresa_valida,
+                    )
+                    return self._enviar_json(201, {"sucesso": True, "dados": resp})
+
+                if len(partes) == 6 and partes[2].isdigit() and partes[3] == "contratos" and partes[4].isdigit() and partes[5] == "formalizar":
+                    if not self._exigir_permissao(usuario_auth, "admissoes:aprovar"):
+                        return
+                    resp = self.plataforma_service.formalizar_contrato(int(partes[2]), int(partes[4]), usuario=usr_nome, empresa_id=empresa_valida)
+                    return self._enviar_json(200, {"sucesso": True, "dados": resp})
+
+                if len(partes) == 5 and partes[2].isdigit() and partes[3] == "esocial" and partes[4] == "gerar":
+                    from .auth import checar_permissao
+                    if not (checar_permissao(perfil_u, "admissoes:editar") or checar_permissao(perfil_u, "esocial:gerar")):
+                        return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para gerar evento eSocial."})
+                    resp = self.plataforma_service.gerar_evento_esocial_admissao(
+                        int(partes[2]),
+                        tipo_evento=dados.get("tipo_evento"),
+                        usuario=usr_nome,
+                        ambiente=dados.get("ambiente", "homologacao"),
+                        empresa_id=empresa_valida,
+                    )
+                    return self._enviar_json(201, {"sucesso": True, "dados": resp})
+
+                if len(partes) == 6 and partes[2] == "esocial" and partes[3].isdigit() and partes[4] == "retorno":
+                    pass  # handled below if 5 parts
+                if len(partes) == 5 and partes[2] == "esocial" and partes[3].isdigit() and partes[4] == "retorno":
+                    from .auth import checar_permissao
+                    if not (checar_permissao(perfil_u, "admissoes:editar") or checar_permissao(perfil_u, "esocial:transmitir")):
+                        return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para registrar retorno eSocial."})
+                    resp = self.plataforma_service.registrar_retorno_esocial(
+                        int(partes[3]),
+                        status_retorno=dados.get("status_retorno", "rejeitado"),
+                        codigo_resposta=dados.get("codigo_resposta", ""),
+                        mensagem_resposta=dados.get("mensagem_resposta", ""),
+                        protocolo_envio=dados.get("protocolo_envio"),
+                        numero_recibo=dados.get("numero_recibo"),
+                        usuario=usr_nome,
+                        empresa_id=empresa_valida,
+                    )
+                    return self._enviar_json(200, {"sucesso": True, "dados": resp})
+
+                if len(partes) == 5 and partes[2] == "esocial" and partes[3].isdigit() and partes[4] == "reprocessar":
+                    from .auth import checar_permissao
+                    if not (checar_permissao(perfil_u, "admissoes:editar") or checar_permissao(perfil_u, "esocial:gerar")):
+                        return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para reprocessar eSocial."})
+                    resp = self.plataforma_service.reprocessar_evento_esocial(int(partes[3]), usuario=usr_nome, empresa_id=empresa_valida)
+                    return self._enviar_json(201, {"sucesso": True, "dados": resp})
+            except PlataformaAcessoNegadoException as e:
+                return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
 
         if path == "/api/ponto/marcacao":
             usuario_auth = self._exigir_autenticacao()
@@ -1412,6 +1947,123 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        if path == "/api/beneficios/catalogo":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                novo = self.plataforma_service.criar_beneficio_catalogo(dados, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Benefício cadastrado no catálogo!", "dados": novo})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/beneficios/colaboradores":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                vinc = self.plataforma_service.vincular_beneficio_colaborador(dados, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Benefício vinculado ao colaborador com sucesso!", "dados": vinc})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rotas RF-005 a RF-009 (POST)
+        partes_post = path.strip("/").split("/")
+        if len(partes_post) == 4 and partes_post[1] == "colaboradores" and partes_post[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            colab_id = int(partes_post[2])
+            subrecurso = partes_post[3]
+            nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+            ip_cli = self._obter_ip_cliente()
+            try:
+                dados = self._ler_json_body()
+                if subrecurso == "dependentes":
+                    dep = self.service.cadastrar_dependente(
+                        colab_id, dados, usuario=nome_responsavel, origem="POST /api/colaboradores/dependentes", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(201, {"sucesso": True, "mensagem": "Dependente cadastrado com sucesso!", "dados": dep})
+                if subrecurso == "historico-funcional":
+                    mov = self.service.registrar_movimentacao_funcional(
+                        colab_id, dados, usuario=nome_responsavel, origem="POST /api/colaboradores/historico-funcional", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(201, {"sucesso": True, "mensagem": "Movimentação funcional registrada com sucesso!", "dados": mov})
+                if subrecurso == "dados-bancarios":
+                    conta = self.service.cadastrar_dados_bancarios(
+                        colab_id, dados, usuario=nome_responsavel, origem="POST /api/colaboradores/dados-bancarios", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(201, {"sucesso": True, "mensagem": "Conta bancária cadastrada com sucesso!", "dados": conta})
+            except ValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação.", "erros": e.erros})
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes_post) == 6 and partes_post[1] == "colaboradores" and partes_post[2].isdigit() and partes_post[3] == "documentos" and partes_post[4].isdigit() and partes_post[5] == "versoes":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                doc = self.service.adicionar_documento(
+                    colaborador_id=int(partes_post[2]),
+                    tipo_documento=dados.get("tipo_documento", "Documento"),
+                    nome_arquivo=dados.get("nome_arquivo", ""),
+                    conteudo_base64=dados.get("conteudo_base64", ""),
+                    mime_type=dados.get("mime_type", "application/octet-stream"),
+                    tamanho_bytes=int(dados.get("tamanho_bytes", 0) or 0),
+                    observacao=dados.get("observacao", ""),
+                    usuario=nome_responsavel,
+                    categoria=dados.get("categoria"),
+                    data_emissao=dados.get("data_emissao"),
+                    data_validade=dados.get("data_validade"),
+                    documento_raiz_id=int(partes_post[4]),
+                    empresa_id=empresa_valida,
+                    origem="POST /api/colaboradores/documentos/versoes",
+                    ip_origem=self._obter_ip_cliente(),
+                )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Nova versão do documento anexada!", "dados": doc})
+            except ValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação.", "erros": e.erros})
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/documentos/categorias":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                cat = self.service.criar_categoria_documento(dados, usuario=nome_responsavel, empresa_id=empresa_valida)
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Categoria de documento criada com sucesso!", "dados": cat})
+            except ValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação.", "erros": e.erros})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PUT(self):
@@ -1447,7 +2099,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 dados = self._ler_json_body()
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
-                atualizado = self.service.atualizar(colab_id, dados, usuario=nome_responsavel)
+                atualizado = self.service.atualizar(
+                    colab_id,
+                    dados,
+                    usuario=nome_responsavel,
+                    origem="PUT /api/colaboradores",
+                    ip_origem=self._obter_ip_cliente(),
+                )
                 return self._enviar_json(200, {
                     "sucesso": True,
                     "mensagem": "Colaborador atualizado com sucesso!",
@@ -1521,6 +2179,105 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        if len(partes) == 4 and partes[1] == "beneficios" and partes[2] == "catalogo" and partes[3].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                atual = self.plataforma_service.atualizar_beneficio_catalogo(int(partes[3]), dados, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Benefício do catálogo atualizado!", "dados": atual})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes) == 4 and partes[1] == "beneficios" and partes[2] == "colaboradores" and partes[3].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                atual = self.plataforma_service.atualizar_beneficio_colaborador(int(partes[3]), dados, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Vínculo de benefício atualizado!", "dados": atual})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rotas RF-005, RF-006, RF-008, RF-009 (PUT)
+        if len(partes) == 5 and partes[1] == "colaboradores" and partes[2].isdigit() and partes[4].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            colab_id = int(partes[2])
+            sub_id = int(partes[4])
+            subrecurso = partes[3]
+            nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+            ip_cli = self._obter_ip_cliente()
+            if subrecurso == "historico-funcional":
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Histórico funcional é imutável e não permite edição (RF-006)."})
+            try:
+                dados = self._ler_json_body()
+                if subrecurso == "dependentes":
+                    dep = self.service.editar_dependente(
+                        colab_id, sub_id, dados, usuario=nome_responsavel, origem="PUT /api/colaboradores/dependentes", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(200, {"sucesso": True, "mensagem": "Dependente atualizado com sucesso!", "dados": dep})
+                if subrecurso == "dados-bancarios":
+                    conta = self.service.atualizar_dados_bancarios(
+                        colab_id, sub_id, dados, usuario=nome_responsavel, origem="PUT /api/colaboradores/dados-bancarios", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(200, {"sucesso": True, "mensagem": "Conta bancária atualizada com sucesso!", "dados": conta})
+            except ValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação.", "erros": e.erros})
+            except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/documentos/config-alertas":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                cfg = self.service.atualizar_config_alertas_documentos(dados, usuario=nome_responsavel, empresa_id=empresa_valida)
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Configuração de alertas atualizada!", "dados": cfg})
+            except ValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação.", "erros": e.erros})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes) == 3 and partes[1] == "admissoes" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "admissoes:editar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                atual = self.plataforma_service.atualizar_admissao(int(partes[2]), dados, usuario=usuario_auth["nome_completo"], empresa_id=empresa_valida)
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Admissão atualizada com sucesso!", "dados": atual})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_DELETE(self):
@@ -1534,10 +2291,24 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario_auth = self._exigir_autenticacao()
             if not usuario_auth:
                 return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
             try:
+                _, query_del = self._obter_caminho_e_query()
+                corpo_del = self._ler_json_body()
+                motivo_del = corpo_del.get("motivo") or (query_del.get("motivo") or [""])[0]
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
-                self.service.remover_documento(int(partes[2]), int(partes[4]), usuario=nome_responsavel)
-                return self._enviar_json(200, {"sucesso": True, "mensagem": "Documento removido com sucesso."})
+                self.service.remover_documento(
+                    int(partes[2]),
+                    int(partes[4]),
+                    usuario=nome_responsavel,
+                    motivo=motivo_del,
+                    empresa_id=empresa_valida,
+                    origem="DELETE /api/colaboradores/documentos",
+                    ip_origem=self._obter_ip_cliente(),
+                )
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Documento inativado com sucesso (rastreabilidade preservada)."})
             except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
@@ -1558,6 +2329,70 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except FolhaBloqueadaException as e:
                 return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
             except FolhaNaoEncontradaException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes) == 4 and partes[1] == "beneficios" and partes[2] == "catalogo" and partes[3].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                _, query = self._obter_caminho_e_query()
+                forcar = query.get("forcar_inativacao", ["0"])[0] in ("1", "true", "sim")
+                res = self.plataforma_service.excluir_beneficio_catalogo(int(partes[3]), usuario=usuario_auth["nome_completo"], forcar_inativacao=forcar)
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Benefício do catálogo removido/inativado.", "dados": res})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if len(partes) == 4 and partes[1] == "beneficios" and partes[2] == "colaboradores" and partes[3].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                res = self.plataforma_service.excluir_beneficio_colaborador(int(partes[3]), usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Vínculo de benefício excluído.", "dados": res})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rotas RF-005, RF-006, RF-009 (DELETE / Inativação Lógica / Bloqueio de Imutabilidade)
+        if len(partes) == 5 and partes[1] == "colaboradores" and partes[2].isdigit() and partes[4].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            colab_id = int(partes[2])
+            sub_id = int(partes[4])
+            subrecurso = partes[3]
+            nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+            ip_cli = self._obter_ip_cliente()
+            if subrecurso == "historico-funcional":
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Histórico funcional é imutável e não permite exclusão física (RF-006)."})
+            try:
+                _, query_del = self._obter_caminho_e_query()
+                corpo_del = self._ler_json_body()
+                if subrecurso == "dependentes":
+                    motivo_del = corpo_del.get("motivo") or (query_del.get("motivo") or [""])[0]
+                    dt_enc = corpo_del.get("data_encerramento") or (query_del.get("data_encerramento") or [None])[0]
+                    res = self.service.inativar_dependente(
+                        colab_id, sub_id, motivo=motivo_del, data_encerramento=dt_enc, usuario=nome_responsavel,
+                        origem="DELETE /api/colaboradores/dependentes", ip_origem=ip_cli, empresa_id=empresa_valida,
+                    )
+                    return self._enviar_json(200, {"sucesso": True, "mensagem": "Dependente inativado com sucesso.", "dados": res})
+                if subrecurso == "dados-bancarios":
+                    res = self.service.inativar_dados_bancarios(
+                        colab_id, sub_id, usuario=nome_responsavel, origem="DELETE /api/colaboradores/dados-bancarios", ip_origem=ip_cli, empresa_id=empresa_valida
+                    )
+                    return self._enviar_json(200, {"sucesso": True, "mensagem": "Conta bancária inativada com sucesso.", "dados": res})
+            except RecursoNaoEncontradoException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
@@ -1597,7 +2432,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 dados = self._ler_json_body()
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
-                atualizado = self.service.atualizar(colab_id, dados, usuario=nome_responsavel)
+                atualizado = self.service.atualizar(
+                    colab_id,
+                    dados,
+                    usuario=nome_responsavel,
+                    origem="PATCH /api/colaboradores",
+                    ip_origem=self._obter_ip_cliente(),
+                )
                 return self._enviar_json(200, {
                     "sucesso": True,
                     "mensagem": "Colaborador atualizado com sucesso!",
@@ -1626,14 +2467,25 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
                 if acao == "inativar":
                     motivo = corpo.get("motivo", "")
-                    res = self.service.inativar(colab_id, motivo=motivo, usuario=nome_responsavel)
+                    res = self.service.inativar(
+                        colab_id,
+                        motivo=motivo,
+                        usuario=nome_responsavel,
+                        origem="PATCH /api/colaboradores/inativar",
+                        ip_origem=self._obter_ip_cliente(),
+                    )
                     return self._enviar_json(200, {
                         "sucesso": True,
                         "mensagem": "Colaborador inativado com sucesso. Histórico preservado.",
                         "dados": res
                     })
                 elif acao == "reativar":
-                    res = self.service.reativar(colab_id, usuario=nome_responsavel)
+                    res = self.service.reativar(
+                        colab_id,
+                        usuario=nome_responsavel,
+                        origem="PATCH /api/colaboradores/reativar",
+                        ip_origem=self._obter_ip_cliente(),
+                    )
                     return self._enviar_json(200, {
                         "sucesso": True,
                         "mensagem": "Colaborador reativado com sucesso.",
@@ -1646,7 +2498,10 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if len(partes) == 4 and partes[1] == "admissoes" and partes[2] == "checklist" and partes[3].isdigit():
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "admissoes:validar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
                 return
             item_id = int(partes[3])
             try:
@@ -1654,13 +2509,17 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 st_raw = str(dados.get("status", "validado")).lower()
                 if st_raw in ("aprovado", "entregue", "validado"):
                     status = "validado"
-                elif st_raw in ("dispensado",):
-                    status = "dispensado"
                 else:
                     status = st_raw
-                just = dados.get("justificativa_dispensa")
-                resp = self.plataforma_service.atualizar_item_checklist(item_id, status=status, usuario=usuario_auth["nome_completo"], justificativa=just)
+                just = dados.get("justificativa") or dados.get("justificativa_dispensa") or dados.get("motivo_rejeicao")
+                resp = self.plataforma_service.atualizar_item_checklist(
+                    item_id, status=status, usuario=usuario_auth["nome_completo"], justificativa=just, empresa_id=empresa_valida
+                )
                 return self._enviar_json(200, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except PlataformaRecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 

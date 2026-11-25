@@ -295,14 +295,24 @@ class AuthService:
         cursor = conn.cursor()
         agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        cursor.execute(f"""
-            SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em
-            FROM sessoes s
-            JOIN usuarios u ON u.id = s.usuario_id
-            WHERE s.token = {P}
-              AND s.revogado = 0
-              AND u.status = 'ativo'
-        """, (token,))
+        try:
+            cursor.execute(f"""
+                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id, s.criado_em
+                FROM sessoes s
+                JOIN usuarios u ON u.id = s.usuario_id
+                WHERE s.token = {P}
+                  AND s.revogado = 0
+                  AND u.status = 'ativo'
+            """, (token,))
+        except Exception:
+            cursor.execute(f"""
+                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em
+                FROM sessoes s
+                JOIN usuarios u ON u.id = s.usuario_id
+                WHERE s.token = {P}
+                  AND s.revogado = 0
+                  AND u.status = 'ativo'
+            """, (token,))
 
         row = cursor.fetchone()
         if not row:
@@ -311,7 +321,7 @@ class AuthService:
 
         usuario = self._row(cursor, row)
         conn.close()
-        if usuario and "empresa_id" not in usuario:
+        if usuario and not usuario.get("empresa_id"):
             usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
         return usuario
 

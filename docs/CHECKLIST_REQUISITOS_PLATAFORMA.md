@@ -49,17 +49,21 @@
 - [x] **RF-009**: Inativação lógica com preservação do histórico e proteção LGPD. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-010**: Histórico funcional completo (promoções, transferências, alterações salariais). *(Status: Implementado / Testado e aprovado)*
 
-### Módulo 02 — Admissão & Contratos (RF-011 a RF-020)
-- [x] **RF-011**: Abertura de proposta de admissão com validação salarial mínima (RN-008). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-012**: Checklist admissional de 8 documentos obrigatórios. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-013**: Validação de ASO Admissional antes do início das atividades. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-014**: Qualificação cadastral e validação prévia eSocial. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-015**: Geração do Contrato Individual de Trabalho e termos de confidencialidade. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-016**: Controle de contratos de experiência (30+30, 45+45 até 90 dias). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-017**: Workflow de aprovação de admissão com segregação de funções (RN-080). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-018**: Conversão automática de admissão aprovada em colaborador ativo. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-019**: Disparo automático do evento eSocial S-2190 / S-2200. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-020**: Notificações automáticas de pendências documentais admissionais. *(Status: Implementado / Testado e aprovado)*
+### Módulo 02 — Admissão & Contratos — Baseline SRS Volume 3 (RF-011 a RF-020)
+> **Nota de Governança Documental (Resolução de Divergência V1 → SRS Volume 3):** Na versão V1 deste documento, os identificadores `RF-011` a `RF-020` possuíam mapeamento anterior (ex.: RF-012 como 8 itens fixos e RF-019 como disparo eSocial). Para rastreabilidade oficial do **Módulo 02 (SRS Volume 3)**, adota-se o catálogo abaixo com identificadores únicos, mantendo referência às regras **RN-001**, **RN-003**, **RN-008**, **RN-009**, **RN-010** e **RN-080** sem apagar o histórico V1 registrado em `docs/RELATORIO_AUDITORIA_FASE_1_ENTERPRISE.md`.
+
+- [x] **RF-011**: Registrar Admissão — Cadastro completo do candidato e vínculo empregatício, identificador único, empresa/filial, CPF válido, status real e auditoria (RN-008). *(Ref. SRS Vol. 3)*
+- [x] **RF-012**: Checklist Admissional — Checklist configurável (obrigatórios/opcionais), upload privado seguro, validação, rejeição/dispensa com justificativa, histórico de versões e bloqueio na aprovação. *(Ref. SRS Vol. 3)*
+- [x] **RF-013**: Validação Admissional — Etapa formal de verificação (RN-008, RN-009, documentos, empresa/filial, centro de custo) com detalhamento de aprovados, pendentes e inválidos. *(Ref. SRS Vol. 3)*
+- [x] **RF-014**: Contrato de Trabalho — Geração de PDF real configurável por tipo de vínculo, download autorizado, preservação de versão formalizada e versionamento. *(Ref. SRS Vol. 3)*
+- [x] **RF-015**: Integração eSocial Admissional — Eventos S-2190 e S-2200 no leiaute v_S_01_02_00, validação estrutural XML/schema, regras de aplicabilidade, protocolos, retornos e reprocessamento sem recibos fictícios (RN-010). *(Ref. SRS Vol. 3)*
+- [x] **RF-016**: Controle de Exame Admissional (ASO) — Integração real com SST (`sst_asos`), anexo seguro, validação de aptidão médica (RN-009), sigilo de dados clínicos e auditoria. *(Ref. SRS Vol. 3)*
+- [x] **RF-017**: Cadastro de Jornada Inicial — Seleção/validação de escala e horários (`escalas_jornada`), vigência, histórico e integração com ponto/colaborador (RN-008). *(Ref. SRS Vol. 3)*
+- [x] **RF-018**: Definição de Centro de Custo — Seleção/validação de centro de custo ativo compatível com empresa/filial (`centros_custo`), vigência, histórico e integração com folha. *(Ref. SRS Vol. 3)*
+- [x] **RF-019**: Definição de Benefícios — Avaliação de elegibilidade (`beneficios_catalogo`), adesão pré-efetivação e ativação integrada em `beneficios_colaborador` / folha (RN-001, RN-003). *(Ref. SRS Vol. 3)*
+- [x] **RF-020**: Aprovação e Efetivação da Admissão — Workflow com segregação de funções (RN-080), dupla aprovação opcional, bloqueio por pendências (RN-008/RN-009) e efetivação transacional atômica. *(Ref. SRS Vol. 3)*
+
+*Matriz completa e evidências desta consolidação em [`docs/governanca/MATRIZ_RASTREABILIDADE_RF011_RF020.md`](governanca/MATRIZ_RASTREABILIDADE_RF011_RF020.md).*
 
 ### Módulo 03 — Jornada e Ponto (RF-021 a RF-030)
 - [x] **RF-021**: Registro de marcações de ponto (Entrada 1, Saída 1, Entrada 2, Saída 2). *(Status: Implementado / Testado e aprovado)*

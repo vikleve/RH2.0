@@ -198,26 +198,33 @@ class FolhaService:
             conn.close()
             raise FolhaNaoEncontradaException(f"Colaborador com ID {colaborador_id} não encontrado.")
 
-        cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P}", (colaborador_id,))
+        cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo'", (colaborador_id,))
         total_dep = cursor.fetchone()[0]
         try:
             cursor.execute(
-                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(eh_dependente_irrf, 1) = 1",
+                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_dependente_irrf, 1) = 1",
                 (colaborador_id,)
             )
             total_dep_irrf = cursor.fetchone()[0]
             cursor.execute(
-                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(eh_elegivel_salario_familia, 0) = 1",
+                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_elegivel_salario_familia, 0) = 1",
                 (colaborador_id,)
             )
             total_dep_sf = cursor.fetchone()[0]
+            cursor.execute(
+                f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P} AND COALESCE(situacao, 'ativo') = 'ativo' AND COALESCE(eh_plano_saude, 0) = 1",
+                (colaborador_id,)
+            )
+            total_dep_ps = cursor.fetchone()[0]
         except Exception:
             total_dep_irrf = total_dep
             total_dep_sf = 0
+            total_dep_ps = 0
 
         colab["total_dependentes"] = total_dep
         colab["total_dependentes_irrf"] = total_dep_irrf
         colab["total_dependentes_salario_familia"] = total_dep_sf
+        colab["total_dependentes_plano_saude"] = total_dep_ps
 
         conn.close()
         return colab
@@ -320,6 +327,7 @@ class FolhaService:
         empresa_id: Optional[str] = None,
         filial_id: Optional[str] = None,
         salvar_como_rascunho: bool = False,
+        incluir_beneficios_ativos: bool = False,
     ) -> Dict[str, Any]:
         """
         Cria nova folha ou atualiza existente.
@@ -440,6 +448,18 @@ class FolhaService:
                     "referencia": num_dep_sf,
                     "valor_informado": round(num_dep_sf * cota_sf, 2),
                 })
+
+        # Integração opcional com Benefícios Ativos (RF079)
+        if incluir_beneficios_ativos and tipo_folha_norm == "mensal":
+            try:
+                from .plataforma_service import PlataformaService
+            except ImportError:
+                from backend.plataforma_service import PlataformaService
+            res_benef = PlataformaService(db_path=self.db_path).obter_descontos_beneficios_folha(colaborador_id, comp)
+            codigos_ja_lancados = {str(e.get("codigo") or e.get("codigo_evento") or "").strip() for e in eventos_proc}
+            for ev_ben in res_benef.get("eventos_folha", []):
+                if str(ev_ben.get("codigo") or "").strip() not in codigos_ja_lancados:
+                    eventos_proc.append(ev_ben)
 
         # Validar eventos no catálogo e hidratar incidências
         try:

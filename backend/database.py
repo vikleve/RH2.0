@@ -259,9 +259,17 @@ _DDL_DEPENDENTES = """
         nome                        TEXT NOT NULL,
         cpf                         TEXT,
         parentesco                  TEXT NOT NULL,
+        tipo_dependencia            TEXT DEFAULT 'legal',
         data_nascimento             TEXT,
         eh_dependente_irrf          INTEGER NOT NULL DEFAULT 1,
-        eh_elegivel_salario_familia INTEGER NOT NULL DEFAULT 0
+        eh_elegivel_salario_familia INTEGER NOT NULL DEFAULT 0,
+        eh_plano_saude              INTEGER NOT NULL DEFAULT 0,
+        situacao                    TEXT NOT NULL DEFAULT 'ativo',
+        data_inclusao               TEXT,
+        data_encerramento           TEXT,
+        observacoes                 TEXT,
+        criado_em                   TEXT,
+        atualizado_em               TEXT
     );
 """
 
@@ -271,10 +279,15 @@ _DDL_HISTORICO = """
         colaborador_id      INTEGER NOT NULL
                             REFERENCES colaboradores(id) ON DELETE CASCADE,
         data_hora           TEXT NOT NULL,
+        entidade            TEXT DEFAULT 'colaborador',
+        operacao            TEXT DEFAULT 'alteracao',
         campo_alterado      TEXT NOT NULL,
         valor_anterior      TEXT,
         valor_novo          TEXT,
-        usuario_responsavel TEXT NOT NULL DEFAULT 'Sistema/Administrador'
+        usuario_responsavel TEXT NOT NULL DEFAULT 'Sistema/Administrador',
+        origem              TEXT,
+        ip_origem           TEXT,
+        justificativa       TEXT
     );
 """
 
@@ -520,17 +533,101 @@ _DDL_FOLHA_RUBRICAS = """
 
 _DDL_COLABORADOR_DOCUMENTOS = """
     CREATE TABLE IF NOT EXISTS colaborador_documentos (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE CASCADE,
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        tipo_documento      TEXT NOT NULL,
+        categoria           TEXT,
+        nome_arquivo        TEXT NOT NULL,
+        nome_interno_seguro TEXT,
+        caminho_privado     TEXT,
+        mime_type           TEXT,
+        tamanho_bytes       INTEGER DEFAULT 0,
+        sha256_hash         TEXT,
+        conteudo_base64     TEXT,
+        observacao          TEXT,
+        data_emissao        TEXT,
+        data_validade       TEXT,
+        situacao            TEXT NOT NULL DEFAULT 'ativo',
+        versao              INTEGER NOT NULL DEFAULT 1,
+        documento_raiz_id   INTEGER,
+        enviado_por         TEXT NOT NULL,
+        criado_em           TEXT NOT NULL,
+        atualizado_por      TEXT,
+        atualizado_em       TEXT,
+        inativado_por       TEXT,
+        inativado_em        TEXT,
+        motivo_inativacao   TEXT
+    );
+"""
+
+_DDL_HISTORICO_FUNCIONAL = """
+    CREATE TABLE IF NOT EXISTS historico_funcional (
+        id                  {pk},
+        colaborador_id      INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE CASCADE,
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        tipo_movimentacao   TEXT NOT NULL,
+        campo_afetado       TEXT NOT NULL,
+        valor_anterior      TEXT,
+        valor_novo          TEXT NOT NULL,
+        data_alteracao      TEXT NOT NULL,
+        data_vigencia       TEXT NOT NULL,
+        retroativa          INTEGER NOT NULL DEFAULT 0,
+        justificativa       TEXT NOT NULL DEFAULT '',
+        observacoes         TEXT,
+        usuario_responsavel TEXT NOT NULL,
+        origem              TEXT DEFAULT 'API',
+        ip_origem           TEXT,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_DOCUMENTOS_CATEGORIAS = """
+    CREATE TABLE IF NOT EXISTS documentos_categorias (
+        id              {pk},
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        codigo          TEXT NOT NULL,
+        nome            TEXT NOT NULL,
+        obrigatorio     INTEGER NOT NULL DEFAULT 0,
+        exige_validade  INTEGER NOT NULL DEFAULT 0,
+        ativo           INTEGER NOT NULL DEFAULT 1,
+        criado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_DOCUMENTOS_CONFIG_ALERTAS = """
+    CREATE TABLE IF NOT EXISTS documentos_config_alertas (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        dias_alertas_json   TEXT NOT NULL DEFAULT '[30, 15, 7]',
+        tamanho_max_mb      INTEGER NOT NULL DEFAULT 10,
+        atualizado_por      TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_COLABORADOR_DADOS_BANCARIOS = """
+    CREATE TABLE IF NOT EXISTS colaborador_dados_bancarios (
         id              {pk},
         colaborador_id  INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE CASCADE,
         empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
-        tipo_documento  TEXT NOT NULL,
-        nome_arquivo    TEXT NOT NULL,
-        mime_type       TEXT,
-        tamanho_bytes   INTEGER DEFAULT 0,
-        conteudo_base64 TEXT,
-        observacao      TEXT,
-        enviado_por     TEXT NOT NULL,
-        criado_em       TEXT NOT NULL
+        banco_codigo    TEXT NOT NULL,
+        banco_nome      TEXT NOT NULL,
+        agencia         TEXT NOT NULL,
+        agencia_digito  TEXT,
+        conta           TEXT NOT NULL,
+        conta_digito    TEXT,
+        tipo_conta      TEXT NOT NULL DEFAULT 'corrente',
+        chave_pix_tipo  TEXT,
+        chave_pix       TEXT,
+        titular_nome    TEXT NOT NULL,
+        titular_cpf     TEXT NOT NULL,
+        principal       INTEGER NOT NULL DEFAULT 1,
+        ativo           INTEGER NOT NULL DEFAULT 1,
+        criado_por      TEXT NOT NULL,
+        criado_em       TEXT NOT NULL,
+        atualizado_por  TEXT,
+        atualizado_em   TEXT
     );
 """
 
@@ -620,9 +717,16 @@ _DDL_ADMISSOES = """
         id                  {pk},
         empresa_id          TEXT NOT NULL,
         filial_id           TEXT,
+        codigo_processo     TEXT,
         candidato_nome      TEXT NOT NULL,
         candidato_cpf       TEXT NOT NULL,
         candidato_email     TEXT NOT NULL,
+        candidato_data_nascimento TEXT,
+        candidato_telefone  TEXT,
+        candidato_endereco  TEXT,
+        candidato_estado_civil TEXT,
+        candidato_rg        TEXT,
+        candidato_pis       TEXT,
         cargo               TEXT NOT NULL,
         setor               TEXT NOT NULL,
         salario_proposto    REAL NOT NULL,
@@ -630,13 +734,37 @@ _DDL_ADMISSOES = """
         prazo_experiencia_dias INTEGER DEFAULT 45,
         prorrogacao_experiencia_dias INTEGER DEFAULT 45,
         data_prevista_admissao TEXT NOT NULL,
+        escala_id           INTEGER,
+        jornada_descricao   TEXT,
+        jornada_entrada     TEXT,
+        jornada_saida       TEXT,
+        jornada_intervalo_min INTEGER DEFAULT 60,
+        jornada_dias_semana TEXT,
+        jornada_carga_mensal REAL DEFAULT 220.0,
+        jornada_vigencia_inicio TEXT,
+        centro_custo_id     TEXT,
+        centro_custo_vigencia TEXT,
+        gestor_responsavel  TEXT,
+        local_trabalho      TEXT,
         status              TEXT NOT NULL DEFAULT 'em_andamento',
         motivo_reprovacao   TEXT,
         aprovado_por        TEXT,
         aprovado_em         TEXT,
+        dupla_aprovacao_exigida INTEGER NOT NULL DEFAULT 0,
+        primeira_aprovacao_por TEXT,
+        primeira_aprovacao_em TEXT,
+        justificativa_aprovacao TEXT,
         colaborador_id      INTEGER,
         aso_admissional_status TEXT DEFAULT 'pendente',
+        aso_id              INTEGER,
         contrato_gerado     INTEGER DEFAULT 0,
+        contrato_id         INTEGER,
+        esocial_modalidade  TEXT DEFAULT 'auto',
+        efetivado_por       TEXT,
+        efetivado_em        TEXT,
+        cancelado_por       TEXT,
+        cancelado_em        TEXT,
+        motivo_cancelamento TEXT,
         criado_por          TEXT NOT NULL,
         criado_em           TEXT NOT NULL,
         atualizado_em       TEXT NOT NULL
@@ -647,13 +775,145 @@ _DDL_CHECKLIST_ADMISSONAL = """
     CREATE TABLE IF NOT EXISTS checklist_admissional (
         id                  {pk},
         admissao_id         INTEGER NOT NULL,
+        codigo_documento    TEXT,
         item_descricao      TEXT NOT NULL,
         obrigatorio         INTEGER NOT NULL DEFAULT 1,
         status              TEXT NOT NULL DEFAULT 'pendente',
+        versao              INTEGER NOT NULL DEFAULT 1,
+        nome_arquivo        TEXT,
+        caminho_privado     TEXT,
+        mime_type           TEXT,
+        tamanho_bytes       INTEGER DEFAULT 0,
+        sha256_hash         TEXT,
+        motivo_rejeicao     TEXT,
         justificativa_dispensa TEXT,
         arquivo_url         TEXT,
         validado_por        TEXT,
-        validado_em         TEXT
+        validado_em         TEXT,
+        atualizado_por      TEXT,
+        atualizado_em       TEXT
+    );
+"""
+
+_DDL_CHECKLIST_ADMISSONAL_HIST = """
+    CREATE TABLE IF NOT EXISTS checklist_admissional_historico (
+        id              {pk},
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id     INTEGER NOT NULL,
+        checklist_id    INTEGER NOT NULL,
+        versao          INTEGER NOT NULL DEFAULT 1,
+        acao            TEXT NOT NULL,
+        status_anterior TEXT,
+        status_novo     TEXT NOT NULL,
+        nome_arquivo    TEXT,
+        caminho_privado TEXT,
+        sha256_hash     TEXT,
+        justificativa   TEXT,
+        usuario         TEXT NOT NULL,
+        criado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_VALIDACOES = """
+    CREATE TABLE IF NOT EXISTS admissao_validacoes (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id         INTEGER NOT NULL,
+        apto_efetivacao     INTEGER NOT NULL DEFAULT 0,
+        aprovados_json      TEXT NOT NULL DEFAULT '[]',
+        pendentes_json      TEXT NOT NULL DEFAULT '[]',
+        invalidos_json      TEXT NOT NULL DEFAULT '[]',
+        motivo_reprovacao   TEXT,
+        validado_por        TEXT NOT NULL,
+        validado_em         TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_CONTRATOS_MODELOS = """
+    CREATE TABLE IF NOT EXISTS admissao_contratos_modelos (
+        id              {pk},
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        codigo          TEXT NOT NULL UNIQUE,
+        nome            TEXT NOT NULL,
+        tipo_contrato   TEXT NOT NULL,
+        titulo_documento TEXT NOT NULL,
+        clausulas_json  TEXT NOT NULL,
+        ativo           INTEGER NOT NULL DEFAULT 1,
+        criado_por      TEXT NOT NULL DEFAULT 'Sistema',
+        criado_em       TEXT NOT NULL,
+        atualizado_em   TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_CONTRATOS = """
+    CREATE TABLE IF NOT EXISTS admissao_contratos (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id         INTEGER NOT NULL,
+        modelo_id           INTEGER NOT NULL,
+        versao              INTEGER NOT NULL DEFAULT 1,
+        nome_arquivo        TEXT NOT NULL,
+        caminho_privado     TEXT NOT NULL,
+        sha256_hash         TEXT NOT NULL,
+        formalizado         INTEGER NOT NULL DEFAULT 0,
+        formalizado_por     TEXT,
+        formalizado_em      TEXT,
+        condicoes_adicionais TEXT,
+        dados_snapshot_json TEXT NOT NULL,
+        gerado_por          TEXT NOT NULL,
+        gerado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_JORNADAS_HIST = """
+    CREATE TABLE IF NOT EXISTS admissao_jornadas_historico (
+        id              {pk},
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id     INTEGER NOT NULL,
+        escala_id       INTEGER NOT NULL,
+        descricao       TEXT NOT NULL,
+        entrada         TEXT NOT NULL,
+        saida           TEXT NOT NULL,
+        intervalo_min   INTEGER NOT NULL DEFAULT 60,
+        dias_semana     TEXT NOT NULL,
+        carga_mensal    REAL NOT NULL DEFAULT 220.0,
+        vigencia_inicio TEXT NOT NULL,
+        definido_por    TEXT NOT NULL,
+        definido_em     TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_CC_HIST = """
+    CREATE TABLE IF NOT EXISTS admissao_centros_custo_historico (
+        id              {pk},
+        empresa_id      TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id     INTEGER NOT NULL,
+        centro_custo_id TEXT NOT NULL,
+        filial_id       TEXT,
+        vigencia_inicio TEXT NOT NULL,
+        definido_por    TEXT NOT NULL,
+        definido_em     TEXT NOT NULL
+    );
+"""
+
+_DDL_ADMISSAO_BENEFICIOS = """
+    CREATE TABLE IF NOT EXISTS admissao_beneficios (
+        id                      {pk},
+        empresa_id              TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        admissao_id             INTEGER NOT NULL,
+        beneficio_id            INTEGER NOT NULL,
+        elegivel                INTEGER NOT NULL DEFAULT 1,
+        motivo_inelegibilidade  TEXT,
+        optante                 INTEGER NOT NULL DEFAULT 1,
+        vigencia_inicio         TEXT NOT NULL,
+        qtd_dependentes         INTEGER NOT NULL DEFAULT 0,
+        valor_diario            REAL DEFAULT 0.0,
+        valor_mensal_base       REAL DEFAULT 0.0,
+        condicoes               TEXT,
+        beneficio_colaborador_id INTEGER,
+        status                  TEXT NOT NULL DEFAULT 'pendente_efetivacao',
+        definido_por            TEXT NOT NULL,
+        definido_em             TEXT NOT NULL
     );
 """
 
@@ -823,8 +1083,14 @@ _DDL_BENEFICIOS_CATALOGO = """
         coparticipacao_valor REAL DEFAULT 0.00,
         teto_legal_percentual REAL DEFAULT 6.00,
         regra_elegibilidade TEXT,
+        rubrica_codigo      TEXT DEFAULT '0511',
+        valor_mensal_padrao REAL DEFAULT 0.00,
+        valor_diario_padrao REAL DEFAULT 0.00,
+        limite_padrao       REAL DEFAULT 0.00,
+        descricao           TEXT,
         ativo               INTEGER NOT NULL DEFAULT 1,
-        criado_em           TEXT NOT NULL
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT
     );
 """
 
@@ -836,13 +1102,23 @@ _DDL_BENEFICIOS_COLABORADOR = """
         optante             INTEGER NOT NULL DEFAULT 1,
         valor_diario        REAL DEFAULT 0.00,
         dias_uteis_mes      INTEGER DEFAULT 22,
+        valor_mensal_base   REAL DEFAULT 0.00,
+        qtd_dependentes     INTEGER DEFAULT 0,
+        valor_dependente    REAL DEFAULT 0.00,
+        coparticipacao_extra REAL DEFAULT 0.00,
+        limite_mensal       REAL DEFAULT 0.00,
+        valor_utilizado_mes REAL DEFAULT 0.00,
+        saldo_flexivel      REAL DEFAULT 0.00,
+        alocacao_json       TEXT,
         custo_total_mes     REAL DEFAULT 0.00,
         desconto_colaborador REAL DEFAULT 0.00,
         custo_empresa       REAL DEFAULT 0.00,
         vigencia_inicio     TEXT NOT NULL,
         vigencia_fim        TEXT,
+        observacoes         TEXT,
         ativo               INTEGER NOT NULL DEFAULT 1,
-        criado_em           TEXT NOT NULL
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT
     );
 """
 
@@ -927,9 +1203,13 @@ _DDL_SST_EXAMES = """
 _DDL_SST_ASOS = """
     CREATE TABLE IF NOT EXISTS sst_asos (
         id                  {pk},
+        empresa_id          TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001',
         colaborador_id      INTEGER NOT NULL,
+        admissao_id         INTEGER,
         exame_id            INTEGER,
         tipo_aso            TEXT NOT NULL,
+        status_exame        TEXT NOT NULL DEFAULT 'realizado',
+        data_realizacao     TEXT,
         data_emissao        TEXT NOT NULL,
         data_validade       TEXT NOT NULL,
         resultado           TEXT NOT NULL,
@@ -937,6 +1217,11 @@ _DDL_SST_ASOS = """
         medico_crm          TEXT NOT NULL,
         medico_uf           TEXT NOT NULL,
         arquivo_url         TEXT,
+        nome_arquivo        TEXT,
+        caminho_privado     TEXT,
+        mime_type           TEXT,
+        sha256_hash         TEXT,
+        observacoes_medicas TEXT,
         recibo_esocial_s2220 TEXT,
         criado_por          TEXT NOT NULL,
         criado_em           TEXT NOT NULL
@@ -1168,6 +1453,17 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_ARQUIVOS_BANCARIOS_CNAB.format(pk=pk),
         _DDL_FOLHA_RUBRICAS.format(pk=pk),
         _DDL_COLABORADOR_DOCUMENTOS.format(pk=pk),
+        _DDL_HISTORICO_FUNCIONAL.format(pk=pk),
+        _DDL_DOCUMENTOS_CATEGORIAS.format(pk=pk),
+        _DDL_DOCUMENTOS_CONFIG_ALERTAS.format(pk=pk),
+        _DDL_COLABORADOR_DADOS_BANCARIOS.format(pk=pk),
+        _DDL_CHECKLIST_ADMISSONAL_HIST.format(pk=pk),
+        _DDL_ADMISSAO_VALIDACOES.format(pk=pk),
+        _DDL_ADMISSAO_CONTRATOS_MODELOS.format(pk=pk),
+        _DDL_ADMISSAO_CONTRATOS.format(pk=pk),
+        _DDL_ADMISSAO_JORNADAS_HIST.format(pk=pk),
+        _DDL_ADMISSAO_CC_HIST.format(pk=pk),
+        _DDL_ADMISSAO_BENEFICIOS.format(pk=pk),
     ]
     for ddl_sql in tabelas_plataforma:
         try:
@@ -1203,6 +1499,24 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_rescisao_colab    ON rescisoes(colaborador_id);",
         "CREATE INDEX IF NOT EXISTS idx_pendencias_status ON pendencias_operacionais(status, prazo_limite);",
         "CREATE INDEX IF NOT EXISTS idx_audit_modulo_data ON auditoria_operacoes(modulo, criado_em);",
+        "CREATE INDEX IF NOT EXISTS idx_benef_cat_tipo    ON beneficios_catalogo(tipo);",
+        "CREATE INDEX IF NOT EXISTS idx_benef_colab_colab ON beneficios_colaborador(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_benef_colab_benef ON beneficios_colaborador(beneficio_id);",
+        "CREATE INDEX IF NOT EXISTS idx_hist_func_colab   ON historico_funcional(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_hist_func_tipo    ON historico_funcional(tipo_movimentacao);",
+        "CREATE INDEX IF NOT EXISTS idx_doc_validade      ON colaborador_documentos(data_validade);",
+        "CREATE INDEX IF NOT EXISTS idx_doc_situacao      ON colaborador_documentos(situacao);",
+        "CREATE INDEX IF NOT EXISTS idx_doc_raiz          ON colaborador_documentos(documento_raiz_id);",
+        "CREATE INDEX IF NOT EXISTS idx_banco_colab       ON colaborador_dados_bancarios(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_emp_status    ON admissoes(empresa_id, status);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_cpf           ON admissoes(candidato_cpf);",
+        "CREATE INDEX IF NOT EXISTS idx_chk_hist_adm      ON checklist_admissional_historico(admissao_id, checklist_id);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_val_adm       ON admissao_validacoes(admissao_id);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_ctr_adm       ON admissao_contratos(admissao_id, versao);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_jorn_adm      ON admissao_jornadas_historico(admissao_id);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_cc_adm        ON admissao_centros_custo_historico(admissao_id);",
+        "CREATE INDEX IF NOT EXISTS idx_adm_ben_adm       ON admissao_beneficios(admissao_id);",
+        "CREATE INDEX IF NOT EXISTS idx_sst_asos_adm      ON sst_asos(admissao_id);",
     ]
     for idx_sql in indices:
         try:
@@ -1249,6 +1563,100 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_inss INTEGER NOT NULL DEFAULT 0;",
             "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_irrf INTEGER NOT NULL DEFAULT 0;",
             "ALTER TABLE folha_itens ADD COLUMN IF NOT EXISTS incide_fgts INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS rubrica_codigo TEXT DEFAULT '0511';",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS valor_mensal_padrao NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS valor_diario_padrao NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS limite_padrao NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS descricao TEXT;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS valor_mensal_base NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS qtd_dependentes INTEGER DEFAULT 0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS valor_dependente NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS coparticipacao_extra NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS limite_mensal NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS valor_utilizado_mes NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS saldo_flexivel NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS alocacao_json TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS observacoes TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS tipo_dependencia TEXT DEFAULT 'legal';",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS eh_plano_saude INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS situacao TEXT NOT NULL DEFAULT 'ativo';",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS data_inclusao TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS data_encerramento TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS observacoes TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS criado_em TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN IF NOT EXISTS entidade TEXT DEFAULT 'colaborador';",
+            "ALTER TABLE historico_alteracoes ADD COLUMN IF NOT EXISTS operacao TEXT DEFAULT 'alteracao';",
+            "ALTER TABLE historico_alteracoes ADD COLUMN IF NOT EXISTS origem TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN IF NOT EXISTS ip_origem TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN IF NOT EXISTS justificativa TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS categoria TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS nome_interno_seguro TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS caminho_privado TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS sha256_hash TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS data_emissao TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS data_validade TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS situacao TEXT NOT NULL DEFAULT 'ativo';",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS documento_raiz_id INTEGER;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS atualizado_por TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS inativado_por TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS inativado_em TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN IF NOT EXISTS motivo_inativacao TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS escala_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS codigo_processo TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_data_nascimento TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_telefone TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_endereco TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_estado_civil TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_rg TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS candidato_pis TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS escala_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_descricao TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_entrada TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_saida TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_intervalo_min INTEGER DEFAULT 60;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_dias_semana TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_carga_mensal REAL DEFAULT 220.0;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS jornada_vigencia_inicio TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS centro_custo_id TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS centro_custo_vigencia TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS gestor_responsavel TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS local_trabalho TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS aso_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS contrato_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS esocial_modalidade TEXT DEFAULT 'auto';",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS dupla_aprovacao_exigida INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS primeira_aprovacao_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS primeira_aprovacao_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS justificativa_aprovacao TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS efetivado_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS efetivado_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS cancelado_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS cancelado_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN IF NOT EXISTS motivo_cancelamento TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS codigo_documento TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS nome_arquivo TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS caminho_privado TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS mime_type TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS tamanho_bytes INTEGER DEFAULT 0;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS sha256_hash TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS motivo_rejeicao TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS atualizado_por TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS admissao_id INTEGER;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS status_exame TEXT NOT NULL DEFAULT 'realizado';",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS data_realizacao TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS nome_arquivo TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS caminho_privado TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS mime_type TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS sha256_hash TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS observacoes_medicas TEXT;",
         ]
         for col_sql in colunas_extras:
             try:
@@ -1292,6 +1700,100 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE folha_itens ADD COLUMN incide_inss INTEGER NOT NULL DEFAULT 0;",
             "ALTER TABLE folha_itens ADD COLUMN incide_irrf INTEGER NOT NULL DEFAULT 0;",
             "ALTER TABLE folha_itens ADD COLUMN incide_fgts INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN rubrica_codigo TEXT DEFAULT '0511';",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN valor_mensal_padrao REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN valor_diario_padrao REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN limite_padrao REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN descricao TEXT;",
+            "ALTER TABLE beneficios_catalogo ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN valor_mensal_base REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN qtd_dependentes INTEGER DEFAULT 0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN valor_dependente REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN coparticipacao_extra REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN limite_mensal REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN valor_utilizado_mes REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN saldo_flexivel REAL DEFAULT 0.0;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN alocacao_json TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN observacoes TEXT;",
+            "ALTER TABLE beneficios_colaborador ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN tipo_dependencia TEXT DEFAULT 'legal';",
+            "ALTER TABLE dependentes ADD COLUMN eh_plano_saude INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE dependentes ADD COLUMN situacao TEXT NOT NULL DEFAULT 'ativo';",
+            "ALTER TABLE dependentes ADD COLUMN data_inclusao TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN data_encerramento TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN observacoes TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN criado_em TEXT;",
+            "ALTER TABLE dependentes ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN entidade TEXT DEFAULT 'colaborador';",
+            "ALTER TABLE historico_alteracoes ADD COLUMN operacao TEXT DEFAULT 'alteracao';",
+            "ALTER TABLE historico_alteracoes ADD COLUMN origem TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN ip_origem TEXT;",
+            "ALTER TABLE historico_alteracoes ADD COLUMN justificativa TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN categoria TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN nome_interno_seguro TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN caminho_privado TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN sha256_hash TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN data_emissao TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN data_validade TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN situacao TEXT NOT NULL DEFAULT 'ativo';",
+            "ALTER TABLE colaborador_documentos ADD COLUMN versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN documento_raiz_id INTEGER;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN atualizado_por TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN inativado_por TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN inativado_em TEXT;",
+            "ALTER TABLE colaborador_documentos ADD COLUMN motivo_inativacao TEXT;",
+            "ALTER TABLE colaboradores ADD COLUMN escala_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN codigo_processo TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_data_nascimento TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_telefone TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_endereco TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_estado_civil TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_rg TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN candidato_pis TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN escala_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_descricao TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_entrada TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_saida TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_intervalo_min INTEGER DEFAULT 60;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_dias_semana TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_carga_mensal REAL DEFAULT 220.0;",
+            "ALTER TABLE admissoes ADD COLUMN jornada_vigencia_inicio TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN centro_custo_id TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN centro_custo_vigencia TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN gestor_responsavel TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN local_trabalho TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN aso_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN contrato_id INTEGER;",
+            "ALTER TABLE admissoes ADD COLUMN esocial_modalidade TEXT DEFAULT 'auto';",
+            "ALTER TABLE admissoes ADD COLUMN dupla_aprovacao_exigida INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE admissoes ADD COLUMN primeira_aprovacao_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN primeira_aprovacao_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN justificativa_aprovacao TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN efetivado_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN efetivado_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN cancelado_por TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN cancelado_em TEXT;",
+            "ALTER TABLE admissoes ADD COLUMN motivo_cancelamento TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN codigo_documento TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN versao INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE checklist_admissional ADD COLUMN nome_arquivo TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN caminho_privado TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN mime_type TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN tamanho_bytes INTEGER DEFAULT 0;",
+            "ALTER TABLE checklist_admissional ADD COLUMN sha256_hash TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN motivo_rejeicao TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN atualizado_por TEXT;",
+            "ALTER TABLE checklist_admissional ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_asos ADD COLUMN admissao_id INTEGER;",
+            "ALTER TABLE sst_asos ADD COLUMN status_exame TEXT NOT NULL DEFAULT 'realizado';",
+            "ALTER TABLE sst_asos ADD COLUMN data_realizacao TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN nome_arquivo TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN caminho_privado TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN mime_type TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN sha256_hash TEXT;",
+            "ALTER TABLE sst_asos ADD COLUMN observacoes_medicas TEXT;",
         ]
         for col_sql in colunas_extras_sqlite:
             try:
@@ -1429,20 +1931,24 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                     VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
                 """, ("a0000000-0000-0000-0000-000000000001", cod, desc, ch, div, reg, ent, sai, inter, agora))
 
-            # Catálogo de Benefícios
+            # Catálogo de Benefícios (idempotente com campos completos RF071-RF078)
             benefs = [
-                ("VT01", "Vale-Transporte Urbano / Intermunicipal", "vale_transporte", "percentual", 6.0, 6.0),
-                ("VA01", "Vale-Alimentação Cesta Mensal", "vale_alimentacao", "fixo", 0.0, 0.0),
-                ("VR01", "Vale-Refeição Restaurante Usina", "vale_refeicao", "fixo", 5.0, 20.0),
-                ("PS01", "Plano de Saúde Unimed Integral", "plano_saude", "percentual", 15.0, 30.0),
-                ("SV01", "Seguro de Vida em Grupo MetLife", "seguro_vida", "fixo", 0.0, 0.0),
-                ("FAR01", "Convênio Farmácia DrogaVitta", "farmacia", "fixo", 0.0, 0.0),
+                ("VT01", "Vale-Transporte Urbano / Intermunicipal", "vale_transporte", "percentual", 6.0, 6.0, "0510", 0.0, 12.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Desconto legal limitado a 6% do salário-base (Lei 7.418/85)"),
+                ("VA01", "Vale-Alimentação Cesta Mensal", "vale_alimentacao", "fixo", 0.0, 20.0, "0511", 650.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Crédito mensal PAT para alimentação"),
+                ("VR01", "Vale-Refeição Restaurante Usina", "vale_refeicao", "fixo", 5.0, 20.0, "0511", 0.0, 35.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Benefício diário de refeição conforme dias úteis (PAT)"),
+                ("PS01", "Plano de Saúde Unimed Integral", "plano_saude", "percentual", 15.0, 30.0, "0512", 480.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tipos_contrato_permitidos":["CLT"],"tempo_minimo_dias":0}', "Assistência médica titular e dependentes"),
+                ("SV01", "Seguro de Vida em Grupo MetLife", "seguro_vida", "fixo", 0.0, 0.0, "0514", 45.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Apólice coletiva de seguro de vida custeada pela empresa"),
+                ("FAR01", "Convênio Farmácia DrogaVitta", "farmacia", "percentual", 100.0, 100.0, "0516", 0.0, 0.0, 400.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Convênio de medicamentos com limite mensal e desconto em folha"),
+                ("FLEX01", "Carteira de Benefícios Flexíveis Caju / Swile", "beneficio_flexivel", "fixo", 0.0, 0.0, "0517", 600.0, 0.0, 600.0, '{"situacoes_permitidas":["ativo"],"tipos_contrato_permitidos":["CLT"],"tempo_minimo_dias":0}', "Saldo mensal flexível distribuível por categorias"),
             ]
-            for cod, nome, tipo, c_tipo, c_val, teto in benefs:
+            for cod, nome, tipo, c_tipo, c_val, teto, rub, v_mens, v_dia, lim, regra, desc in benefs:
                 cursor.execute(f"""
-                    INSERT INTO beneficios_catalogo (empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor, teto_legal_percentual, ativo, criado_em)
-                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
-                """, ("a0000000-0000-0000-0000-000000000001", cod, nome, tipo, c_tipo, c_val, teto, agora))
+                    INSERT INTO beneficios_catalogo (
+                        empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor,
+                        teto_legal_percentual, regra_elegibilidade, rubrica_codigo, valor_mensal_padrao,
+                        valor_diario_padrao, limite_padrao, descricao, ativo, criado_em, atualizado_em
+                    ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark}, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, nome, tipo, c_tipo, c_val, teto, regra, rub, v_mens, v_dia, lim, desc, agora, agora))
 
             # Catálogo de Exames SST
             exames = [
@@ -1485,6 +1991,154 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                     INSERT INTO sst_treinamentos (empresa_id, codigo, nome, nr_norma, carga_horaria, validade_meses, ativo, criado_em)
                     VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
                 """, ("a0000000-0000-0000-0000-000000000001", cod, nome, nr, ch, val, agora))
+    except Exception:
+        pass
+
+    # Garante catálogo mínimo de benefícios RF071-RF078 mesmo em bancos já existentes
+    try:
+        p_mark = "%s" if pg else "?"
+        agora_ben = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        benefs_padrao = [
+            ("VT01", "Vale-Transporte Urbano / Intermunicipal", "vale_transporte", "percentual", 6.0, 6.0, "0510", 0.0, 12.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Desconto legal limitado a 6% do salário-base (Lei 7.418/85)"),
+            ("VA01", "Vale-Alimentação Cesta Mensal", "vale_alimentacao", "fixo", 0.0, 20.0, "0511", 650.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Crédito mensal PAT para alimentação"),
+            ("VR01", "Vale-Refeição Restaurante Usina", "vale_refeicao", "fixo", 5.0, 20.0, "0511", 0.0, 35.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Benefício diário de refeição conforme dias úteis (PAT)"),
+            ("PS01", "Plano de Saúde Unimed Integral", "plano_saude", "percentual", 15.0, 30.0, "0512", 480.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tipos_contrato_permitidos":["CLT"],"tempo_minimo_dias":0}', "Assistência médica titular e dependentes"),
+            ("SV01", "Seguro de Vida em Grupo MetLife", "seguro_vida", "fixo", 0.0, 0.0, "0514", 45.0, 0.0, 0.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Apólice coletiva de seguro de vida custeada pela empresa"),
+            ("FAR01", "Convênio Farmácia DrogaVitta", "farmacia", "percentual", 100.0, 100.0, "0516", 0.0, 0.0, 400.0, '{"situacoes_permitidas":["ativo"],"tempo_minimo_dias":0}', "Convênio de medicamentos com limite mensal e desconto em folha"),
+            ("FLEX01", "Carteira de Benefícios Flexíveis Caju / Swile", "beneficio_flexivel", "fixo", 0.0, 0.0, "0517", 600.0, 0.0, 600.0, '{"situacoes_permitidas":["ativo"],"tipos_contrato_permitidos":["CLT"],"tempo_minimo_dias":0}', "Saldo mensal flexível distribuível por categorias"),
+        ]
+        for cod, nome, tipo, c_tipo, c_val, teto, rub, v_mens, v_dia, lim, regra, desc in benefs_padrao:
+            cursor.execute(f"SELECT id, rubrica_codigo FROM beneficios_catalogo WHERE codigo = {p_mark};", (cod,))
+            existe_b = cursor.fetchone()
+            if not existe_b:
+                cursor.execute(f"""
+                    INSERT INTO beneficios_catalogo (
+                        empresa_id, codigo, nome, tipo, coparticipacao_tipo, coparticipacao_valor,
+                        teto_legal_percentual, regra_elegibilidade, rubrica_codigo, valor_mensal_padrao,
+                        valor_diario_padrao, limite_padrao, descricao, ativo, criado_em, atualizado_em
+                    ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark}, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod, nome, tipo, c_tipo, c_val, teto, regra, rub, v_mens, v_dia, lim, desc, agora_ben, agora_ben))
+            elif not existe_b[1]:
+                cursor.execute(f"""
+                    UPDATE beneficios_catalogo SET
+                        rubrica_codigo = {p_mark},
+                        valor_mensal_padrao = COALESCE(NULLIF(valor_mensal_padrao, 0), {p_mark}),
+                        valor_diario_padrao = COALESCE(NULLIF(valor_diario_padrao, 0), {p_mark}),
+                        limite_padrao = COALESCE(NULLIF(limite_padrao, 0), {p_mark}),
+                        regra_elegibilidade = COALESCE(regra_elegibilidade, {p_mark})
+                    WHERE id = {p_mark};
+                """, (rub, v_mens, v_dia, lim, regra, existe_b[0]))
+    except Exception:
+        pass
+
+    # Garante categorias padrão de documentos e configuração de alertas RF007/RF008
+    try:
+        p_mark = "%s" if pg else "?"
+        agora_doc = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cats_padrao = [
+            ("RG", "RG", 1, 0),
+            ("CPF", "CPF", 1, 0),
+            ("COMPROVANTE_RESIDENCIA", "Comprovante de Residência", 1, 1),
+            ("CTPS", "Carteira de Trabalho", 1, 0),
+            ("CONTRATO_TRABALHO", "Contrato de Trabalho", 1, 0),
+            ("ADITIVOS_CONTRATUAIS", "Aditivos Contratuais", 0, 0),
+            ("CERTIFICADOS", "Certificados", 0, 1),
+            ("DIPLOMAS", "Diplomas", 0, 0),
+            ("ATESTADOS", "Atestados", 0, 1),
+            ("OUTROS", "Documentos Diversos", 0, 0),
+        ]
+        for cod_c, nome_c, obrig_c, ex_val_c in cats_padrao:
+            cursor.execute(f"SELECT id FROM documentos_categorias WHERE codigo = {p_mark};", (cod_c,))
+            if not cursor.fetchone():
+                cursor.execute(f"""
+                    INSERT INTO documentos_categorias (empresa_id, codigo, nome, obrigatorio, exige_validade, ativo, criado_em)
+                    VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """, ("a0000000-0000-0000-0000-000000000001", cod_c, nome_c, obrig_c, ex_val_c, agora_doc))
+        cursor.execute("SELECT COUNT(*) FROM documentos_config_alertas;")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"""
+                INSERT INTO documentos_config_alertas (empresa_id, dias_alertas_json, tamanho_max_mb, atualizado_por, atualizado_em)
+                VALUES ({p_mark}, '[30, 15, 7]', 10, 'Sistema', {p_mark});
+            """, ("a0000000-0000-0000-0000-000000000001", agora_doc))
+    except Exception:
+        pass
+
+    # Garante modelos contratuais padrão para geração de contratos admissionais (RF-014)
+    try:
+        import json as _json_ctr
+        p_mark = "%s" if pg else "?"
+        agora_ctr = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        modelos_ctr = [
+            (
+                "CLT_INDETERMINADO",
+                "Contrato Individual de Trabalho — Prazo Indeterminado",
+                "CLT",
+                "CONTRATO INDIVIDUAL DE TRABALHO POR PRAZO INDETERMINADO",
+                [
+                    "Cláusula 1ª — Objeto e Função: O EMPREGADO é admitido para exercer o cargo indicado neste instrumento, subordinando-se às normas internas da EMPREGADORA.",
+                    "Cláusula 2ª — Remuneração: O EMPREGADO perceberá o salário contratual ajustado, com descontos legais previstos na CLT e legislação previdenciária/tributária vigente.",
+                    "Cláusula 3ª — Jornada de Trabalho: O cumprimento da jornada observará a escala e os intervalos intrajornada formalmente registrados no sistema de ponto.",
+                    "Cláusula 4ª — Prazo e Vigência: O presente contrato vigora por prazo indeterminado a partir da data de admissão.",
+                    "Cláusula 5ª — Confidencialidade e Proteção de Dados: As partes comprometem-se ao sigilo profissional e à observância da Lei Geral de Proteção de Dados (Lei nº 13.709/2018).",
+                ],
+            ),
+            (
+                "EXPERIENCIA",
+                "Contrato Individual de Trabalho a Título de Experiência",
+                "experiencia",
+                "CONTRATO INDIVIDUAL DE TRABALHO DE EXPERIÊNCIA (ART. 443 §2º ALÍNEA C CLT)",
+                [
+                    "Cláusula 1ª — Objeto: Contratação em caráter experimental para avaliação mútua de adaptação às atividades do cargo proposto.",
+                    "Cláusula 2ª — Prazo de Experiência: Vigência inicial e eventual prorrogação única respeitando o limite legal máximo de 90 (noventa) dias (art. 445 parágrafo único da CLT).",
+                    "Cláusula 3ª — Remuneração e Jornada: A remuneração mensal e a escala inicial constam do quadro contratual deste instrumento.",
+                    "Cláusula 4ª — Conversão Automática: Findo o prazo experimental sem manifestação contrária de qualquer das partes, o contrato passa a vigorar por prazo indeterminado.",
+                ],
+            ),
+            (
+                "APRENDIZ",
+                "Contrato de Aprendizagem Profissional (Lei nº 10.097/2000)",
+                "aprendiz",
+                "CONTRATO ESPECIAL DE APRENDIZAGEM PROFISSIONAL",
+                [
+                    "Cláusula 1ª — Objeto: Formação técnico-profissional metódica compatível com o desenvolvimento físico, moral e psicológico do aprendiz (art. 428 da CLT).",
+                    "Cláusula 2ª — Jornada e Remuneração: Jornada respeitando os limites legais aplicáveis ao contrato de aprendizagem e remuneração proporcional assegurada.",
+                    "Cláusula 3ª — Alíquota FGTS: Recolhimento mensal de FGTS nos termos do art. 15 §7º da Lei nº 8.036/1990 (2%).",
+                ],
+            ),
+            (
+                "ESTAGIO",
+                "Termo de Compromisso de Estágio (Lei nº 11.788/2008)",
+                "estagio",
+                "TERMO DE COMPROMISSO DE ESTÁGIO SUPERVISIONADO",
+                [
+                    "Cláusula 1ª — Natureza: Estágio supervisionado sem vínculo empregatício, regido pela Lei nº 11.788/2008.",
+                    "Cláusula 2ª — Bolsa-Auxílio e Carga Horária: Concessão de bolsa-auxílio e jornada compatível com o horário escolar.",
+                    "Cláusula 3ª — Recesso e Seguro: Assegurado recesso remunerado proporcional e cobertura de seguro contra acidentes pessoais.",
+                ],
+            ),
+            (
+                "TEMPORARIO",
+                "Contrato de Trabalho Temporário (Lei nº 6.019/1974)",
+                "temporario",
+                "CONTRATO DE TRABALHO TEMPORÁRIO",
+                [
+                    "Cláusula 1ª — Objeto e Motivo: Prestação de serviços temporários para substituição transitória de pessoal ou demanda complementar de serviços.",
+                    "Cláusula 2ª — Remuneração e Direitos: Assegurada remuneração equivalente à dos empregados da mesma categoria e cumprimento da escala designada.",
+                ],
+            ),
+        ]
+        for cod_m, nome_m, tipo_m, tit_m, claus_m in modelos_ctr:
+            cursor.execute(f"SELECT id FROM admissao_contratos_modelos WHERE codigo = {p_mark};", (cod_m,))
+            if not cursor.fetchone():
+                cursor.execute(
+                    f"""
+                    INSERT INTO admissao_contratos_modelos (
+                        empresa_id, codigo, nome, tipo_contrato, titulo_documento, clausulas_json,
+                        ativo, criado_por, criado_em, atualizado_em
+                    ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, 'Sistema', {p_mark}, {p_mark});
+                """,
+                    ("a0000000-0000-0000-0000-000000000001", cod_m, nome_m, tipo_m, tit_m, _json_ctr.dumps(claus_m, ensure_ascii=False), agora_ctr, agora_ctr),
+                )
     except Exception:
         pass
 
