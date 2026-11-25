@@ -35,9 +35,12 @@ class FolhaBloqueadaException(Exception):
 
 
 class FolhaService:
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, auto_init: bool = True):
         self.db_path = db_path
-        init_db(self.db_path)
+        # Em produção serverless, não execute migrações a cada requisição.
+        # A inicialização continua habilitada por padrão para dev/testes.
+        if auto_init:
+            init_db(self.db_path)
 
     # ──────────────────────────────────────────────────────────
     # DB Helpers
