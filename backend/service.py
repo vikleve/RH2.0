@@ -118,19 +118,26 @@ class ColaboradorService:
         os.makedirs(base, exist_ok=True)
         return base
 
+    _COLUNA_CACHE = {}
+
     def _tabela_tem_coluna(self, cursor, tabela: str, coluna: str) -> bool:
-        """Verifica de forma resiliente e compatível se a tabela possui a coluna informada."""
+        """Verifica de forma resiliente e com cache em memória se a tabela possui a coluna informada."""
+        chave = (self.db_path or "__default__", tabela, coluna)
+        if chave in self._COLUNA_CACHE:
+            return self._COLUNA_CACHE[chave]
         try:
             if self._pg():
                 cursor.execute(
                     "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
                     (tabela, coluna)
                 )
-                return cursor.fetchone() is not None
+                existe = cursor.fetchone() is not None
             else:
                 cursor.execute(f"PRAGMA table_info({tabela})")
                 cols = [row[1] if isinstance(row, (tuple, list)) else row["name"] for row in cursor.fetchall()]
-                return coluna in cols
+                existe = coluna in cols
+            self._COLUNA_CACHE[chave] = existe
+            return existe
         except Exception:
             return False
 

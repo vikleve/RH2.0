@@ -10,14 +10,53 @@ import hmac
 import os
 import secrets
 import sys
+import threading
 from datetime import datetime, timedelta
 
 from .database import _usar_postgres, get_connection, init_db, insert_returning_id, ph, row_to_dict
 from .audit import AuditService
+from .observabilidade import medir_operacao, registrar_evento as obs_registrar_evento
 
 ITERATIONS = 100_000
-# MODO TEMPORARIO DE APRESENTACAO: sessao permanece valida ate logout/revogacao.
 MENSAGEM_GENERICA_ERRO = "E-mail ou senha inválidos."
+
+_PROVISIONED_DBS = set()
+_PROVISION_LOCK = threading.Lock()
+
+
+def get_session_idle_seconds() -> int:
+    """Tempo de expiração por inatividade (padrão: 120 minutos = 2 horas)."""
+    if os.environ.get("SESSION_IDLE_MINUTES"):
+        minutos = max(1, int(os.environ.get("SESSION_IDLE_MINUTES", "120")))
+        return minutos * 60
+    if os.environ.get("SESSION_EXPIRATION_HOURS"):
+        horas = max(1, int(os.environ.get("SESSION_EXPIRATION_HOURS", "8")))
+        return horas * 3600
+    return 120 * 60
+
+
+def get_session_max_seconds() -> int:
+    """Tempo máximo absoluto de duração da sessão (padrão: 12 horas — nunca infinita)."""
+    horas = max(1, int(os.environ.get("SESSION_MAX_HOURS", "12")))
+    return max(get_session_idle_seconds(), horas * 3600)
+
+
+def get_session_renew_threshold_seconds() -> int:
+    """Intervalo mínimo entre gravações de renovação deslizante no banco (padrão: 15 min)."""
+    minutos = max(0, int(os.environ.get("SESSION_RENEW_THRESHOLD_MINUTES", "15")))
+    return minutos * 60
+
+
+def get_session_max_concurrent() -> int:
+    """Quantidade máxima de sessões simultâneas permitidas por usuário (padrão: 5)."""
+    if os.environ.get("SESSION_SINGLE_CONCURRENT", "").strip().lower() in ("1", "true", "yes"):
+        return 1
+    return max(1, int(os.environ.get("SESSION_MAX_CONCURRENT", "5")))
+
+
+def resetar_cache_provisionamento():
+    with _PROVISION_LOCK:
+        _PROVISIONED_DBS.clear()
 
 
 class CredenciaisInvalidasException(Exception):
@@ -85,12 +124,16 @@ class AuthService:
     # Provisionamento Seguro (GOV-002-02)
     # ──────────────────────────────────────────────────────────
 
-    def provisionar_usuario_inicial(self) -> dict:
+    def provisionar_usuario_inicial(self, force: bool = False) -> dict:
         """
         Provisiona as contas padrão de administrador e visitante/convidado
         caso ainda não existam no banco de dados.
         Exige ADMIN_INITIAL_PASSWORD explícita para prevenir senhas padrão em produção.
         """
+        chave_cache = f"pg:{os.environ.get('DATABASE_URL', '')}" if self._pg() else f"sqlite:{os.path.abspath(self.db_path or 'colaboradores.db')}"
+        if not force and chave_cache in _PROVISIONED_DBS:
+            return {}
+
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
@@ -190,10 +233,15 @@ class AuthService:
                 insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
                 conn.commit()
 
-        cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
-        row_admin = cursor.fetchone()
-        user = self._row(cursor, row_admin) if row_admin else {}
+        if admin_existente:
+            user = self._row(cursor, admin_existente)
+        else:
+            cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
+            row_admin = cursor.fetchone()
+            user = self._row(cursor, row_admin) if row_admin else {}
         conn.close()
+        with _PROVISION_LOCK:
+            _PROVISIONED_DBS.add(chave_cache)
         return user
 
     # ──────────────────────────────────────────────────────────
@@ -205,7 +253,7 @@ class AuthService:
         Valida as credenciais contra o banco de dados.
         Retorna (dados_usuario_sem_senha, token) se valido.
         Usa mensagem generica 'E-mail ou senha inválidos.' para evitar enumeracao de usuarios (RF-LOGIN-002, AC-06).
-        Garante regeneracao de sessao anterior e auditoria do evento (RF-LOGIN-003, RF-LOGIN-006).
+        Gerencia política segura de sessões simultâneas, inatividade deslizante e teto absoluto.
         """
         if not identificador or not senha:
             raise CredenciaisInvalidasException("E-mail e senha são obrigatórios.")
@@ -213,70 +261,124 @@ class AuthService:
         identificador = identificador.strip().lower()
         P = self._ph()
 
-        conn = self._conn()
-        cursor = conn.cursor()
+        with medir_operacao("auth_ms"):
+            conn = self._conn()
+            try:
+                cursor = conn.cursor()
 
-        cursor.execute(f"""
-            SELECT id, email, usuario, nome_completo,
-                   senha_hash, salt, perfil, status
-            FROM usuarios
-            WHERE LOWER(email) = {P} OR LOWER(usuario) = {P}
-        """, (identificador, identificador))
+                try:
+                    cursor.execute(f"""
+                        SELECT id, email, usuario, nome_completo,
+                               senha_hash, salt, perfil, status, empresa_id
+                        FROM usuarios
+                        WHERE LOWER(email) = {P} OR LOWER(usuario) = {P}
+                    """, (identificador, identificador))
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    cursor.execute(f"""
+                        SELECT id, email, usuario, nome_completo,
+                               senha_hash, salt, perfil, status
+                        FROM usuarios
+                        WHERE LOWER(email) = {P} OR LOWER(usuario) = {P}
+                    """, (identificador, identificador))
 
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            self.audit_service.registrar_evento(
-                "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Usuário não encontrado"
-            )
-            raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
+                row = cursor.fetchone()
+                if not row:
+                    conn.close()
+                    obs_registrar_evento("auth_login_falha", {"motivo": "nao_encontrado"})
+                    self.audit_service.registrar_evento(
+                        "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Usuário não encontrado"
+                    )
+                    raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
 
-        usuario = self._row(cursor, row)
+                usuario = self._row(cursor, row)
 
-        # Conta inativa também retorna mensagem genérica para não revelar existência nem status
-        if usuario["status"] != "ativo":
-            conn.close()
-            self.audit_service.registrar_evento(
-                "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Tentativa em conta inativa"
-            )
-            raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
+                # Conta inativa também retorna mensagem genérica para não revelar existência nem status
+                if usuario["status"] != "ativo":
+                    conn.close()
+                    obs_registrar_evento("auth_login_falha", {"motivo": "inativo"})
+                    self.audit_service.registrar_evento(
+                        "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Tentativa em conta inativa"
+                    )
+                    raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
 
-        if not verificar_senha(senha, usuario["senha_hash"], usuario["salt"]):
-            conn.close()
-            self.audit_service.registrar_evento(
-                "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Senha incorreta"
-            )
-            raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
+                if not verificar_senha(senha, usuario["senha_hash"], usuario["salt"]):
+                    conn.close()
+                    obs_registrar_evento("auth_login_falha", {"motivo": "senha_incorreta"})
+                    self.audit_service.registrar_evento(
+                        "LOGIN_FALHA", identificador=identificador, ip_origem=ip_origem, detalhes="Senha incorreta"
+                    )
+                    raise CredenciaisInvalidasException(MENSAGEM_GENERICA_ERRO)
 
-        # ── Regeneração de Sessão (RF-LOGIN-003) ──
-        # Invalida quaisquer sessões anteriores abertas para o usuário
-        cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE usuario_id={P} AND revogado=0", (usuario["id"],))
+                # ── Controle seguro de sessões simultâneas ──
+                max_concorrentes = get_session_max_concurrent()
+                if max_concorrentes <= 1:
+                    cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE usuario_id={P} AND revogado=0", (usuario["id"],))
+                else:
+                    # Mantém até (max_concorrentes - 1) sessões mais recentes, revogando apenas o excedente
+                    cursor.execute(
+                        f"SELECT token FROM sessoes WHERE usuario_id={P} AND revogado=0 ORDER BY criado_em DESC",
+                        (usuario["id"],),
+                    )
+                    ativas = cursor.fetchall()
+                    if len(ativas) >= max_concorrentes:
+                        excedentes = [r[0] for r in ativas[max_concorrentes - 1:]]
+                        for tok_ant in excedentes:
+                            cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE token={P}", (tok_ant,))
 
-        token = secrets.token_hex(32)
-        token_armazenado = hash_token(token)
-        agora_dt = datetime.now()
-        # Expiração de sessão real configurável (padrão 8 horas = 28800s) (RF-169)
-        horas_exp = int(os.environ.get("SESSION_EXPIRATION_HOURS", "8"))
-        expira_dt = agora_dt + timedelta(hours=horas_exp)
-        agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
-        expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
+                token = secrets.token_hex(32)
+                token_armazenado = hash_token(token)
+                agora_dt = datetime.now()
+                idle_seg = get_session_idle_seconds()
+                max_seg = get_session_max_seconds()
+                expira_dt = agora_dt + timedelta(seconds=idle_seg)
+                expira_abs_dt = agora_dt + timedelta(seconds=max_seg)
+                agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
+                expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
+                expira_abs_str = expira_abs_dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        cursor.execute(f"""
-            INSERT INTO sessoes (token, usuario_id, criado_em, expira_em, revogado)
-            VALUES ({P},{P},{P},{P},0)
-        """, (token_armazenado, usuario["id"], agora_str, expira_str))
+                try:
+                    cursor.execute(f"""
+                        INSERT INTO sessoes (token, usuario_id, criado_em, expira_em, ultima_atividade, expira_absoluto_em, revogado)
+                        VALUES ({P},{P},{P},{P},{P},{P},0)
+                    """, (token_armazenado, usuario["id"], agora_str, expira_str, agora_str, expira_abs_str))
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    cursor.execute(f"""
+                        INSERT INTO sessoes (token, usuario_id, criado_em, expira_em, revogado)
+                        VALUES ({P},{P},{P},{P},0)
+                    """, (token_armazenado, usuario["id"], agora_str, expira_str))
 
-        cursor.execute(f"""
-            UPDATE usuarios SET ultimo_login={P} WHERE id={P}
-        """, (agora_str, usuario["id"]))
+                cursor.execute(f"""
+                    UPDATE usuarios SET ultimo_login={P} WHERE id={P}
+                """, (agora_str, usuario["id"]))
 
-        conn.commit()
-        conn.close()
+                # Grava auditoria de sucesso na MESMA transação (elimina 1 conexão + round-trip extra ao Neon)
+                try:
+                    ip_seguro = (str(ip_origem).strip()[:45]) if ip_origem else "127.0.0.1"
+                    ident_seguro = self.audit_service.sanitizar_identificador(usuario["email"])
+                    cursor.execute(
+                        f"""
+                        INSERT INTO auditoria_autenticacao (
+                            evento, identificador, ip_origem, detalhes, criado_em
+                        ) VALUES ({P}, {P}, {P}, {P}, {P})
+                        """,
+                        ("LOGIN_SUCESSO", ident_seguro, ip_seguro, "Autenticação válida", agora_str),
+                    )
+                except Exception:
+                    pass
 
-        # Auditoria de sucesso
-        self.audit_service.registrar_evento(
-            "LOGIN_SUCESSO", identificador=usuario["email"], ip_origem=ip_origem, detalhes="Autenticação válida"
-        )
+                conn.commit()
+            finally:
+                conn.close()
+
+        obs_registrar_evento("auth_login_sucesso")
 
         return {
             "id":            usuario["id"],
@@ -291,10 +393,11 @@ class AuthService:
     # Sessoes
     # ──────────────────────────────────────────────────────────
 
-    def validar_sessao(self, token: str):
+    def validar_sessao(self, token: str, renovar: bool = True):
         """
-        Valida se o token existe, não expirou e não foi revogado.
-        Verifica tanto pelo hash SHA-256 do token quanto compatibilidade temporária (RF-168, RF-169).
+        Valida se o token existe, não expirou (inatividade e teto máximo absoluto) e não foi revogado.
+        Aplica renovação deslizante controlada (throttled) durante a atividade do usuário,
+        nunca ultrapassando o limite máximo absoluto (expira_absoluto_em).
         Retorna os dados do usuario autenticado ou None.
         """
         if not token:
@@ -303,40 +406,112 @@ class AuthService:
         token_hash = hash_token(token)
         P = self._ph()
         conn = self._conn()
-        cursor = conn.cursor()
-        agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         try:
-            cursor.execute(f"""
-                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id, s.criado_em, s.expira_em, s.revogado
-                FROM sessoes s
-                JOIN usuarios u ON u.id = s.usuario_id
-                WHERE (s.token = {P} OR s.token = {P})
-                  AND s.revogado = 0
-                  AND u.status = 'ativo'
-                  AND s.expira_em >= {P}
-            """, (token_hash, token, agora_str))
-        except Exception:
-            cursor.execute(f"""
-                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em, s.expira_em, s.revogado
-                FROM sessoes s
-                JOIN usuarios u ON u.id = s.usuario_id
-                WHERE (s.token = {P} OR s.token = {P})
-                  AND s.revogado = 0
-                  AND u.status = 'ativo'
-                  AND s.expira_em >= {P}
-            """, (token_hash, token, agora_str))
+            cursor = conn.cursor()
+            agora_dt = datetime.now()
+            agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
+            tem_colunas_estendidas = True
 
-        row = cursor.fetchone()
-        if not row:
+            try:
+                cursor.execute(f"""
+                    SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id,
+                           s.token AS sessao_token_armazenado, s.criado_em, s.expira_em,
+                           s.ultima_atividade, s.expira_absoluto_em, s.revogado
+                    FROM sessoes s
+                    JOIN usuarios u ON u.id = s.usuario_id
+                    WHERE (s.token = {P} OR s.token = {P})
+                      AND s.revogado = 0
+                      AND u.status = 'ativo'
+                """, (token_hash, token))
+            except Exception:
+                tem_colunas_estendidas = False
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                cursor.execute(f"""
+                    SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil,
+                           s.token AS sessao_token_armazenado, s.criado_em, s.expira_em, s.revogado
+                    FROM sessoes s
+                    JOIN usuarios u ON u.id = s.usuario_id
+                    WHERE (s.token = {P} OR s.token = {P})
+                      AND s.revogado = 0
+                      AND u.status = 'ativo'
+                """, (token_hash, token))
+
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            usuario = self._row(cursor, row)
+            expira_em_str = usuario.get("expira_em") or ""
+            criado_em_str = usuario.get("criado_em") or agora_str
+            ultima_ativ_str = usuario.get("ultima_atividade") or criado_em_str
+            expira_abs_str = usuario.get("expira_absoluto_em")
+
+            # Verifica expiração por inatividade
+            if expira_em_str and expira_em_str < agora_str:
+                obs_registrar_evento("sessao_expirada", {"motivo": "inatividade"})
+                return None
+
+            # Verifica limite máximo absoluto (nunca permite sessão infinita)
+            try:
+                criado_dt = datetime.strptime(criado_em_str[:19], "%Y-%m-%d %H:%M:%S")
+                if expira_abs_str:
+                    expira_abs_dt = datetime.strptime(expira_abs_str[:19], "%Y-%m-%d %H:%M:%S")
+                else:
+                    expira_abs_dt = criado_dt + timedelta(seconds=get_session_max_seconds())
+            except Exception:
+                expira_abs_dt = agora_dt + timedelta(seconds=get_session_max_seconds())
+
+            if agora_dt > expira_abs_dt:
+                obs_registrar_evento("sessao_expirada", {"motivo": "expiracao_maxima"})
+                return None
+
+            # ── Renovação deslizante controlada (throttled) ──
+            sessao_renovada = False
+            if renovar:
+                try:
+                    ultima_dt = datetime.strptime(ultima_ativ_str[:19], "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    ultima_dt = agora_dt - timedelta(seconds=get_session_renew_threshold_seconds() + 1)
+
+                threshold = get_session_renew_threshold_seconds()
+                elapsed = (agora_dt - ultima_dt).total_seconds()
+                if elapsed >= threshold:
+                    idle_seg = get_session_idle_seconds()
+                    novo_expira_dt = min(agora_dt + timedelta(seconds=idle_seg), expira_abs_dt)
+                    novo_expira_str = novo_expira_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    tok_db = usuario.get("sessao_token_armazenado") or token_hash
+                    try:
+                        if tem_colunas_estendidas:
+                            cursor.execute(
+                                f"UPDATE sessoes SET expira_em={P}, ultima_atividade={P} WHERE token={P}",
+                                (novo_expira_str, agora_str, tok_db),
+                            )
+                        else:
+                            cursor.execute(
+                                f"UPDATE sessoes SET expira_em={P} WHERE token={P}",
+                                (novo_expira_str, tok_db),
+                            )
+                        conn.commit()
+                        usuario["expira_em"] = novo_expira_str
+                        usuario["ultima_atividade"] = agora_str
+                        sessao_renovada = True
+                        obs_registrar_evento("sessao_renovada")
+                    except Exception:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+
+            usuario.pop("sessao_token_armazenado", None)
+            usuario["_sessao_renovada"] = sessao_renovada
+            if not usuario.get("empresa_id"):
+                usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
+            return usuario
+        finally:
             conn.close()
-            return None
-
-        usuario = self._row(cursor, row)
-        conn.close()
-        if usuario and not usuario.get("empresa_id"):
-            usuario["empresa_id"] = "a0000000-0000-0000-0000-000000000001"
-        return usuario
 
     def encerrar_sessao(self, token: str, ip_origem: str = None) -> bool:
         """Invalida a sessao ativa no servidor (logout) e audita o evento (RF-LOGIN-003, RF-LOGIN-006)."""

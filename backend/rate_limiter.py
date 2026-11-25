@@ -3,7 +3,8 @@ Módulo de Rate Limiting para Autenticação — RH2.0
 Atende a RF-LOGIN-005, RF-161 e AC-07:
 Controla tentativas excessivas de login por IP e/ou identificador,
 bloqueando ataques de força bruta com resposta HTTP 429 e cabeçalho Retry-After.
-Suporta persistência em banco de dados para compartilhamento seguro entre múltiplas instâncias/workers.
+Suporta persistência em banco de dados (PostgreSQL/Neon e SQLite) para compartilhamento
+seguro entre múltiplas instâncias/workers serverless.
 """
 from collections import defaultdict
 import os
@@ -11,15 +12,16 @@ import threading
 import time
 from typing import Optional
 
-LIMITE_TENTATIVAS_PADRAO = 5
-JANELA_SEGUNDOS_PADRAO = 900  # 15 minutos
+LIMITE_TENTATIVAS_PADRAO = int(os.environ.get("RATE_LIMIT_MAX_TENTATIVAS", "5"))
+JANELA_SEGUNDOS_PADRAO = int(os.environ.get("RATE_LIMIT_JANELA_SEGUNDOS", "900"))  # 15 minutos
 
 
 class RateLimiter:
     """
     Controlador de taxa de requisições baseado em janela temporal deslizante.
-    Thread-safe com suporte a banco de dados compartilhado (multi-instância).
+    Thread-safe com suporte a banco de dados compartilhado (PostgreSQL/Neon e SQLite).
     """
+
     def __init__(
         self,
         max_tentativas: int = LIMITE_TENTATIVAS_PADRAO,
@@ -32,24 +34,35 @@ class RateLimiter:
         self._tentativas = defaultdict(list)
         self._lock = threading.Lock()
 
-    def _get_db_conn(self):
-        if not self.db_path:
-            return None
+    def _get_db_conn_e_ph(self):
+        """
+        Retorna (conn, placeholder) quando o rate limit persistente está disponível:
+        - db_path explícito (testes / SQLite configurado)
+        - ou PostgreSQL configurado via DATABASE_URL (produção Vercel/Neon)
+        """
         try:
-            from .database import get_connection
-            return get_connection(self.db_path)
+            from .database import _usar_postgres, get_connection, ph
+            usar_db = bool(self.db_path) or _usar_postgres(self.db_path)
+            if not usar_db:
+                return None, "?"
+            return get_connection(self.db_path), ph(self.db_path)
         except Exception:
-            return None
+            return None, "?"
 
-    def _limpar_antigas_db(self, conn, chave: str, agora: float):
+    def _limpar_antigas_db(self, conn, p: str, chave: str, agora: float):
         try:
             corte = agora - self.janela_segundos
             cur = conn.cursor()
-            p = "%s" if getattr(self, "_usar_pg", False) else "?"
-            cur.execute(f"DELETE FROM rate_limit_tentativas WHERE chave = {p} AND timestamp <= {p};", (chave, corte))
+            cur.execute(
+                f"DELETE FROM rate_limit_tentativas WHERE chave = {p} AND timestamp <= {p};",
+                (chave, corte),
+            )
             conn.commit()
         except Exception:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def _limpar_antigas(self, chave: str, agora: float):
         """Remove registros fora da janela temporal na memória."""
@@ -66,13 +79,16 @@ class RateLimiter:
             return False, 0
 
         agora = time.time()
-        conn = self._get_db_conn()
+        corte = agora - self.janela_segundos
+        conn, p = self._get_db_conn_e_ph()
         if conn:
             try:
-                self._limpar_antigas_db(conn, chave, agora)
                 cur = conn.cursor()
-                p = "?"
-                cur.execute(f"SELECT timestamp FROM rate_limit_tentativas WHERE chave = {p} ORDER BY timestamp ASC;", (chave,))
+                # Consulta direta filtrada pela janela (evita DELETE em todo login limpo)
+                cur.execute(
+                    f"SELECT timestamp FROM rate_limit_tentativas WHERE chave = {p} AND timestamp > {p} ORDER BY timestamp ASC;",
+                    (chave, corte),
+                )
                 rows = cur.fetchall()
                 total = len(rows)
                 if total >= self.max_tentativas:
@@ -81,7 +97,10 @@ class RateLimiter:
                     return True, restante
                 return False, 0
             except Exception:
-                pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             finally:
                 conn.close()
 
@@ -104,18 +123,22 @@ class RateLimiter:
             return False, 0
 
         agora = time.time()
-        conn = self._get_db_conn()
+        corte = agora - self.janela_segundos
+        conn, p = self._get_db_conn_e_ph()
         if conn:
             try:
-                self._limpar_antigas_db(conn, chave, agora)
+                self._limpar_antigas_db(conn, p, chave, agora)
                 cur = conn.cursor()
                 cur.execute(
-                    "INSERT INTO rate_limit_tentativas (chave, timestamp, ip_origem, recurso) VALUES (?, ?, ?, 'login');",
+                    f"INSERT INTO rate_limit_tentativas (chave, timestamp, ip_origem, recurso) VALUES ({p}, {p}, {p}, 'login');",
                     (chave, agora, ip_origem or "127.0.0.1"),
                 )
                 conn.commit()
 
-                cur.execute("SELECT timestamp FROM rate_limit_tentativas WHERE chave = ? ORDER BY timestamp ASC;", (chave,))
+                cur.execute(
+                    f"SELECT timestamp FROM rate_limit_tentativas WHERE chave = {p} AND timestamp > {p} ORDER BY timestamp ASC;",
+                    (chave, corte),
+                )
                 rows = cur.fetchall()
                 total = len(rows)
                 if total >= self.max_tentativas:
@@ -124,7 +147,10 @@ class RateLimiter:
                     return True, restante
                 return False, 0
             except Exception:
-                pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             finally:
                 conn.close()
 
@@ -143,14 +169,17 @@ class RateLimiter:
         if not chave:
             return
 
-        conn = self._get_db_conn()
+        conn, p = self._get_db_conn_e_ph()
         if conn:
             try:
                 cur = conn.cursor()
-                cur.execute("DELETE FROM rate_limit_tentativas WHERE chave = ?;", (chave,))
+                cur.execute(f"DELETE FROM rate_limit_tentativas WHERE chave = {p};", (chave,))
                 conn.commit()
             except Exception:
-                pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             finally:
                 conn.close()
 
@@ -160,14 +189,17 @@ class RateLimiter:
 
     def resetar(self):
         """Zera todos os contadores (útil em testes isolados)."""
-        conn = self._get_db_conn()
+        conn, _ = self._get_db_conn_e_ph()
         if conn:
             try:
                 cur = conn.cursor()
                 cur.execute("DELETE FROM rate_limit_tentativas;")
                 conn.commit()
             except Exception:
-                pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             finally:
                 conn.close()
 

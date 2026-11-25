@@ -31,6 +31,11 @@ from http.server import BaseHTTPRequestHandler
 from backend.database import erro_http
 from backend.auth import AuthService
 from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
+from backend.observabilidade import (
+    finalizar_contexto_requisicao,
+    formatar_server_timing,
+    iniciar_contexto_requisicao,
+)
 
 _auth_service = None
 _colab_service = None
@@ -57,7 +62,8 @@ class handler(BaseHTTPRequestHandler):
     # ──────────────────────────────────────────────────────────
 
     def _enviar_json(self, status: int, dados: dict):
-        corpo = json.dumps(dados, ensure_ascii=False, default=str).encode("utf-8")
+        resumo = finalizar_contexto_requisicao(status)
+        corpo = json.dumps(dados, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
@@ -68,6 +74,10 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        timing = formatar_server_timing(resumo)
+        if timing:
+            self.send_header("Server-Timing", timing)
         self.end_headers()
         self.wfile.write(corpo)
 
