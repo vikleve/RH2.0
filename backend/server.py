@@ -22,9 +22,16 @@ try:
 except ImportError:
     pass  # python-dotenv nao instalado; variaveis devem ser definidas manualmente
 try:
-    from .auth import AuthService, CredenciaisInvalidasException
+    from .auth import AuthService, CredenciaisInvalidasException, get_session_idle_seconds
     from .csrf import get_csrf_protector
     from .rate_limiter import get_rate_limiter
+    from .observabilidade import (
+        finalizar_contexto_requisicao,
+        formatar_server_timing,
+        iniciar_contexto_requisicao,
+        obter_metricas_snapshot,
+        registrar_evento as obs_registrar_evento,
+    )
     from .folha_service import (
         FolhaBloqueadaException,
         FolhaNaoEncontradaException,
@@ -42,9 +49,16 @@ try:
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from backend.auth import AuthService, CredenciaisInvalidasException
+    from backend.auth import AuthService, CredenciaisInvalidasException, get_session_idle_seconds
     from backend.csrf import get_csrf_protector
     from backend.rate_limiter import get_rate_limiter
+    from backend.observabilidade import (
+        finalizar_contexto_requisicao,
+        formatar_server_timing,
+        iniciar_contexto_requisicao,
+        obter_metricas_snapshot,
+        registrar_evento as obs_registrar_evento,
+    )
     from backend.folha_service import (
         FolhaBloqueadaException,
         FolhaNaoEncontradaException,
@@ -270,9 +284,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
     def _exigir_autenticacao(self) -> dict | None:
         """
         Verifica se a requisição possui autenticação válida.
-        Caso contrário, envia imediatamente resposta HTTP 401 Unauthorized e retorna None.
+        Falhas transitórias de banco retornam HTTP 503 (nunca 401 falso!).
+        Caso a sessão seja inválida/expirada, envia HTTP 401 Unauthorized e retorna None.
         """
-        usuario = self._obter_usuario_autenticado()
+        try:
+            usuario = self._obter_usuario_autenticado()
+        except Exception as e:
+            self._enviar_json(*erro_http(e))
+            return None
         if not usuario:
             self._enviar_json(401, {
                 "sucesso": False,
@@ -306,13 +325,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         return True
 
     def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None, extra_headers: dict = None):
-        """Envia resposta JSON com cabeçalhos de segurança, Cache-Control no-store, suporte a cookies HttpOnly e serialização segura de Decimais."""
+        """Envia resposta JSON compacta com cabeçalhos de segurança, cookies com Max-Age/Secure consistentes e Server-Timing."""
         def _json_serial(obj):
             if isinstance(obj, Decimal):
                 return float(obj)
             return str(obj)
 
-        corpo = json.dumps(dados, ensure_ascii=False, indent=2, default=_json_serial).encode("utf-8")
+        resumo_perf = finalizar_contexto_requisicao(status_code)
+        corpo = json.dumps(dados, ensure_ascii=False, separators=(",", ":"), default=_json_serial).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
@@ -326,16 +346,24 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 
+        timing = formatar_server_timing(resumo_perf)
+        if timing:
+            self.send_header("Server-Timing", timing)
+
         if extra_headers:
             for k, v in extra_headers.items():
                 self.send_header(k, str(v))
 
+        proto = (self.headers.get("X-Forwarded-Proto") or "").lower()
+        is_https = proto == "https" or bool(os.environ.get("VERCEL"))
+        secure_flag = "; Secure" if is_https else ""
+
         if set_cookie:
-            proto = self.headers.get("X-Forwarded-Proto", "")
-            secure_flag = "; Secure" if proto == "https" else ""
-            self.send_header("Set-Cookie", f"{set_cookie}; Path=/; HttpOnly; SameSite=Lax{secure_flag}")
+            cookie_base = set_cookie.split(";")[0].strip()
+            max_age = get_session_idle_seconds()
+            self.send_header("Set-Cookie", f"{cookie_base}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure_flag}")
         if delete_cookie:
-            self.send_header("Set-Cookie", f"{delete_cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            self.send_header("Set-Cookie", f"{delete_cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure_flag}")
 
         self.end_headers()
         self.wfile.write(corpo)
@@ -367,6 +395,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         """Trata requisições GET para API e para arquivos estáticos."""
         path, query = self._obter_caminho_e_query()
+        if path.startswith("/api/"):
+            iniciar_contexto_requisicao(path, "GET")
 
         # Diagnostico publico: GET /api/health — confirma o banco em uso (sem expor credenciais)
         if path == "/api/health":
@@ -375,21 +405,34 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        # Diagnostico protegido: GET /api/observabilidade/metricas
+        if path == "/api/observabilidade/metricas":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            if usuario.get("perfil") not in ("superadmin", "administrador", "admin_empresa", "auditor"):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso restrito a administradores/auditores.", "codigo": "ACESSO_NEGADO"})
+            return self._enviar_json(200, {"sucesso": True, "metricas": obter_metricas_snapshot()})
+
         # Rota de verificação de sessão: GET /api/auth/me
         if path == "/api/auth/me":
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            renovada = bool(usuario.pop("_sessao_renovada", False))
             perfil = usuario.get("perfil", "colaborador")
             from .auth import PERMISSOES_RBAC
             permissoes = PERMISSOES_RBAC.get(perfil, [])
+            token_atual = self._extrair_token_sessao()
+            cookie_refresh = f"session_token={token_atual}" if (renovada and token_atual) else None
             return self._enviar_json(200, {
                 "sucesso": True,
+                "sessao_renovada": renovada,
                 "usuario": {
                     **usuario,
                     "permissoes": permissoes
                 }
-            })
+            }, set_cookie=cookie_refresh)
 
         # Rota de metadados: Listar perfis RBAC da plataforma GET /api/auth/perfis
         if path == "/api/auth/perfis":
@@ -1356,6 +1399,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         path, _ = self._obter_caminho_e_query()
+        if path.startswith("/api/"):
+            iniciar_contexto_requisicao(path, "POST")
 
         # Rota pública: Login POST /api/auth/login
         if path == "/api/auth/login":
@@ -1366,6 +1411,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             # Verificação de Rate Limit (RF-LOGIN-005, AC-07)
             bloqueado, restante = limiter.esta_bloqueado(chave_limiter)
             if bloqueado:
+                obs_registrar_evento("auth_rate_limit")
                 self.auth_service.audit_service.registrar_evento(
                     "BLOQUEIO_RATE_LIMIT",
                     identificador="anônimo",
@@ -1404,7 +1450,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 if not cookie_only:
                     resp_dados["token"] = token
 
-                return self._enviar_json(200, resp_dados, set_cookie=f"session_token={token}; HttpOnly; SameSite=Lax; Path=/")
+                return self._enviar_json(200, resp_dados, set_cookie=f"session_token={token}")
             except CredenciaisInvalidasException as e:
                 limiter.registrar_falha(chave_limiter, ip_origem=ip)
                 return self._enviar_json(401, {
@@ -2720,9 +2766,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:calcular"):
                 return
             try:
-                # Usa a exceção importada no escopo do módulo. Um import local
-                # com o mesmo nome tornava a variável local em todo do_POST()
-                # e quebrava também a rota /api/folha/simular.
+                from .folha_exceptions import FolhaValidacaoException
                 dados = self._ler_json_body()
                 ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
                 if not ok_escopo:

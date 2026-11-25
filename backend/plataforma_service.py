@@ -1492,45 +1492,42 @@ class PlataformaService:
         try:
             cur = conn.cursor()
 
-            # Efetivo
-            cur.execute("SELECT COUNT(*) FROM colaboradores WHERE situacao = 'ativo';")
-            ativos = cur.fetchone()[0] or 1
-
-            cur.execute("SELECT COUNT(*) FROM colaboradores WHERE situacao = 'inativo';")
-            inativos = cur.fetchone()[0] or 0
-
-            cur.execute("SELECT COUNT(*) FROM admissoes WHERE status = 'aprovada';")
-            total_admissoes = cur.fetchone()[0] or 0
-
-            cur.execute("SELECT COUNT(*) FROM rescisoes WHERE status != 'cancelada';")
-            total_desligamentos = cur.fetchone()[0] or 0
+            # 1. Query consolidada de contagens (substitui 11 queries sequenciais por 1 única rodada ao Neon)
+            cur.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM colaboradores WHERE situacao = 'ativo') AS ativos,
+                    (SELECT COUNT(*) FROM colaboradores WHERE situacao = 'inativo') AS inativos,
+                    (SELECT COALESCE(SUM(salario_base), 0) FROM colaboradores WHERE situacao = 'ativo') AS massa_salarial_ativa,
+                    (SELECT COUNT(*) FROM admissoes WHERE status = 'aprovada') AS total_admissoes,
+                    (SELECT COUNT(*) FROM rescisoes WHERE status != 'cancelada') AS total_desligamentos,
+                    (SELECT COUNT(*) FROM ocorrencias_ponto WHERE tipo_ocorrencia LIKE '%falta%') AS total_faltas,
+                    (SELECT COUNT(*) FROM periodos_aquisitivos WHERE situacao = 'vencido' OR situacao = 'em_dobro') AS ferias_vencidas,
+                    (SELECT COUNT(*) FROM ferias_programadas WHERE status = 'solicitada') AS ferias_programadas_qtd,
+                    (SELECT COUNT(*) FROM sst_cats) AS total_cats,
+                    (SELECT COUNT(*) FROM pendencias_operacionais WHERE status != 'resolvida') AS pendencias_abertas,
+                    (SELECT COUNT(*) FROM pendencias_operacionais WHERE status != 'resolvida' AND LOWER(severidade) = 'critica') AS pendencias_criticas
+            """)
+            agg = cur.fetchone()
+            ativos = int((agg[0] or 0) if agg else 0) or 1
+            inativos = int((agg[1] or 0) if agg else 0)
+            massa_salarial_ativa = float((agg[2] or 0.0) if agg else 0.0)
+            total_admissoes = int((agg[3] or 0) if agg else 0)
+            total_desligamentos = int((agg[4] or 0) if agg else 0)
+            total_faltas = int((agg[5] or 0) if agg else 0)
+            ferias_vencidas = int((agg[6] or 0) if agg else 0)
+            ferias_programadas_qtd = int((agg[7] or 0) if agg else 0)
+            total_cats = int((agg[8] or 0) if agg else 0)
+            pendencias_abertas = int((agg[9] or 0) if agg else 0)
+            pendencias_criticas = int((agg[10] or 0) if agg else 0)
 
             # Fórmula do Turnover (RF-181): (Admissões + Desligamentos) / 2 / Efetivo Médio * 100
             efetivo_medio = (ativos + inativos) / 2.0 if (ativos + inativos) > 0 else 1.0
             turnover_rate = round(((total_admissoes + total_desligamentos) / 2.0 / efetivo_medio) * 100.0, 2)
-
-            # Ocorrências e Absenteísmo (RF-182)
-            cur.execute("SELECT COUNT(*) FROM ocorrencias_ponto WHERE tipo_ocorrencia LIKE '%falta%';")
-            total_faltas = cur.fetchone()[0] or 0
             absenteismo_rate = round((total_faltas / max(1, ativos * 22)) * 100.0, 2)
 
-            # Férias (RF-185)
-            cur.execute("SELECT COUNT(*) FROM periodos_aquisitivos WHERE situacao = 'vencido' OR situacao = 'em_dobro';")
-            ferias_vencidas = cur.fetchone()[0] or 0
-
-            cur.execute("SELECT COUNT(*) FROM ferias_programadas WHERE status = 'solicitada';")
-            ferias_programadas_qtd = cur.fetchone()[0] or 0
-
-            # SST Acidentes (RF-187)
-            cur.execute("SELECT COUNT(*) FROM sst_cats;")
-            total_cats = cur.fetchone()[0] or 0
-
-            # Folha mais recente e massa salarial ativa
+            # 2. Folha mais recente
             cur.execute("SELECT competencia, SUM(total_proventos) as prov, SUM(total_descontos) as desc_tot, SUM(salario_liquido) as liq, SUM(valor_fgts_informativo) as fgts, SUM(base_inss) as base_inss, SUM(base_irrf) as base_irrf FROM folhas_pagamento WHERE situacao != 'cancelada' GROUP BY competencia ORDER BY competencia DESC LIMIT 1;")
             folha_stats = fetchone_dict(cur, self.db_path)
-
-            cur.execute("SELECT SUM(salario_base) FROM colaboradores WHERE situacao = 'ativo';")
-            massa_salarial_ativa = float(cur.fetchone()[0] or 0.0)
 
             if not folha_stats or not folha_stats.get("prov"):
                 fgts_est = round(massa_salarial_ativa * 0.08, 2)
@@ -1548,16 +1545,9 @@ class PlataformaService:
                     "irrf": irrf_est,
                 }
 
-            # Distribuição por setor
+            # 3. Distribuição por setor
             cur.execute("SELECT setor, COUNT(*) as total, SUM(salario_base) as massa FROM colaboradores WHERE situacao = 'ativo' GROUP BY setor ORDER BY total DESC;")
             setores_dist = fetchall_dict(cur, self.db_path)
-
-            # Pendências da central
-            cur.execute("SELECT COUNT(*) FROM pendencias_operacionais WHERE status != 'resolvida';")
-            pendencias_abertas = cur.fetchone()[0] or 0
-
-            cur.execute("SELECT COUNT(*) FROM pendencias_operacionais WHERE status != 'resolvida' AND LOWER(severidade) = 'critica';")
-            pendencias_criticas = cur.fetchone()[0] or 0
 
             return {
                 "total_colaboradores_ativos": ativos,

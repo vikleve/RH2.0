@@ -211,17 +211,23 @@ const AuthManager = {
   async inicializar() {
     this.configurarEventosLogin();
 
-    // Tenta validar a sessão atual com o backend
+    // Tenta validar a sessão atual com o backend (com retry único em falha transitória 5xx/rede)
+    const tentarValidar = async () => fetch(`${API_BASE}/auth/me`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
+
     try {
-      const resp = await fetch(`${API_BASE}/auth/me`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-        credentials: 'include'
-      });
+      let resp = await tentarValidar();
+      if (resp.status >= 500 || resp.status === 502 || resp.status === 503 || resp.status === 504) {
+        await new Promise(r => setTimeout(r, 1200));
+        resp = await tentarValidar();
+      }
 
       if (resp.ok) {
-        const data = await resp.json();
-        if (data.sucesso && data.usuario) {
+        const data = await parseJsonSeguro(resp);
+        if (data && data.sucesso && data.usuario) {
           this.usuario = data.usuario;
           Estado.usuarioAutenticado = data.usuario;
           this.exibirTelaSistema(data.usuario);
@@ -229,8 +235,25 @@ const AuthManager = {
           return;
         }
       }
+
+      if (resp.status === 401) {
+        this.exibirTelaLogin();
+        return;
+      }
+
+      if (resp.status >= 500) {
+        console.warn(`Falha transitória (${resp.status}) ao verificar sessão no servidor.`);
+        if (this.token) {
+          exibirToast('Servidor temporariamente instável. Sua sessão foi preservada — tente recarregar em instantes.', 'warning');
+          return;
+        }
+      }
     } catch (e) {
-      console.warn('Sessão não autenticada no servidor.');
+      console.warn('Falha transitória de rede ao verificar sessão:', e);
+      if (this.token) {
+        exibirToast('Sem conexão momentânea com o servidor. Sua sessão local foi preservada.', 'warning');
+        return;
+      }
     }
 
     // Não autenticado: exibe tela de login
@@ -249,7 +272,8 @@ const AuthManager = {
   iniciarMonitoramentoSessao() {
     if (this._monitoramentoSessao) return;
     const intervaloMinimo = 5 * 60 * 1000;
-    let ultimaRenovacao = 0;
+    // Inicia com timestamp atual para evitar chamada redundante a /api/auth/me no 1º clique pós-login
+    let ultimaRenovacao = Date.now();
     const renovar = async () => {
       if (!this.usuario || document.hidden || Date.now() - ultimaRenovacao < intervaloMinimo) return;
       ultimaRenovacao = Date.now();
@@ -262,6 +286,8 @@ const AuthManager = {
         if (resp.status === 401) {
           this.exibirTelaLogin('Sua sessão expirou. Entre novamente para continuar.');
           exibirToast('Sua sessão expirou. Entre novamente para continuar.', 'warning');
+        } else if (resp.status >= 500 || resp.status === 429) {
+          console.warn(`Falha transitória (${resp.status}) ao renovar sessão; mantendo usuário conectado.`);
         }
       } catch (e) {
         console.warn('Falha transitória ao renovar sessão; a sessão local foi mantida.');
@@ -488,18 +514,48 @@ const AuthManager = {
 // ============================================================================
 const MSG_API_INDISPONIVEL = 'Não foi possível comunicar com o servidor. Abra o sistema pelo endereço do servidor (http/https); os dados não são salvos no navegador.';
 
-// Executa fetch e converte falhas de rede em erro claro (sem salvamento alternativo)
+// Parse JSON seguro: nunca dispara "Unexpected token 'A'" quando proxy/Vercel retorna texto/HTML
+async function parseJsonSeguro(resp) {
+  if (!resp) return null;
+  const ct = (resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '').toLowerCase();
+  const texto = await resp.text();
+  if (!texto || !texto.trim()) return null;
+  if (ct.includes('application/json') || texto.trim().startsWith('{') || texto.trim().startsWith('[')) {
+    try {
+      return JSON.parse(texto);
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+// Executa fetch com tratamento consistente de 401/403/429/500/502/503/504 e falhas transitórias
 async function requisitarApi(url, opcoes) {
   let resp;
   try {
     resp = await fetch(url, opcoes);
   } catch (e) {
-    throw new Error('Servidor indisponível: a operação não foi realizada e nada foi salvo. Tente novamente em instantes.');
+    throw new Error('Falha temporária de comunicação com o servidor. Sua sessão foi mantida; tente novamente em instantes.');
   }
-  if (resp.status === 503) {
-    let msg = 'Banco de dados indisponível: a operação não foi realizada.';
-    try { const j = await resp.json(); if (j && j.mensagem) msg = j.mensagem; } catch (_) { }
-    throw new Error(msg);
+
+  if (resp.status === 403) {
+    const j = await parseJsonSeguro(resp);
+    throw new Error((j && j.mensagem) || 'Você não tem permissão para executar esta operação.');
+  }
+  if (resp.status === 429) {
+    const retry = resp.headers ? resp.headers.get('Retry-After') : null;
+    const j = await parseJsonSeguro(resp);
+    const baseMsg = (j && j.mensagem) || 'Muitas requisições em sequência. Aguarde alguns instantes e tente novamente.';
+    throw new Error(retry ? `${baseMsg} (${retry}s)` : baseMsg);
+  }
+  if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
+    const j = await parseJsonSeguro(resp);
+    throw new Error((j && j.mensagem) || 'Serviço temporariamente indisponível ou tempo limite excedido. Tente novamente em instantes.');
+  }
+  if (resp.status >= 500) {
+    const j = await parseJsonSeguro(resp);
+    throw new Error((j && j.mensagem) || `Erro interno no servidor (HTTP ${resp.status}). Tente novamente em instantes.`);
   }
   return resp;
 }
@@ -532,9 +588,9 @@ const DadosService = {
           return [];
         }
 
-        const data = await resp.json();
-        if (data.sucesso) return data.dados;
-        throw new Error(data.mensagem || 'Erro ao carregar colaboradores.');
+        const data = await parseJsonSeguro(resp);
+        if (data && data.sucesso) return data.dados;
+        throw new Error((data && data.mensagem) || 'Erro ao carregar colaboradores.');
       } catch (e) {
         console.error('Erro ao consultar API:', e.message);
         throw e;
@@ -553,9 +609,9 @@ const DadosService = {
         AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         throw new Error('Não autenticado.');
       }
-      const data = await resp.json();
-      if (data.sucesso) return data.dados;
-      throw new Error(data.mensagem || 'Colaborador não encontrado.');
+      const data = await parseJsonSeguro(resp);
+      if (data && data.sucesso) return data.dados;
+      throw new Error((data && data.mensagem) || 'Colaborador não encontrado.');
     }
     throw new Error(MSG_API_INDISPONIVEL);
   },
@@ -572,10 +628,10 @@ const DadosService = {
         AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         throw new Error('Não autenticado.');
       }
-      const data = await resp.json();
-      if (!resp.ok) {
-        const err = new Error(data.mensagem || 'Erro de validação');
-        err.erros = data.erros;
+      const data = await parseJsonSeguro(resp);
+      if (!resp.ok || !data) {
+        const err = new Error((data && data.mensagem) || 'Erro de validação');
+        err.erros = data && data.erros;
         throw err;
       }
       return data.dados;
@@ -595,10 +651,10 @@ const DadosService = {
         AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         throw new Error('Não autenticado.');
       }
-      const data = await resp.json();
-      if (!resp.ok) {
-        const err = new Error(data.mensagem || 'Erro ao atualizar');
-        err.erros = data.erros;
+      const data = await parseJsonSeguro(resp);
+      if (!resp.ok || !data) {
+        const err = new Error((data && data.mensagem) || 'Erro ao atualizar');
+        err.erros = data && data.erros;
         throw err;
       }
       return data.dados;
@@ -618,8 +674,8 @@ const DadosService = {
         AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         throw new Error('Não autenticado.');
       }
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.mensagem || 'Erro ao inativar colaborador');
+      const data = await parseJsonSeguro(resp);
+      if (!resp.ok || !data) throw new Error((data && data.mensagem) || 'Erro ao inativar colaborador');
       return data.dados;
     }
     throw new Error(MSG_API_INDISPONIVEL);
@@ -637,8 +693,8 @@ const DadosService = {
         AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
         throw new Error('Não autenticado.');
       }
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.mensagem || 'Erro ao reativar colaborador');
+      const data = await parseJsonSeguro(resp);
+      if (!resp.ok || !data) throw new Error((data && data.mensagem) || 'Erro ao reativar colaborador');
       return data.dados;
     }
     throw new Error(MSG_API_INDISPONIVEL);
@@ -653,7 +709,8 @@ async function carregarColaboradores() {
     const lista = await DadosService.listar(Estado.filtros);
     Estado.colaboradores = lista;
     renderizarTabela(lista);
-    atualizarMetricas();
+    const semFiltroTexto = !Estado.filtros.termo && !Estado.filtros.nome && !Estado.filtros.matricula && !Estado.filtros.cpf && !Estado.filtros.setor && !Estado.filtros.cargo;
+    atualizarMetricas(semFiltroTexto && Estado.filtros.situacao === 'todos' ? lista : null);
   } catch (e) {
     exibirToast(e.message || 'Falha ao carregar colaboradores.', 'error');
   }
@@ -724,18 +781,32 @@ function renderizarTabela(lista) {
   aplicarPaginacaoTabela('corpo-tabela', 'paginacao-colaboradores', 12);
 }
 
-async function atualizarMetricas() {
+async function atualizarMetricas(listaJaCarregada = null) {
   try {
-    // Busca todos sem filtro para computar totais gerais
-    const todos = await DadosService.listar({ situacao: 'todos' });
+    if (!Estado.usuarioAutenticado && !sessionStorage.getItem('AUTH_TOKEN')) {
+      ['stat-total', 'stat-ativos', 'stat-inativos', 'stat-setores'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '0';
+      });
+      return;
+    }
+    const todos = Array.isArray(listaJaCarregada)
+      ? listaJaCarregada
+      : (Estado.colaboradores && Estado.colaboradores.length > 0 && Estado.filtros.situacao === 'ativo' && !Estado.filtros.termo && !Estado.filtros.setor && !Estado.filtros.cargo
+        ? Estado.colaboradores
+        : await DadosService.listar({ situacao: 'todos' }));
     const ativos = todos.filter(c => c.situacao === 'ativo').length;
     const inativos = todos.filter(c => c.situacao === 'inativo').length;
     const setores = new Set(todos.map(c => c.setor).filter(Boolean)).size;
 
-    document.getElementById('stat-total').textContent = todos.length;
-    document.getElementById('stat-ativos').textContent = ativos;
-    document.getElementById('stat-inativos').textContent = inativos;
-    document.getElementById('stat-setores').textContent = setores;
+    const elTotal = document.getElementById('stat-total');
+    const elAtivos = document.getElementById('stat-ativos');
+    const elInativos = document.getElementById('stat-inativos');
+    const elSetores = document.getElementById('stat-setores');
+    if (elTotal) elTotal.textContent = todos.length;
+    if (elAtivos) elAtivos.textContent = ativos;
+    if (elInativos) elInativos.textContent = inativos;
+    if (elSetores) elSetores.textContent = setores;
   } catch (e) {
     console.error('Erro ao atualizar métricas:', e);
   }

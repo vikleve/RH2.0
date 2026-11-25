@@ -12,7 +12,22 @@ Os testes passam db_path explicito => sempre SQLite isolado.
 import os
 import sqlite3
 import tempfile
+import threading
+import time
 from datetime import datetime
+
+try:
+    from .observabilidade import (
+        registrar_conexao_banco as _obs_registrar_conexao,
+        registrar_evento as _obs_registrar_evento,
+        registrar_sql as _obs_registrar_sql,
+    )
+except ImportError:
+    from backend.observabilidade import (
+        registrar_conexao_banco as _obs_registrar_conexao,
+        registrar_evento as _obs_registrar_evento,
+        registrar_sql as _obs_registrar_sql,
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuracao de Ambiente e Drivers
@@ -121,8 +136,152 @@ def _usar_postgres(db_path: str = None) -> bool:
     return False  # desenvolvimento local: SQLite
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Pool de Conexões PostgreSQL (Serverless-safe) + Wrapper de Telemetria SQL
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PG_POOLS = {}
+_PG_POOL_LOCK = threading.Lock()
+_INITIALIZED_DBS = set()
+_INIT_DB_LOCK = threading.Lock()
+
+
+class _InstrumentedCursor:
+    """Cursor transparente que contabiliza número e duração de consultas SQL."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, sql, params=None):
+        t0 = time.perf_counter()
+        try:
+            if params is None:
+                return self._cursor.execute(sql)
+            return self._cursor.execute(sql, params)
+        finally:
+            _obs_registrar_sql((time.perf_counter() - t0) * 1000.0, sql)
+
+    def executemany(self, sql, seq_of_params):
+        t0 = time.perf_counter()
+        try:
+            return self._cursor.executemany(sql, seq_of_params)
+        finally:
+            _obs_registrar_sql((time.perf_counter() - t0) * 1000.0, sql)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+
+class _ManagedConnection:
+    """
+    Wrapper transparente de conexão:
+    - Instrumenta cursores com métricas de tempo/contagem SQL.
+    - Para PostgreSQL com pool, .close() devolve a conexão limpa ao pool em vez de destruir o socket TLS.
+    """
+
+    def __init__(self, raw_conn, pool=None):
+        self._conn = raw_conn
+        self._pool = pool
+        self._closed = False
+
+    def cursor(self, *args, **kwargs):
+        return _InstrumentedCursor(self._conn.cursor(*args, **kwargs))
+
+    def execute(self, sql, params=None):
+        t0 = time.perf_counter()
+        try:
+            if params is None:
+                return self._conn.execute(sql)
+            return self._conn.execute(sql, params)
+        finally:
+            _obs_registrar_sql((time.perf_counter() - t0) * 1000.0, sql)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._pool is not None:
+            try:
+                # Garante transação limpa antes de devolver ao pool
+                if getattr(self._conn, "closed", 0) == 0:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+                    self._pool.putconn(self._conn)
+                else:
+                    self._pool.putconn(self._conn, close=True)
+            except Exception:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+        else:
+            self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            try:
+                self.rollback()
+            except Exception:
+                pass
+        self.close()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def _normalizar_pg_dsn(url: str) -> str:
+    dsn = url.replace("postgres://", "postgresql://", 1)
+    if (
+        "localhost" not in dsn
+        and "127.0.0.1" not in dsn
+        and "sslmode=" not in dsn
+    ):
+        dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
+
+    if "connect_timeout=" not in dsn:
+        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "10")
+
+    if "application_name=" not in dsn:
+        dsn += ("&" if "?" in dsn else "?") + "application_name=rh20_backend"
+
+    return dsn
+
+
+def _obter_pg_pool(dsn: str):
+    import psycopg2.pool
+
+    pool = _PG_POOLS.get(dsn)
+    if pool is not None:
+        return pool
+
+    with _PG_POOL_LOCK:
+        pool = _PG_POOLS.get(dsn)
+        if pool is not None:
+            return pool
+        minconn = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
+        maxconn = max(minconn, int(os.environ.get("DB_POOL_MAX", "5")))
+        pool = psycopg2.pool.ThreadedConnectionPool(minconn=minconn, maxconn=maxconn, dsn=dsn)
+        _PG_POOLS[dsn] = pool
+        return pool
+
+
 def _get_pg_conn():
-    """Retorna conexao psycopg2 para PostgreSQL com tratamento de DSN e SSL."""
+    """Retorna conexao psycopg2 reutilizada via pool serverless-safe com validacao de liveness."""
     try:
         import psycopg2
     except ImportError:
@@ -132,35 +291,73 @@ def _get_pg_conn():
     url = get_database_url()
     if not url:
         raise DatabaseConfigError("DATABASE_URL nao configurada: o PostgreSQL e obrigatorio.")
-    dsn = url.replace("postgres://", "postgresql://", 1)
-
-    # Se for servico em nuvem (Neon, Supabase, Railway, Render) e nao especificar sslmode, garante sslmode=require
-    if (
-        "localhost" not in dsn
-        and "127.0.0.1" not in dsn
-        and "sslmode=" not in dsn
-    ):
-        dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
-
-    if "connect_timeout=" not in dsn:
-        dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "15")
+    dsn = _normalizar_pg_dsn(url)
+    t0 = time.perf_counter()
 
     try:
-        return psycopg2.connect(dsn)
+        pool = _obter_pg_pool(dsn)
+        raw_conn = pool.getconn()
+        # Valida se a conexao reutilizada nao foi encerrada pelo Neon (idle timeout)
+        if getattr(raw_conn, "closed", 0) != 0:
+            try:
+                pool.putconn(raw_conn, close=True)
+            except Exception:
+                pass
+            raw_conn = pool.getconn()
+        else:
+            try:
+                with raw_conn.cursor() as chk:
+                    chk.execute("SELECT 1")
+                raw_conn.rollback()
+            except Exception:
+                try:
+                    pool.putconn(raw_conn, close=True)
+                except Exception:
+                    pass
+                raw_conn = pool.getconn()
+        _obs_registrar_conexao((time.perf_counter() - t0) * 1000.0)
+        return _ManagedConnection(raw_conn, pool=pool)
     except psycopg2.OperationalError:
+        _obs_registrar_evento("banco_erros", {"tipo": "OperationalError"})
         # Nao propaga a mensagem original: ela pode revelar host/usuario do banco.
         raise DatabaseUnavailableError(
             "Banco de dados indisponivel no momento. A operacao nao foi realizada e nenhum dado foi salvo."
         ) from None
+    except Exception as exc:
+        if "pool exhausted" in str(exc).lower():
+            # Fallback pontual fora do pool para evitar erro 500 sob pico simultaneo
+            try:
+                raw_conn = psycopg2.connect(dsn)
+                _obs_registrar_conexao((time.perf_counter() - t0) * 1000.0)
+                return _ManagedConnection(raw_conn, pool=None)
+            except psycopg2.OperationalError:
+                _obs_registrar_evento("banco_erros", {"tipo": "OperationalError_fallback"})
+                raise DatabaseUnavailableError(
+                    "Banco de dados indisponivel no momento. A operacao nao foi realizada e nenhum dado foi salvo."
+                ) from None
+        raise
 
 
-def _get_sqlite_conn(db_path: str = None) -> sqlite3.Connection:
-    """Retorna conexao SQLite para desenvolvimento local ou testes."""
+def close_all_pools():
+    """Encerra pools PostgreSQL ativos (util em shutdown limpo e testes)."""
+    with _PG_POOL_LOCK:
+        for pool in list(_PG_POOLS.values()):
+            try:
+                pool.closeall()
+            except Exception:
+                pass
+        _PG_POOLS.clear()
+
+
+def _get_sqlite_conn(db_path: str = None):
+    """Retorna conexao SQLite instrumentada para desenvolvimento local ou testes."""
+    t0 = time.perf_counter()
     caminho = os.path.abspath(db_path if db_path else _SQLITE_PATH)
-    conn = sqlite3.connect(caminho)
+    conn = sqlite3.connect(caminho, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    _obs_registrar_conexao((time.perf_counter() - t0) * 1000.0)
+    return _ManagedConnection(conn, pool=None)
 
 
 def get_connection(db_path: str = None):
@@ -333,12 +530,14 @@ _DDL_USUARIOS_SQLITE = """
 
 _DDL_SESSOES = """
     CREATE TABLE IF NOT EXISTS sessoes (
-        token        TEXT PRIMARY KEY,
-        usuario_id   INTEGER NOT NULL
-                     REFERENCES usuarios(id) ON DELETE CASCADE,
-        criado_em    TEXT NOT NULL,
-        expira_em    TEXT NOT NULL,
-        revogado     INTEGER NOT NULL DEFAULT 0
+        token              TEXT PRIMARY KEY,
+        usuario_id         INTEGER NOT NULL
+                           REFERENCES usuarios(id) ON DELETE CASCADE,
+        criado_em          TEXT NOT NULL,
+        expira_em          TEXT NOT NULL,
+        ultima_atividade   TEXT,
+        expira_absoluto_em TEXT,
+        revogado           INTEGER NOT NULL DEFAULT 0
     );
 """
 
@@ -1689,32 +1888,111 @@ _DDL_RESCISOES_HISTORICO = """
 # Inicializacao
 # ─────────────────────────────────────────────────────────────────────────────
 
-def init_db(db_path: str = None, auto_provision: bool = True):
+def _chave_db_init(db_path: str = None) -> str:
+    if _usar_postgres(db_path):
+        return f"pg:{get_database_url()}"
+    caminho = os.path.abspath(db_path if db_path else _SQLITE_PATH)
+    return f"sqlite:{caminho}"
+
+
+def resetar_cache_init_db(db_path: str = None):
+    """Limpa o cache em memória de inicialização do banco (útil em testes)."""
+    with _INIT_DB_LOCK:
+        if db_path is None:
+            _INITIALIZED_DBS.clear()
+        else:
+            _INITIALIZED_DBS.discard(_chave_db_init(db_path))
+
+
+def _schema_pg_ja_inicializado(conn) -> bool:
+    """
+    Verificação rápida (1 única consulta) para confirmar se o schema principal e
+    as colunas de sessão/usuário já existem no PostgreSQL (Neon), evitando ~410 DDLs
+    em todo cold start serverless na Vercel.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND (
+                  (table_name = 'sessoes' AND column_name IN ('ultima_atividade', 'expira_absoluto_em'))
+                  OR (table_name = 'usuarios' AND column_name = 'empresa_id')
+                  OR (table_name = 'colaboradores' AND column_name = 'empresa_id')
+              )
+            """
+        )
+        qtd = cur.fetchone()[0] or 0
+        return qtd >= 4
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def init_db(db_path: str = None, auto_provision: bool = True, force: bool = False):
     """
     Cria as tabelas e indices necessarios se nao existirem.
     Funciona tanto com PostgreSQL quanto com SQLite.
+    Possui guarda idempotente por processo e verificação rápida em PostgreSQL
+    para eliminar latência de cold start (~410 DDLs) em ambiente serverless (Vercel/Neon).
     """
+    chave_cache = _chave_db_init(db_path)
+    if not force and chave_cache in _INITIALIZED_DBS:
+        return
+
     pg = _usar_postgres(db_path)
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
+
+    # Em produção com flag explícita SKIP_AUTO_INIT_DB=1, confia nas migrations aplicadas no Neon
+    if pg and not force and os.environ.get("SKIP_AUTO_INIT_DB", "").strip().lower() in ("1", "true", "yes"):
+        with _INIT_DB_LOCK:
+            _INITIALIZED_DBS.add(chave_cache)
+        return
+
+    with _INIT_DB_LOCK:
+        if not force and chave_cache in _INITIALIZED_DBS:
+            return
+
+        conn = get_connection(db_path)
+        if pg and not force and _schema_pg_ja_inicializado(conn):
+            conn.close()
+            _INITIALIZED_DBS.add(chave_cache)
+            return
+
+        cursor = conn.cursor()
+        _init_db_executar_ddl(conn, cursor, pg, db_path, auto_provision)
+        _INITIALIZED_DBS.add(chave_cache)
+
+
+def _executar_ddl_seguro(conn, cursor, sql: str, pg: bool):
+    """Executa DDL com SAVEPOINT no PostgreSQL para nunca abortar a transação (InFailedSqlTransaction)."""
+    if pg:
+        try:
+            cursor.execute("SAVEPOINT sp_ddl;")
+            cursor.execute(sql)
+            cursor.execute("RELEASE SAVEPOINT sp_ddl;")
+        except Exception:
+            try:
+                cursor.execute("ROLLBACK TO SAVEPOINT sp_ddl;")
+            except Exception:
+                conn.rollback()
+    else:
+        try:
+            cursor.execute(sql)
+        except Exception:
+            pass
+
+
+def _init_db_executar_ddl(conn, cursor, pg: bool, db_path: str, auto_provision: bool):
 
     serial = "SERIAL" if pg else "INTEGER"
     pk = "SERIAL PRIMARY KEY" if pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
 
     cursor.execute(_DDL_COLABORADORES_PG if pg else _DDL_COLABORADORES_SQLITE)
     cursor.execute(_DDL_DEPENDENTES.format(serial=serial))
-
-    # Migração crítica: bancos PostgreSQL existentes podem ter sido criados
-    # antes da coluna situacao em dependentes. Aplicar isoladamente e confirmar
-    # antes das demais migrações para evitar que uma falha posterior em outra
-    # alteração de schema impeça esta coluna de existir em produção.
-    if pg:
-        cursor.execute(
-            "ALTER TABLE dependentes "
-            "ADD COLUMN IF NOT EXISTS situacao TEXT NOT NULL DEFAULT 'ativo';"
-        )
-        conn.commit()
-
     cursor.execute(_DDL_HISTORICO.format(serial=serial))
     cursor.execute(_DDL_USUARIOS_PG if pg else _DDL_USUARIOS_SQLITE)
     cursor.execute(_DDL_SESSOES)
@@ -1786,21 +2064,11 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_RECUPERACAO_SENHA.format(pk=pk),
         _DDL_RATE_LIMIT_TENTATIVAS.format(pk=pk),
     ]
-    # Cada DDL tolerante precisa de SAVEPOINT próprio: no PostgreSQL,
-    # uma instrução com erro aborta a transação inteira. Sem rollback ao savepoint,
-    # todos os DDL seguintes falham silenciosamente e tabelas críticas ficam ausentes.
-    def _executar_migracao_tolerante(sql, etapa):
-        cursor.execute("SAVEPOINT rh2_migracao_item")
-        try:
-            cursor.execute(sql)
-            cursor.execute("RELEASE SAVEPOINT rh2_migracao_item")
-        except Exception as exc:
-            cursor.execute("ROLLBACK TO SAVEPOINT rh2_migracao_item")
-            cursor.execute("RELEASE SAVEPOINT rh2_migracao_item")
-            print(f"[RH2-MIGRATION] Falha em {etapa}: {type(exc).__name__}: {exc}")
-
     for ddl_sql in tabelas_plataforma:
-        _executar_migracao_tolerante(ddl_sql, "DDL de tabela")
+        try:
+            cursor.execute(ddl_sql)
+        except Exception:
+            pass
 
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_colab_matricula ON colaboradores(matricula);",
@@ -1864,16 +2132,27 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_benef_hist_vinculo ON beneficios_historico(vinculo_id);",
         "CREATE INDEX IF NOT EXISTS idx_recup_senha_hash ON recuperacao_senha(token_hash);",
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_chave_time ON rate_limit_tentativas(chave, timestamp);",
+        "CREATE INDEX IF NOT EXISTS idx_sessao_user_revogado ON sessoes(usuario_id, revogado);",
+        "CREATE INDEX IF NOT EXISTS idx_sessao_expira_em ON sessoes(expira_em);",
+        "CREATE INDEX IF NOT EXISTS idx_colab_empresa_situacao ON colaboradores(empresa_id, situacao);",
     ]
+    if pg:
+        indices.extend([
+            "CREATE INDEX IF NOT EXISTS idx_usuario_email_lower ON usuarios(LOWER(email));",
+            "CREATE INDEX IF NOT EXISTS idx_usuario_login_lower ON usuarios(LOWER(usuario));",
+        ])
     for idx_sql in indices:
-        _executar_migracao_tolerante(idx_sql, "índice")
+        _executar_ddl_seguro(conn, cursor, idx_sql, pg)
 
     # Garantir colunas de hash para encadeamento criptográfico e rastreabilidade (RF-200, RN-072)
-    for col_audit in [
-        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_anterior TEXT;",
-        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_atual TEXT;",
-    ]:
-        _executar_migracao_tolerante(col_audit, "coluna de auditoria")
+    colunas_audit_sessao = [
+        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_anterior TEXT;" if pg else "ALTER TABLE auditoria_operacoes ADD COLUMN hash_anterior TEXT;",
+        "ALTER TABLE auditoria_operacoes ADD COLUMN IF NOT EXISTS hash_atual TEXT;" if pg else "ALTER TABLE auditoria_operacoes ADD COLUMN hash_atual TEXT;",
+        "ALTER TABLE sessoes ADD COLUMN IF NOT EXISTS ultima_atividade TEXT;" if pg else "ALTER TABLE sessoes ADD COLUMN ultima_atividade TEXT;",
+        "ALTER TABLE sessoes ADD COLUMN IF NOT EXISTS expira_absoluto_em TEXT;" if pg else "ALTER TABLE sessoes ADD COLUMN expira_absoluto_em TEXT;",
+    ]
+    for col_audit in colunas_audit_sessao:
+        _executar_ddl_seguro(conn, cursor, col_audit, pg)
 
     # Triggers de imutabilidade de logs de auditoria no banco de dados (RN-073)
     if not pg:
@@ -2132,7 +2411,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE esocial_eventos ADD COLUMN IF NOT EXISTS xml_retificador TEXT;",
         ]
         for col_sql in colunas_extras:
-            _executar_migracao_tolerante(col_sql, "coluna complementar PostgreSQL")
+            _executar_ddl_seguro(conn, cursor, col_sql, pg=True)
     else:
         colunas_extras_sqlite = [
             "ALTER TABLE colaboradores ADD COLUMN empresa_id TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001';",
@@ -2696,9 +2975,6 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     except Exception:
         pass
 
-    # Seed de tabelas legais também fica isolado: uma falha não pode deixar
-    # a transação PostgreSQL abortada nem impedir as próximas inicializações.
-    cursor.execute("SAVEPOINT rh2_seed_legal")
     # Garante novas rubricas RF041-RF050 e tabelas legais/feriados versionados (Fase 2)
     try:
         import json as _json_leg
@@ -2749,7 +3025,7 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                 "2026-01-01",
                 "Portaria Interministerial MPS/MF nº 13/2026; Lei nº 15.270/2025; CLT",
                 1621.00, 8475.55, 988.09,
-                [[0.0, 1621.00, 7.5], [1621.00, 2902.84, 9.0], [2902.84, 4354.27, 12.0], [4354.27, 8475.55, 14.0]],
+                [[0.0, 1518.00, 7.5], [1518.00, 2793.88, 9.0], [2793.88, 4190.83, 12.0], [4190.83, 8475.55, 14.0]],
                 [[2428.80, 0.0, 0.00], [2826.65, 7.5, 182.16], [3751.05, 15.0, 394.16], [4664.68, 22.5, 675.49], [None, 27.5, 908.73]],
                 189.59, 607.20, 1, 1980.38, 67.54, 8.00, 2.00, 1,
             ),
@@ -2809,12 +3085,8 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                 """,
                     ("a0000000-0000-0000-0000-000000000001", dt_f, desc_f, abr_f, agora_leg),
                 )
-    except Exception as exc:
-        cursor.execute("ROLLBACK TO SAVEPOINT rh2_seed_legal")
-        cursor.execute("RELEASE SAVEPOINT rh2_seed_legal")
-        print(f"[RH2-MIGRATION] Falha no seed de tabelas legais: {type(exc).__name__}: {exc}")
-    else:
-        cursor.execute("RELEASE SAVEPOINT rh2_seed_legal")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
