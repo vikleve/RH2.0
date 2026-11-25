@@ -130,14 +130,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         if hasattr(self, "server") and self.server is not None:
             if not hasattr(self.server, "folha_service"):
                 db_path = getattr(self.service, "db_path", None)
-                setattr(self.server, "folha_service", FolhaService(db_path=db_path))
+                setattr(self.server, "folha_service", FolhaService(db_path=db_path, auto_init=False))
             return getattr(self.server, "folha_service")
 
         if getattr(self, "_local_folha_service", None) is None:
             global _global_folha_service
             if _global_folha_service is None:
                 db_path = getattr(self.service, "db_path", None)
-                _global_folha_service = FolhaService(db_path=db_path)
+                _global_folha_service = FolhaService(db_path=db_path, auto_init=False)
             self._local_folha_service = _global_folha_service
         return self._local_folha_service
 
@@ -3458,7 +3458,7 @@ def run_server(port: int = PORT, db_path: str | None = None):
     httpd = socketserver.TCPServer(server_address, ApiColaboradorHandler)
     setattr(httpd, "colab_service", ColaboradorService(db_path=db_path))
     setattr(httpd, "auth_service", AuthService(db_path=db_path, auto_init=False))
-    setattr(httpd, "folha_service", FolhaService(db_path=db_path))
+    setattr(httpd, "folha_service", FolhaService(db_path=db_path, auto_init=False))
     setattr(httpd, "plataforma_service", PlataformaService(db_path=db_path))
     print(f"Servidor rodando em http://localhost:{port}")
     try:
