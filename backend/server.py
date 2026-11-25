@@ -368,7 +368,16 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
-    def do_OPTIONS(self):
+    def send_error(self, code, message=None, explain=None):
+        """Garante resposta JSON padronizada em rotas /api/* mesmo em erros HTTP inesperados (evita HTML/Unexpected token)."""
+        path = getattr(self, "path", "") or ""
+        if path.startswith("/api/"):
+            return self._enviar_json(code, {
+                "sucesso": False,
+                "mensagem": message or f"Erro HTTP {code} ao processar a requisição.",
+                "codigo": f"HTTP_{code}",
+            })
+        return super().send_error(code, message, explain)
         """Suporte a pre-flight CORS com credenciais."""
         self.send_response(204)
         origem = self.headers.get("Origin", "*")
