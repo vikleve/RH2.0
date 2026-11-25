@@ -14,9 +14,11 @@ from .plataforma_exceptions import PlataformaRecursoNaoEncontradoException, Plat
 
 
 class TabelasLegaisService:
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, auto_init: bool = True):
         self.db_path = db_path
-        init_db(db_path=self.db_path)
+        # Evita executar migrações repetidas no caminho das requisições serverless.
+        if auto_init:
+            init_db(db_path=self.db_path)
 
     def _conn(self):
         return get_connection(self.db_path)
