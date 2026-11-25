@@ -4121,6 +4121,16 @@ const FolhaManager = {
     exibirToast('Relatório exportado para Excel/CSV com sucesso!', 'success');
   },
 
+  exportarRelatorioPDFOficial(tipoRelatorio = 'colaboradores') {
+    const comp = document.getElementById('rel-folha-competencia')?.value || '';
+    const setor = document.getElementById('rel-folha-setor')?.value || '';
+    let url = `/api/relatorios/exportar-pdf?tipo=${encodeURIComponent(tipoRelatorio)}`;
+    if (comp) url += `&competencia=${encodeURIComponent(comp)}`;
+    if (setor) url += `&setor=${encodeURIComponent(setor)}`;
+    window.open(url, '_blank');
+    exibirToast('Exportando Relatório Oficial em PDF A4...', 'info');
+  },
+
   configurarEventosHolerite() {
     const btnFecharX = document.getElementById('btn-fechar-holerite');
     const btnFecharFooter = document.getElementById('btn-fechar-holerite-footer');
