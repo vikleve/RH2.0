@@ -260,7 +260,7 @@ class SSTService:
         # Validade padrão do ASO: 1 ano (NR-07)
         dt_val = (datetime.strptime(data_realizacao, "%Y-%m-%d") + timedelta(days=365)).strftime("%Y-%m-%d")
 
-        return self.registrar_aso(
+        res_aso = self.registrar_aso(
             colaborador_id=colaborador_id,
             tipo_aso="ADMISSIONAL",
             data_emissao=data_realizacao,
@@ -277,6 +277,8 @@ class SSTService:
             empresa_id=empresa_id,
             usuario=usuario,
         )
+        res_aso["resultado"] = resultado_upper
+        return res_aso
 
     # ─────────────────────────────────────────────────────────────────────────
     # RF-123: EXAME PERIÓDICO

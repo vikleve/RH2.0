@@ -5,6 +5,7 @@ Módulos 01 a 20 (RF-001 a RF-200), Regras Transversais (RT-01 a RT-13) e
 Regras de Negócio Trabalhistas e Compliance (RN-001 a RN-083).
 """
 import calendar
+import hashlib
 import json
 import os
 import re
@@ -106,19 +107,30 @@ class PlataformaService:
         detalhes: Optional[str] = None,
         empresa_id: str = "a0000000-0000-0000-0000-000000000001",
     ):
-        """Registra log imutável de auditoria (RT-01, RT-02, RF-191 a RF-200)."""
+        """Registra log imutável de auditoria com encadeamento criptográfico inviolável (RT-01, RT-02, RF-191 a RF-200, RN-072)."""
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn = self._conn()
         try:
             cur = conn.cursor()
             p = self._p()
+
+            # Encadeamento criptográfico (RF-200)
+            cur.execute(
+                f"SELECT hash_atual FROM auditoria_operacoes WHERE empresa_id = {p} OR empresa_id IS NULL ORDER BY id DESC LIMIT 1;",
+                (empresa_id,),
+            )
+            last_h = cur.fetchone()
+            hash_anterior = last_h[0] if last_h and last_h[0] else "GENESIS_RH20_BLOCK"
+            payload = f"{hash_anterior}|{empresa_id}|{modulo}|{operacao}|{registro_tipo}|{str(registro_id)}|{campo_alterado or ''}|{valor_anterior or ''}|{valor_novo or ''}|{usuario or 'Sistema'}|{agora}"
+            hash_atual = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
             cur.execute(
                 f"""
                 INSERT INTO auditoria_operacoes (
                     empresa_id, modulo, operacao, registro_tipo, registro_id,
                     campo_alterado, valor_anterior, valor_novo, usuario_responsavel,
-                    ip_origem, detalhes, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p});
+                    ip_origem, detalhes, hash_anterior, hash_atual, criado_em
+                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p});
             """,
                 (
                     empresa_id,
@@ -132,6 +144,8 @@ class PlataformaService:
                     usuario or "Sistema",
                     ip_origem,
                     detalhes,
+                    hash_anterior,
+                    hash_atual,
                     agora,
                 ),
             )
@@ -145,14 +159,18 @@ class PlataformaService:
         operacao: Optional[str] = None,
         usuario: Optional[str] = None,
         limite: int = 100,
+        empresa_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Consulta logs de auditoria (RF-198, RF-199)."""
+        """Consulta logs de auditoria com isolamento estrito por empresa (RN-074, RF-198, RF-199)."""
         conn = self._conn()
         try:
             cur = conn.cursor()
             query = "SELECT * FROM auditoria_operacoes WHERE 1=1"
             params = []
             p = self._p()
+            if empresa_id:
+                query += f" AND (empresa_id = {p} OR empresa_id IS NULL)"
+                params.append(empresa_id)
             if modulo:
                 query += f" AND modulo = {p}"
                 params.append(modulo)
@@ -167,6 +185,11 @@ class PlataformaService:
             return fetchall_dict(cur, self.db_path)
         finally:
             conn.close()
+
+    def verificar_integridade_auditoria(self, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        """Valida integridade da trilha de auditoria (RF-200, RN-072)."""
+        from backend.audit import AuditService
+        return AuditService(db_path=self.db_path).verificar_integridade_trilha(empresa_id=empresa_id)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 02: ADMISSÃO (RF-011 a RF-020 — Delegado ao AdmissaoService)
@@ -2320,6 +2343,22 @@ class PlataformaService:
                 vig_inicio, vig_fim, obs, ativo, agora, agora,
             )
             vinc_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
+
+            # RN-038: Gravar histórico temporal imutável de concessão
+            cur.execute(
+                f"""
+                INSERT INTO beneficios_historico (
+                    vinculo_id, colaborador_id, beneficio_id, operacao,
+                    valor_anterior, valor_novo, custo_empresa, desconto_colab,
+                    motivo, usuario_responsavel, criado_em
+                ) VALUES ({p}, {p}, {p}, 'CONCESSAO', 0.0, {p}, {p}, {p}, {p}, {p}, {p});
+                """,
+                (
+                    vinc_id, colaborador_id, beneficio_id,
+                    calc["custo_total_mes"], calc["custo_empresa"], calc["desconto_colaborador"],
+                    "Concessão inicial de benefício", usuario, agora,
+                ),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -2385,6 +2424,24 @@ class PlataformaService:
                     vig_inicio, vig_fim, obs, ativo, agora, vinculo_id,
                 ),
             )
+
+            # RN-038: Gravar histórico temporal de alteração sem sobrescrever informações históricas
+            cur.execute(
+                f"""
+                INSERT INTO beneficios_historico (
+                    vinculo_id, colaborador_id, beneficio_id, operacao,
+                    valor_anterior, valor_novo, custo_empresa, desconto_colab,
+                    motivo, usuario_responsavel, criado_em
+                ) VALUES ({p}, {p}, {p}, 'ALTERACAO_VALOR', {p}, {p}, {p}, {p}, {p}, {p}, {p});
+                """,
+                (
+                    vinculo_id, atual["colaborador_id"], atual["beneficio_id"],
+                    float(atual.get("custo_total_mes") or 0.0), float(calc["custo_total_mes"]),
+                    float(calc["custo_empresa"]), float(calc["desconto_colaborador"]),
+                    str(dados.get("motivo") or "Alteração de parâmetros e valores do benefício"),
+                    usuario, agora,
+                ),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -2398,6 +2455,139 @@ class PlataformaService:
             detalhes=f"Vínculo de benefício #{vinculo_id} atualizado (Desc. R$ {calc['desconto_colaborador']:.2f}).",
         )
         return self.obter_beneficio_colaborador(vinculo_id)
+
+    def suspender_beneficio_colaborador(
+        self,
+        vinculo_id: int,
+        motivo: str,
+        data_suspensao: Optional[str] = None,
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        """RN-037: Suspende temporariamente benefício vinculado ao colaborador mantendo histórico."""
+        atual = self.obter_beneficio_colaborador(vinculo_id)
+        if not motivo or not str(motivo).strip():
+            raise PlataformaValidacaoException("Motivo da suspensão é obrigatório.")
+        dt_susp = data_suspensao or datetime.now().strftime("%Y-%m-%d")
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(
+                f"UPDATE beneficios_colaborador SET ativo = 0, vigencia_fim = {p}, atualizado_em = {p} WHERE id = {p};",
+                (dt_susp, agora, vinculo_id),
+            )
+            cur.execute(
+                f"""
+                INSERT INTO beneficios_historico (
+                    vinculo_id, colaborador_id, beneficio_id, operacao,
+                    valor_anterior, valor_novo, custo_empresa, desconto_colab,
+                    motivo, usuario_responsavel, criado_em
+                ) VALUES ({p}, {p}, {p}, 'SUSPENSAO', {p}, 0.0, 0.0, 0.0, {p}, {p}, {p});
+                """,
+                (
+                    vinculo_id, atual["colaborador_id"], atual["beneficio_id"],
+                    float(atual.get("custo_total_mes") or 0.0), motivo, usuario, agora,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="suspensao",
+            registro_tipo="beneficios_colaborador",
+            registro_id=vinculo_id,
+            usuario=usuario,
+            detalhes=f"Benefício '{atual['beneficio_nome']}' suspenso para colaborador #{atual['colaborador_id']}. Motivo: {motivo}",
+        )
+        return self.obter_beneficio_colaborador(vinculo_id)
+
+    def cancelar_beneficio_colaborador(
+        self,
+        vinculo_id: int,
+        motivo: str,
+        data_cancelamento: Optional[str] = None,
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        """RN-037: Cancela benefício com registro de recusa/cancelamento e histórico imutável."""
+        atual = self.obter_beneficio_colaborador(vinculo_id)
+        if not motivo or not str(motivo).strip():
+            raise PlataformaValidacaoException("Motivo do cancelamento é obrigatório.")
+        dt_canc = data_cancelamento or datetime.now().strftime("%Y-%m-%d")
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            cur.execute(
+                f"UPDATE beneficios_colaborador SET ativo = 0, optante = 0, vigencia_fim = {p}, atualizado_em = {p} WHERE id = {p};",
+                (dt_canc, agora, vinculo_id),
+            )
+            cur.execute(
+                f"""
+                INSERT INTO beneficios_historico (
+                    vinculo_id, colaborador_id, beneficio_id, operacao,
+                    valor_anterior, valor_novo, custo_empresa, desconto_colab,
+                    motivo, usuario_responsavel, criado_em
+                ) VALUES ({p}, {p}, {p}, 'CANCELAMENTO', {p}, 0.0, 0.0, 0.0, {p}, {p}, {p});
+                """,
+                (
+                    vinculo_id, atual["colaborador_id"], atual["beneficio_id"],
+                    float(atual.get("custo_total_mes") or 0.0), motivo, usuario, agora,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.registrar_auditoria(
+            modulo="Beneficios",
+            operacao="cancelamento",
+            registro_tipo="beneficios_colaborador",
+            registro_id=vinculo_id,
+            usuario=usuario,
+            detalhes=f"Benefício '{atual['beneficio_nome']}' cancelado para colaborador #{atual['colaborador_id']}. Motivo: {motivo}",
+        )
+        return self.obter_beneficio_colaborador(vinculo_id)
+
+    def listar_historico_beneficios_colaborador(
+        self,
+        colaborador_id: Optional[int] = None,
+        vinculo_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """RN-038: Retorna linha do tempo com todo o histórico de concessões, alterações, suspensões e cancelamentos."""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            sql = """
+                SELECT bh.*,
+                       cat.nome AS beneficio_nome,
+                       cat.tipo AS beneficio_tipo,
+                       cat.codigo AS beneficio_codigo,
+                       c.nome_completo AS colaborador_nome,
+                       c.matricula AS colaborador_matricula
+                FROM beneficios_historico bh
+                JOIN beneficios_catalogo cat ON cat.id = bh.beneficio_id
+                JOIN colaboradores c ON c.id = bh.colaborador_id
+                WHERE 1=1
+            """
+            params = []
+            if colaborador_id:
+                sql += f" AND bh.colaborador_id = {p}"
+                params.append(int(colaborador_id))
+            if vinculo_id:
+                sql += f" AND bh.vinculo_id = {p}"
+                params.append(int(vinculo_id))
+            sql += " ORDER BY bh.id DESC;"
+            cur.execute(sql, tuple(params))
+            return fetchall_dict(cur, self.db_path)
+        finally:
+            conn.close()
 
     def excluir_beneficio_colaborador(self, vinculo_id: int, usuario: str = "DP") -> Dict[str, Any]:
         """Exclui um vínculo de benefício do colaborador."""

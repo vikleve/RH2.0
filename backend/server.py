@@ -1102,11 +1102,34 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            # Isolamento multi-empresa estrito (RN-074): superadmin pode ver todas ou filtrar, demais veem apenas sua empresa
+            empresa_id = usuario.get("empresa_id")
+            if usuario.get("perfil") == "superadmin":
+                empresa_id = query.get("empresa_id", [empresa_id])[0]
             mod = query.get("modulo", [None])[0]
             op = query.get("operacao", [None])[0]
             usr = query.get("usuario", [None])[0]
-            logs = self.plataforma_service.listar_auditoria(modulo=mod, operacao=op, usuario=usr)
+            logs = self.plataforma_service.listar_auditoria(modulo=mod, operacao=op, usuario=usr, empresa_id=empresa_id)
             return self._enviar_json(200, {"sucesso": True, "total": len(logs), "dados": logs})
+
+        if path == "/api/auditoria/integridade":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            empresa_id = usuario.get("empresa_id") if usuario.get("perfil") != "superadmin" else query.get("empresa_id", [None])[0]
+            res_integro = self.plataforma_service.verificar_integridade_auditoria(empresa_id=empresa_id)
+            return self._enviar_json(200, {"sucesso": True, "dados": res_integro})
+
+        if path == "/api/beneficios/historico":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            vinc_id = query.get("vinculo_id", [None])[0]
+            cid = int(colab_id) if colab_id else None
+            vid = int(vinc_id) if vinc_id else None
+            hist = self.plataforma_service.listar_historico_beneficios_colaborador(colaborador_id=cid, vinculo_id=vid)
+            return self._enviar_json(200, {"sucesso": True, "total": len(hist), "dados": hist})
 
         # Rotas de Gestão de Benefícios e Descontos (RF071 a RF080)
         if path == "/api/beneficios/catalogo":
@@ -1369,20 +1392,104 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 usuario, token = self.auth_service.autenticar(identificador, senha, ip_origem=ip)
                 limiter.registrar_sucesso(chave_limiter)
 
-                return self._enviar_json(200, {
+                # RF-161 (Item 1): Suporte a autenticação segura com cookie HttpOnly sem expor o token no corpo quando solicitado
+                auth_mode = self.headers.get("X-Auth-Mode", "").lower()
+                cookie_only = auth_mode == "cookie" or dados.get("cookie_only", False)
+
+                resp_dados = {
                     "sucesso": True,
                     "mensagem": "Autenticação realizada com sucesso.",
-                    "token": token,
-                    "usuario": usuario
-                }, set_cookie=f"session_token={token}")
+                    "usuario": usuario,
+                }
+                if not cookie_only:
+                    resp_dados["token"] = token
+
+                return self._enviar_json(200, resp_dados, set_cookie=f"session_token={token}; HttpOnly; SameSite=Lax; Path=/")
             except CredenciaisInvalidasException as e:
-                limiter.registrar_falha(chave_limiter)
+                limiter.registrar_falha(chave_limiter, ip_origem=ip)
                 return self._enviar_json(401, {
                     "sucesso": False,
                     "mensagem": str(e)
                 })
             except ValueError as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Recuperação de Senha (RF-162)
+        if path == "/api/auth/recuperar-senha":
+            ip = self._obter_ip_cliente()
+            chave_limiter = f"recup:{ip}"
+            bloqueado, restante = limiter.esta_bloqueado(chave_limiter)
+            if bloqueado:
+                return self._enviar_json(429, {
+                    "sucesso": False,
+                    "mensagem": "Excesso de tentativas de recuperação de senha. Aguarde.",
+                    "codigo": "RATE_LIMIT_EXCEDIDO"
+                }, extra_headers={"Retry-After": str(restante)})
+
+            dados = self._ler_json_body()
+            identificador = dados.get("identificador", "").strip()
+            if not identificador:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Identificador é obrigatório."})
+
+            res = self.auth_service.solicitar_recuperacao_senha(identificador, ip_origem=ip)
+            return self._enviar_json(200, res)
+
+        # Redefinição de Senha com Token Seguro (RF-162)
+        if path == "/api/auth/redefinir-senha":
+            ip = self._obter_ip_cliente()
+            dados = self._ler_json_body()
+            token_recup = dados.get("token_recuperacao", "").strip()
+            nova_senha = dados.get("nova_senha", "")
+            if not token_recup or not nova_senha:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Token e nova senha são obrigatórios."})
+            try:
+                res = self.auth_service.redefinir_senha_com_token(token_recup, nova_senha, ip_origem=ip)
+                return self._enviar_json(200, res)
+            except ValueError as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+
+        # Suspensão e Cancelamento de Benefícios com Histórico (RN-037, RN-038)
+        if path == "/api/beneficios/suspender":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            dados = self._ler_json_body()
+            vinculo_id = int(dados.get("vinculo_id", 0))
+            motivo = dados.get("motivo", "")
+            dt_susp = dados.get("data_suspensao")
+            if not vinculo_id or not motivo:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Vínculo e motivo são obrigatórios."})
+            try:
+                res = self.plataforma_service.suspender_beneficio_colaborador(
+                    vinculo_id=vinculo_id,
+                    motivo=motivo,
+                    data_suspensao=dt_susp,
+                    usuario=usuario_auth.get("nome_completo") or "DP",
+                )
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Benefício suspenso com sucesso.", "dados": res})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/beneficios/cancelar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            dados = self._ler_json_body()
+            vinculo_id = int(dados.get("vinculo_id", 0))
+            motivo = dados.get("motivo", "")
+            dt_canc = dados.get("data_cancelamento")
+            if not vinculo_id or not motivo:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Vínculo e motivo são obrigatórios."})
+            try:
+                res = self.plataforma_service.cancelar_beneficio_colaborador(
+                    vinculo_id=vinculo_id,
+                    motivo=motivo,
+                    data_cancelamento=dt_canc,
+                    usuario=usuario_auth.get("nome_completo") or "DP",
+                )
+                return self._enviar_json(200, {"sucesso": True, "mensagem": "Benefício cancelado com sucesso.", "dados": res})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 

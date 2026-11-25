@@ -48,6 +48,7 @@ MODALIDADES_CANONICAS = {
     "rescisao_antecipada_empregador": "rescisao_antecipada_empregador",
     "rescisao_antecipada_empregado": "rescisao_antecipada_empregado",
     "rescisao_indireta": "rescisao_indireta",
+    "culpa_reciproca": "culpa_reciproca",
     "falecimento": "falecimento",
 }
 
@@ -143,9 +144,9 @@ class RescisaoService:
         remuneracao = sb + media_vars
         valor_dia = remuneracao / Decimal("30.00")
 
-        # Lei 12.506/2011: 30 + 3 dias por ano completo até 90 dias (para dispensa sem justa causa / indireta / acordo)
+        # Lei 12.506/2011: 30 + 3 dias por ano completo até 90 dias (para dispensa sem justa causa / indireta / acordo / culpa recíproca)
         anos_completos = max(0, (dt_afast - dt_adm).days // 365)
-        dias_aviso = min(90, 30 + (anos_completos * 3)) if tipo_norm in ("sem_justa_causa", "rescisao_indireta", "acordo_484a") else 0
+        dias_aviso = min(90, 30 + (anos_completos * 3)) if tipo_norm in ("sem_justa_causa", "rescisao_indireta", "acordo_484a", "culpa_reciproca") else 0
 
         tipo_aviso_norm = str(tipo_aviso or "indenizado").strip().lower()
         projecao_dt = dt_afast + timedelta(days=dias_aviso) if (tipo_aviso_norm == "indenizado" and dias_aviso > 0) else dt_afast
@@ -216,6 +217,24 @@ class RescisaoService:
             multa_fgts_perc = Decimal("20.00")
             multa_fgts_val = round2(to_d(saldo_fgts) * Decimal("0.20"))
             codigo_saque_fgts = "07"
+        elif tipo_norm == "culpa_reciproca":
+            # CLT art. 484, Súmula 14 do TST e Lei 8.036/90 art. 18 § 2º (RN-059):
+            # - Aviso prévio indenizado: 50%
+            # - 13º proporcional: 50%
+            # - Férias proporcionais + 1/3: 50%
+            # - Saldo de salário e férias vencidas: integrais (100%)
+            # - Multa FGTS: 20%
+            # - Saque FGTS: código 02 autorizado
+            # - Seguro-desemprego: não tem direito (False)
+            if tipo_aviso_norm == "indenizado":
+                aviso_ind_val = round2((Decimal(str(dias_aviso)) * valor_dia) * Decimal("0.50"))
+            fer_prop_base = round2(fer_prop_base * Decimal("0.50"))
+            terco_prop = round2(terco_prop * Decimal("0.50"))
+            decimo_prop_val = round2(decimo_prop_val * Decimal("0.50"))
+            multa_fgts_perc = Decimal("20.00")
+            multa_fgts_val = round2(to_d(saldo_fgts) * Decimal("0.20"))
+            codigo_saque_fgts = "02"
+            seguro_desemprego = False
         elif tipo_norm == "pedido_demissao":
             if tipo_aviso_norm == "indenizado":
                 desc_aviso_val = round2(Decimal("30") * valor_dia)
@@ -372,9 +391,9 @@ class RescisaoService:
                 (int(colaborador_id), data_afastamento),
             )
             estab = fetchone_dict(cur, self.db_path)
-            if estab and tipo_norm in ("sem_justa_causa", "acordo_484a", "rescisao_antecipada_empregador"):
+            if estab and tipo_norm in ("sem_justa_causa", "acordo_484a", "rescisao_antecipada_empregador", "culpa_reciproca"):
                 raise PlataformaValidacaoException(
-                    f"Atenção: Colaborador possui ESTABILIDADE PROVISÓRIA ATIVA até {estab['estabilidade_fim']} decorrente de {estab['tipo']}. Rescisão sem justa causa bloqueada (RF-106)."
+                    f"Atenção: Colaborador possui ESTABILIDADE PROVISÓRIA ATIVA até {estab['estabilidade_fim']} decorrente de {estab['tipo']}. Rescisão bloqueada (RF-106)."
                 )
 
             # Verificar afastamento em aberto (impede dispensa arbitrária durante licença previdenciária/maternidade)
@@ -383,7 +402,7 @@ class RescisaoService:
                 (int(colaborador_id),),
             )
             af_aberto = fetchone_dict(cur, self.db_path)
-            if af_aberto and tipo_norm in ("sem_justa_causa", "acordo_484a", "termino_experiencia", "rescisao_antecipada_empregador"):
+            if af_aberto and tipo_norm in ("sem_justa_causa", "acordo_484a", "termino_experiencia", "rescisao_antecipada_empregador", "culpa_reciproca"):
                 raise PlataformaValidacaoException(
                     f"Colaborador possui afastamento ativo ({af_aberto['tipo']}) sem retorno registrado. Registre o retorno antes do desligamento."
                 )

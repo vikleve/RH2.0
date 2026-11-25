@@ -648,7 +648,7 @@ _DDL_FOLHA_HISTORICO = """
 _DDL_AUDITORIA_AUTENTICACAO_PG = """
     CREATE TABLE IF NOT EXISTS auditoria_autenticacao (
         id             SERIAL PRIMARY KEY,
-        evento         TEXT NOT NULL CHECK (evento IN ('LOGIN_SUCESSO', 'LOGIN_FALHA', 'LOGOUT', 'BLOQUEIO_RATE_LIMIT')),
+        evento         TEXT NOT NULL,
         identificador  TEXT,
         ip_origem      TEXT,
         detalhes       TEXT,
@@ -659,7 +659,7 @@ _DDL_AUDITORIA_AUTENTICACAO_PG = """
 _DDL_AUDITORIA_AUTENTICACAO_SQLITE = """
     CREATE TABLE IF NOT EXISTS auditoria_autenticacao (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        evento         TEXT NOT NULL CHECK (evento IN ('LOGIN_SUCESSO', 'LOGIN_FALHA', 'LOGOUT', 'BLOQUEIO_RATE_LIMIT')),
+        evento         TEXT NOT NULL,
         identificador  TEXT,
         ip_origem      TEXT,
         detalhes       TEXT,
@@ -1418,7 +1418,48 @@ _DDL_AUDITORIA_OPERACOES = """
         usuario_responsavel TEXT NOT NULL,
         ip_origem           TEXT,
         detalhes            TEXT,
+        hash_anterior       TEXT,
+        hash_atual          TEXT,
         criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_BENEFICIOS_HISTORICO = """
+    CREATE TABLE IF NOT EXISTS beneficios_historico (
+        id                  {pk},
+        vinculo_id          INTEGER NOT NULL,
+        colaborador_id      INTEGER NOT NULL,
+        beneficio_id        INTEGER NOT NULL,
+        operacao            TEXT NOT NULL,
+        valor_anterior      REAL DEFAULT 0.00,
+        valor_novo          REAL DEFAULT 0.00,
+        custo_empresa       REAL DEFAULT 0.00,
+        desconto_colab      REAL DEFAULT 0.00,
+        motivo              TEXT,
+        usuario_responsavel TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_RECUPERACAO_SENHA = """
+    CREATE TABLE IF NOT EXISTS recuperacao_senha (
+        id             {pk},
+        usuario_id     INTEGER NOT NULL,
+        token_hash     TEXT NOT NULL UNIQUE,
+        criado_em      TEXT NOT NULL,
+        expira_em      TEXT NOT NULL,
+        usado          INTEGER NOT NULL DEFAULT 0,
+        ip_solicitacao TEXT
+    );
+"""
+
+_DDL_RATE_LIMIT_TENTATIVAS = """
+    CREATE TABLE IF NOT EXISTS rate_limit_tentativas (
+        id         {pk},
+        chave      TEXT NOT NULL,
+        timestamp  REAL NOT NULL,
+        ip_origem  TEXT,
+        recurso    TEXT DEFAULT 'login'
     );
 """
 
@@ -1729,6 +1770,9 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_RESCISOES_HISTORICO.format(pk=pk),
         _DDL_SST_CONDICOES_AMBIENTAIS.format(pk=pk),
         _DDL_SST_EXAMES_AGENDAMENTOS.format(pk=pk),
+        _DDL_BENEFICIOS_HISTORICO.format(pk=pk),
+        _DDL_RECUPERACAO_SENHA.format(pk=pk),
+        _DDL_RATE_LIMIT_TENTATIVAS.format(pk=pk),
     ]
     for ddl_sql in tabelas_plataforma:
         try:
@@ -1794,12 +1838,64 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_sst_condamb_risco ON sst_condicoes_ambientais(fator_risco_codigo);",
         "CREATE INDEX IF NOT EXISTS idx_sst_agend_colab   ON sst_exames_agendamentos(colaborador_id);",
         "CREATE INDEX IF NOT EXISTS idx_sst_agend_status  ON sst_exames_agendamentos(status, data_prevista);",
+        "CREATE INDEX IF NOT EXISTS idx_benef_hist_colab ON beneficios_historico(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_benef_hist_vinculo ON beneficios_historico(vinculo_id);",
+        "CREATE INDEX IF NOT EXISTS idx_recup_senha_hash ON recuperacao_senha(token_hash);",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_chave_time ON rate_limit_tentativas(chave, timestamp);",
     ]
     for idx_sql in indices:
         try:
             cursor.execute(idx_sql)
         except Exception:
             pass
+
+    # Garantir colunas de hash para encadeamento criptográfico e rastreabilidade (RF-200, RN-072)
+    for col_audit in [
+        "ALTER TABLE auditoria_operacoes ADD COLUMN hash_anterior TEXT;",
+        "ALTER TABLE auditoria_operacoes ADD COLUMN hash_atual TEXT;",
+    ]:
+        try:
+            cursor.execute(col_audit)
+        except Exception:
+            pass
+
+    # Triggers de imutabilidade de logs de auditoria no banco de dados (RN-073)
+    if not pg:
+        triggers_imutabilidade = [
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_operacoes_no_update
+            BEFORE UPDATE ON auditoria_operacoes
+            BEGIN
+                SELECT RAISE(ABORT, 'Operação proibida: logs de auditoria operacional são estritamente imutáveis (RN-073).');
+            END;
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_operacoes_no_delete
+            BEFORE DELETE ON auditoria_operacoes
+            BEGIN
+                SELECT RAISE(ABORT, 'Operação proibida: logs de auditoria operacional não podem ser excluídos (RN-073).');
+            END;
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_autenticacao_no_update
+            BEFORE UPDATE ON auditoria_autenticacao
+            BEGIN
+                SELECT RAISE(ABORT, 'Operação proibida: logs de autenticação são estritamente imutáveis (RN-073).');
+            END;
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_autenticacao_no_delete
+            BEFORE DELETE ON auditoria_autenticacao
+            BEGIN
+                SELECT RAISE(ABORT, 'Operação proibida: logs de autenticação não podem ser excluídos (RN-073).');
+            END;
+            """,
+        ]
+        for trg_sql in triggers_imutabilidade:
+            try:
+                cursor.execute(trg_sql)
+            except Exception:
+                pass
 
     # Colunas complementares idempotentes de schema para PostgreSQL (SPEC-03 e SPEC-03.1)
     if pg:
