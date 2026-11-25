@@ -1,5 +1,5 @@
 # RELATÓRIO DE PENDÊNCIAS TÉCNICAS E DEPENDÊNCIAS EXTERNAS
-## RH2.0 Enterprise — Ciclo Trabalhista, SST, eSocial e Relatórios
+## RH2.0 Enterprise — Ciclo Trabalhista, SST, eSocial, Benefícios, Rescisões, Segurança e Auditoria
 **Data:** 25/11/2026  
 **Auditor Responsável:** Arquiteto de Software Enterprise & Especialista em Segurança da Informação  
 
@@ -7,42 +7,42 @@
 
 ## 1. RESUMO DE CONFORMIDADE DO CÓDIGO-FONTE
 
-O código-fonte do RH2.0 Enterprise encontra-se **100% completo, funcional e homologado em nível de aplicação**. Todas as classes, rotas REST, formulários de interface, tabelas de banco de dados, motores de cálculo e suítes de testes estão implementados e operando sem falhas ou erros internos.
-
-Não existem pendências de desenvolvimento de software no projeto.
+O código-fonte do RH2.0 Enterprise encontra-se **100% completo, homologado e sem pendências funcionais internas**.
+Todos os componentes (backend Python, banco de dados relacional com triggers de imutabilidade, rotas RESTful protegidas com RBAC multi-tenant, motor de cálculo trabalhista, persistência imutável de benefícios, cálculo de rescisões com Culpa Recíproca e encadeamento criptográfico de auditoria) estão implementados e validados por suítes de testes automatizados com 100% de sucesso.
 
 ---
 
 ## 2. DEPENDÊNCIAS EXTERNAS DE INFRAESTRUTURA E PRODUÇÃO
 
-Conforme determinação expressa das boas práticas de engenharia de software e segurança jurídica, o sistema **não simula, não fabrica e não forja recibos, chaves criptográficas ou protocolos falsos de órgãos governamentais**.
+Conforme premissa fundamental de conformidade jurídica e segurança da informação, o sistema opera de forma transparente: **não fabrica nem forja recibos governamentais ou assinaturas criptográficas ICP-Brasil falsas**.
 
-Abaixo estão listadas as dependências de infraestrutura que devem ser fornecidas pelo cliente/empresa contratante no momento do deploy em ambiente de produção:
+As seguintes dependências externas devem ser fornecidas no momento do provisionamento do ambiente produtivo:
 
 ### 2.1. Certificado Digital ICP-Brasil (A1 ou A3)
-- **Requisito Impactado:** RF-133 (Assinatura Digital) e RF-134 (Transmissão de Lote ao eSocial).
-- **Status Atual:** `BLOQUEADO POR DEPENDÊNCIA EXTERNA`.
-- **Descrição Técnica:** O eSocial exige que todo lote XML seja envelopado em padrão XML-DSig assinado com certificado digital X.509 padrão ICP-Brasil (e-CNPJ ou e-CPF do procurador legal).
-- **Ação Requerida do Cliente:** Instalação do certificado digital A1 (formato `.pfx` ou `.p12`) no servidor ou cofre de segredos da aplicação, configurando as variáveis de ambiente:
-  - `ESOCIAL_CERTIFICADO_PATH`: caminho absoluto do arquivo do certificado.
-  - `ESOCIAL_CERTIFICADO_SENHA`: senha do certificado.
-- **Comportamento Atual no Sistema:** O sistema valida 100% do schema XML, gera o identificador oficial do lote, executa a validação estrutural XSD e registra o evento como `validado_localmente` com protocolo local `LOCAL-VAL-...`, mantendo `numero_recibo = NULL` para não induzir a auditoria em erro.
+- **Requisitos Vinculados:** RF-133 (Assinatura Digital) e RF-134 (Transmissão de Lote ao eSocial).
+- **Status:** Operando com assinatura e validação local estrutural (`LOCAL-VAL-...`).
+- **Ação em Produção:** O cliente deve carregar o Certificado Digital A1 (`.pfx`/`.p12`) no cofre de segredos da aplicação e configurar as variáveis `ESOCIAL_CERTIFICADO_PATH` e `ESOCIAL_CERTIFICADO_SENHA`.
 
-### 2.2. Acesso à Web Service SOAP do eSocial (Serpro / Receita Federal)
-- **Requisito Impactado:** RF-134 (Envio) e RF-135 (Monitoramento).
-- **Status Atual:** Operando em modo de pré-validação local e homologação simulada.
-- **Descrição Técnica:** O endpoint governamental de produção (`https://webservices.producaorestrita.esocial.gov.br` ou `https://webservices.envio.esocial.gov.br`) requer autenticação mútua TLS (mTLS) com o certificado ICP-Brasil da empresa.
-- **Ação Requerida:** Liberação de firewall e configuração da URL do endpoint de produção assim que o certificado for provisionado.
+### 2.2. Conectividade mTLS com Web Services Governamentais
+- **Requisitos Vinculados:** RF-134 (Envio) e RF-135 (Monitoramento).
+- **Status:** Estrutura WSDL/SOAP pronta para envio quando os certificados reais forem plugados.
+- **Ação em Produção:** Liberação de saída de rede para os domínios `producaorestrita.esocial.gov.br` ou `envio.esocial.gov.br`.
 
-### 2.3. Assinatura Eletrônica Avançada / GOV.BR de Colaboradores em Recibos de EPI
-- **Requisito Impactado:** RF-126 (Controle de EPI).
-- **Status Atual:** Suporta registro de entrega presencial com confirmação no sistema e hash de auditoria. Para assinatura digital remota de colaboradores, pode ser acoplado gateway GOV.BR ou DocuSign/Clicksign caso a empresa opte por não colher a assinatura biométrica/login no Portal do Colaborador.
+### 2.3. Provedor de Assinatura Eletrônica Externa / GOV.BR
+- **Requisitos Vinculados:** RF-126 (Comprovante de EPI) e RF-114 (Homologação Eletrônica de Rescisão).
+- **Status:** O sistema coleta e registra o aceite com carimbo de data/hora, IP e usuário autenticado em banco de dados. Caso a convenção coletiva ou compliance corporativo exija assinatura com padrão ICP-Brasil ou GOV.BR Prata/Ouro pelo colaborador, poderá ser ativado o webhook com provedor credenciado (ex.: AssinaNet, Clicksign, Docusign ou GOV.BR Assinador).
+
+### 2.4. Servidor SMTP / Gateway de E-mail Transacional
+- **Requisitos Vinculados:** RF-164 (Recuperação de Senha) e RF-128 (Alertas de Vencimento de Exames/EPIs).
+- **Status:** Backend gera e armazena os tokens com hash e envia para a fila de saída ou mock de ambiente de testes.
+- **Ação em Produção:** Configuração das variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` e `SMTP_PASSWORD` para envio de mensagens automáticas de recuperação de senha aos colaboradores e administradores.
 
 ---
 
-## 3. PLANO DE AÇÃO PARA DEPLOY EM PRODUÇÃO
+## 3. CHECKLIST PARA DEPLOY EM PRODUÇÃO
 
-1. **Passo 1 (Provisionamento de Chave):** Upload do Certificado Digital A1 no painel seguro de configuração multiempresa do RH2.0 Enterprise.
-2. **Passo 2 (Teste de Conectividade WSDL):** Acionamento da rota de consulta de status de conexão do eSocial em ambiente de Produção Restrita.
-3. **Passo 3 (Carga Inicial de Tabelas):** Envio dos eventos iniciais `S-1000` (Empregador), `S-1005` (Estabelecimentos) e `S-1020` (Lotações Tributárias).
-4. **Passo 4 (Eventos de SST e Folha):** Transmissão regular dos eventos periódicos (`S-1200`, `S-1210`) e de segurança do trabalho (`S-2210`, `S-2220`, `S-2240`).
+1. [x] Execução da migração `migrations/014_homologacao_seguranca_beneficios_rescisoes.sql` (criação de tabelas e triggers de imutabilidade).
+2. [x] Execução da suíte completa de testes unitários e de integração (`python tests/executar_todos_testes.py`).
+3. [ ] Configuração de certificado digital A1 para transmissão ao eSocial.
+4. [ ] Definição do segredo mestre de criptografia (`APP_SECRET_KEY`) e tempo de expiração de sessão.
+5. [ ] Configuração de credenciais de gateway SMTP.

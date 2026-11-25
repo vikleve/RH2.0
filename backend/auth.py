@@ -28,6 +28,13 @@ class SessaoInvalidaException(Exception):
     pass
 
 
+def hash_token(token: str) -> str:
+    """Gera hash SHA-256 do token de sessão para armazenamento protegido no banco (RF-168, RF-169)."""
+    if not token:
+        return ""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def hash_senha(senha: str, salt: str = None) -> tuple:
     """
     Gera o hash PBKDF2-HMAC-SHA256 de uma senha com salt criptografico.
@@ -246,16 +253,18 @@ class AuthService:
         cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE usuario_id={P} AND revogado=0", (usuario["id"],))
 
         token = secrets.token_hex(32)
+        token_armazenado = hash_token(token)
         agora_dt = datetime.now()
-        # Expiracao automatica temporariamente desativada para apresentacao.
-        expira_dt = datetime(9999, 12, 31, 23, 59, 59)
+        # Expiração de sessão real configurável (padrão 8 horas = 28800s) (RF-169)
+        horas_exp = int(os.environ.get("SESSION_EXPIRATION_HOURS", "8"))
+        expira_dt = agora_dt + timedelta(hours=horas_exp)
         agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
         expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         cursor.execute(f"""
             INSERT INTO sessoes (token, usuario_id, criado_em, expira_em, revogado)
             VALUES ({P},{P},{P},{P},0)
-        """, (token, usuario["id"], agora_str, expira_str))
+        """, (token_armazenado, usuario["id"], agora_str, expira_str))
 
         cursor.execute(f"""
             UPDATE usuarios SET ultimo_login={P} WHERE id={P}
@@ -284,12 +293,14 @@ class AuthService:
 
     def validar_sessao(self, token: str):
         """
-        Valida se o token existe, nao expirou e nao foi revogado.
+        Valida se o token existe, não expirou e não foi revogado.
+        Verifica tanto pelo hash SHA-256 do token quanto compatibilidade temporária (RF-168, RF-169).
         Retorna os dados do usuario autenticado ou None.
         """
         if not token:
             return None
 
+        token_hash = hash_token(token)
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
@@ -297,22 +308,24 @@ class AuthService:
 
         try:
             cursor.execute(f"""
-                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id, s.criado_em
+                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, u.empresa_id, s.criado_em, s.expira_em, s.revogado
                 FROM sessoes s
                 JOIN usuarios u ON u.id = s.usuario_id
-                WHERE s.token = {P}
+                WHERE (s.token = {P} OR s.token = {P})
                   AND s.revogado = 0
                   AND u.status = 'ativo'
-            """, (token,))
+                  AND s.expira_em >= {P}
+            """, (token_hash, token, agora_str))
         except Exception:
             cursor.execute(f"""
-                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em
+                SELECT u.id, u.email, u.usuario, u.nome_completo, u.perfil, s.criado_em, s.expira_em, s.revogado
                 FROM sessoes s
                 JOIN usuarios u ON u.id = s.usuario_id
-                WHERE s.token = {P}
+                WHERE (s.token = {P} OR s.token = {P})
                   AND s.revogado = 0
                   AND u.status = 'ativo'
-            """, (token,))
+                  AND s.expira_em >= {P}
+            """, (token_hash, token, agora_str))
 
         row = cursor.fetchone()
         if not row:
@@ -330,14 +343,16 @@ class AuthService:
         if not token:
             return False
 
+
         # Tenta descobrir o usuário associado antes de revogar para auditoria
         usuario = self.validar_sessao(token)
         identificador = usuario["email"] if usuario else "token-desconhecido"
 
+        token_hash = hash_token(token)
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE token={P}", (token,))
+        cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE token={P} OR token={P}", (token_hash, token))
         alterados = cursor.rowcount
         conn.commit()
         conn.close()
@@ -348,6 +363,171 @@ class AuthService:
             )
 
         return alterados > 0
+
+    def revogar_todas_sessoes_usuario(self, usuario_id: int) -> int:
+        """Revoga todas as sessões ativas de um usuário (RF-169, RF-170)."""
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE sessoes SET revogado=1 WHERE usuario_id={P} AND revogado=0", (usuario_id,))
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return count
+
+    def solicitar_recuperacao_senha(self, identificador: str, ip_origem: str = None) -> dict:
+        """
+        Gera token aleatório seguro para recuperação de senha com validade de 1 hora.
+        Armazena hash SHA-256 no banco (RF-162).
+        Retorna sucesso sem enumeração de usuário caso não exista.
+        """
+        if not identificador:
+            raise ValueError("E-mail ou nome de usuário é obrigatório.")
+
+        identificador = identificador.strip().lower()
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"SELECT id, email, usuario, nome_completo, status FROM usuarios WHERE LOWER(email) = {P} OR LOWER(usuario) = {P};",
+            (identificador, identificador),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.audit_service.registrar_evento(
+                "RECUPERACAO_SENHA_SOLICITADA",
+                identificador=identificador,
+                ip_origem=ip_origem,
+                detalhes="Identificador não encontrado (sem enumeração)",
+            )
+            return {
+                "sucesso": True,
+                "mensagem": "Se o e-mail ou usuário estiver cadastrado, as instruções de recuperação serão enviadas.",
+                "token_gerado": False,
+            }
+
+        usr = self._row(cursor, row)
+        if usr.get("status") != "ativo":
+            conn.close()
+            return {
+                "sucesso": True,
+                "mensagem": "Se o e-mail ou usuário estiver cadastrado, as instruções de recuperação serão enviadas.",
+                "token_gerado": False,
+            }
+
+        token_raw = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token_raw.encode("utf-8")).hexdigest()
+        agora = datetime.now()
+        expira_dt = agora + timedelta(hours=1)
+        agora_str = agora.strftime("%Y-%m-%d %H:%M:%S")
+        expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor.execute(
+            f"""
+            INSERT INTO recuperacao_senha (usuario_id, token_hash, criado_em, expira_em, usado, ip_solicitacao)
+            VALUES ({P}, {P}, {P}, {P}, 0, {P});
+            """,
+            (usr["id"], token_hash, agora_str, expira_str, ip_origem or "127.0.0.1"),
+        )
+        conn.commit()
+        conn.close()
+
+        self.audit_service.registrar_evento(
+            "RECUPERACAO_SENHA_SOLICITADA",
+            identificador=usr["email"],
+            ip_origem=ip_origem,
+            detalhes="Token de recuperação emitido com sucesso",
+        )
+
+        return {
+            "sucesso": True,
+            "mensagem": "Instruções e código de recuperação de senha gerados com sucesso.",
+            "token_gerado": True,
+            "token_recuperacao": token_raw,
+            "expira_em": expira_str,
+        }
+
+    def redefinir_senha_com_token(self, token_recuperacao: str, nova_senha: str, ip_origem: str = None) -> dict:
+        """
+        Valida o token de uso único, checa expiração, altera a senha e invalida sessões antigas (RF-162).
+        """
+        if not token_recuperacao or not nova_senha:
+            raise ValueError("Token e nova senha são obrigatórios.")
+
+        if len(nova_senha) < 8:
+            raise ValueError("A nova senha deve ter no mínimo 8 caracteres.")
+
+        token_hash = hashlib.sha256(token_recuperacao.strip().encode("utf-8")).hexdigest()
+        agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"""
+            SELECT id, usuario_id, expira_em, usado
+            FROM recuperacao_senha
+            WHERE token_hash = {P};
+            """,
+            (token_hash,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.audit_service.registrar_evento(
+                "RECUPERACAO_SENHA_FALHA",
+                identificador="desconhecido",
+                ip_origem=ip_origem,
+                detalhes="Token de recuperação inválido ou inexistente",
+            )
+            raise ValueError("Token de recuperação inválido ou expirado.")
+
+        rec = self._row(cursor, row)
+        if int(rec.get("usado", 0)) == 1:
+            conn.close()
+            raise ValueError("Token de recuperação já foi utilizado. Solicite um novo.")
+
+        if str(rec.get("expira_em")) < agora_str:
+            conn.close()
+            raise ValueError("Token de recuperação expirado. Solicite um novo token.")
+
+        uid = int(rec["usuario_id"])
+        salt = secrets.token_hex(16)
+        senha_hash, _ = hash_senha(nova_senha, salt)
+
+        cursor.execute(
+            f"UPDATE usuarios SET senha_hash = {P}, salt = {P} WHERE id = {P};",
+            (senha_hash, salt, uid),
+        )
+        cursor.execute(
+            f"UPDATE recuperacao_senha SET usado = 1 WHERE id = {P};",
+            (rec["id"],),
+        )
+        # Revoga todas as sessões anteriores para garantir segurança total
+        cursor.execute(
+            f"UPDATE sessoes SET revogado = 1 WHERE usuario_id = {P} AND revogado = 0;",
+            (uid,),
+        )
+        conn.commit()
+
+        cursor.execute(f"SELECT email FROM usuarios WHERE id = {P};", (uid,))
+        usr_row = cursor.fetchone()
+        email_usr = usr_row[0] if usr_row else f"user-{uid}"
+        conn.close()
+
+        self.audit_service.registrar_evento(
+            "RECUPERACAO_SENHA_SUCESSO",
+            identificador=email_usr,
+            ip_origem=ip_origem,
+            detalhes="Senha redefinida e sessões ativas revogadas",
+        )
+
+        return {
+            "sucesso": True,
+            "mensagem": "Senha redefinida com sucesso! Faça login com a nova credencial.",
+        }
 
 
 # ──────────────────────────────────────────────────────────
@@ -448,6 +628,7 @@ def checar_permissao(perfil: str, permissao_requerida: str) -> bool:
     """
     if not perfil:
         return False
+
     permissoes = PERMISSOES_RBAC.get(perfil, [])
     if "*" in permissoes:
         return True
@@ -461,4 +642,49 @@ def checar_permissao(perfil: str, permissao_requerida: str) -> bool:
             return True
 
     return False
+
+
+def filtrar_dados_sensiveis(dados: dict, perfil: str) -> dict:
+    """
+    Aplica regras de sigilo salarial (RN-069) e proteção de dados sensíveis LGPD (RN-070).
+    Mascara remuneração e dados médicos para perfis sem privilégios correspondentes.
+    """
+    if not isinstance(dados, dict):
+        return dados
+
+    d = dict(dados)
+    # 1. Sigilo Salarial (RN-069)
+    perfis_com_acesso_salarial = {
+        "superadmin", "administrador", "admin_empresa", "analista_dp",
+        "operador_dp", "financeiro", "contabilidade"
+    }
+    if perfil not in perfis_com_acesso_salarial:
+        for campo_salario in [
+            "salario_base", "salario", "remuneracao", "custo_total_mes",
+            "desconto_colaborador", "total_liquido", "total_proventos"
+        ]:
+            if campo_salario in d and d[campo_salario] is not None:
+                d[campo_salario] = "***"
+        if "dados_bancarios" in d:
+            d["dados_bancarios"] = "***"
+
+    # 2. Dados Médicos e ASOs (RN-070)
+    perfis_medicos = {"superadmin", "administrador", "medico_sst"}
+    if perfil not in perfis_medicos:
+        for campo_medico in ["cid", "cid_codigo", "diagnostico", "observacoes_medicas", "laudo_medico"]:
+            if campo_medico in d and d[campo_medico]:
+                d[campo_medico] = "[DADO MÉDICO RESTRITO — NR-07 / LGPD]"
+
+    # 3. Mascaramento LGPD de CPF se não for gestor DP / RH
+    perfis_dp = {
+        "superadmin", "administrador", "admin_empresa", "gestor_rh",
+        "analista_rh", "analista_dp", "operador_dp"
+    }
+    if perfil not in perfis_dp and "cpf" in d and d["cpf"]:
+        cpf_limpo = str(d["cpf"]).replace(".", "").replace("-", "")
+        if len(cpf_limpo) == 11:
+            d["cpf"] = f"***.{cpf_limpo[3:6]}.{cpf_limpo[6:9]}-**"
+
+    return d
+
 

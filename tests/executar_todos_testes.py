@@ -43,6 +43,10 @@ from tests.test_sst_rf121_rf130 import TestSSTRF121RF130
 from tests.test_esocial_rf131_rf140 import TestESocialRF131RF140
 from tests.test_relatorios_rf141_rf150 import TestRelatoriosRF141RF150
 from tests.test_regras_negocio_rn001_rn035 import TestRegrasNegocioRN001aRN035
+from tests.test_beneficios_rn036_rn038 import TestBeneficiosRN036RN038
+from tests.test_rescisoes_rn054_rn060 import TestRescisoesRN054RN060
+from tests.test_seguranca_rn068_rn074_rf161_rf170 import TestSegurancaRN068RN074RF161RF170
+from tests.test_auditoria_rf191_rf200 import TestAuditoriaRF191RF200
 
 
 def executar():
@@ -128,6 +132,18 @@ def executar():
 
     # 21. Testes de Homologação das Regras de Negócio Oficiais Trabalhistas e Previdenciárias (RN-001 a RN-035)
     suite.addTests(carregador.loadTestsFromTestCase(TestRegrasNegocioRN001aRN035))
+
+    # 22. Testes de Elegibilidade, Participação e Histórico Imutável de Benefícios (RN-036 a RN-038)
+    suite.addTests(carregador.loadTestsFromTestCase(TestBeneficiosRN036RN038))
+
+    # 23. Testes das 7 Modalidades Canônicas de Rescisão, Culpa Recíproca e Término (RN-054 a RN-060)
+    suite.addTests(carregador.loadTestsFromTestCase(TestRescisoesRN054RN060))
+
+    # 24. Testes de Segurança Avançada, RBAC, Sigilo Salarial/LGPD, Criptografia e Autenticação (RN-068 a RN-074, RF-161 a RF-170)
+    suite.addTests(carregador.loadTestsFromTestCase(TestSegurancaRN068RN074RF161RF170))
+
+    # 25. Testes de Auditoria Completa, Encadeamento Criptográfico SHA-256 e Isolamento Multi-tenant (RF-191 a RF-200)
+    suite.addTests(carregador.loadTestsFromTestCase(TestAuditoriaRF191RF200))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"
