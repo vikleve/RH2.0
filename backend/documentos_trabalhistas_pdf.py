@@ -10,7 +10,7 @@ Gerador Corporativo de Documentos Trabalhistas em PDF (Padrão A4) — RH2.0 Ent
 """
 import hashlib
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.holerite_pdf import (
     A4_HEIGHT,
