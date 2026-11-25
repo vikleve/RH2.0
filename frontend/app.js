@@ -1034,66 +1034,34 @@ async function abrirModalDetalhes(id) {
       ? '<span class="badge badge-ativo">Ativo</span>'
       : `<span class="badge badge-inativo">${(colab.situacao || 'inativo').toUpperCase()}</span>`;
 
-    // Dependentes
-    const listaDep = colab.dependentes || [];
-    document.getElementById('detalhes-qtd-dep').textContent = listaDep.length;
-    const containerDep = document.getElementById('detalhes-lista-dependentes');
-    if (listaDep.length === 0) {
-      containerDep.innerHTML = '<p class="text-muted" style="padding:1rem;">Nenhum dependente cadastrado para este colaborador.</p>';
-    } else {
-      containerDep.innerHTML = `
-        <table class="data-table">
-          <thead>
-            <tr><th>Nome do Dependente</th><th>CPF</th><th>Nasc.</th><th>Parentesco</th><th>IRRF / Sal. Família</th></tr>
-          </thead>
-          <tbody>
-            ${listaDep.map(d => `
-              <tr>
-                <td><strong>${d.nome}</strong></td>
-                <td>${d.cpf || 'Não informado'}</td>
-                <td>${d.data_nascimento ? formatarDataBR(d.data_nascimento) : '--'}</td>
-                <td><span class="badge badge-dep">${d.parentesco}</span></td>
-                <td>${Number(d.eh_dependente_irrf ?? 1) ? 'IRRF ✓' : ''} ${Number(d.eh_elegivel_salario_familia || 0) ? '• Sal.Fam ✓' : ''}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
+    const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
 
-    // Documentos do colaborador
-    renderizarDocumentosColaborador(colab.id, colab.documentos || []);
+    // Carregar sub-recursos RF-005 a RF-010 em paralelo com fallback seguro
+    Estado.dependentesModal = colab.dependentes || [];
+    Estado.documentosModal = colab.documentos || [];
+    Estado.histFuncModal = colab.historico_funcional || [];
+    Estado.bancariosModal = colab.dados_bancarios || [];
 
-    // Histórico de Alterações / Auditoria (RF-003)
-    const timeline = document.getElementById('detalhes-timeline');
-    const historico = colab.historico || [];
-    const elQtdHist = document.getElementById('detalhes-qtd-hist');
-    if (elQtdHist) elQtdHist.textContent = historico.length;
-    if (historico.length === 0) {
-      timeline.innerHTML = '<p class="text-muted">Nenhuma alteração registrada até o momento.</p>';
-    } else {
-      timeline.innerHTML = historico.map(h => {
-        let detalheAlteracao = '';
-        if (h.valor_anterior !== null && h.valor_anterior !== undefined && h.valor_anterior !== '') {
-          detalheAlteracao = `De: <s>${h.valor_anterior}</s> &rarr; Para: <strong>${h.valor_novo}</strong>`;
-        } else {
-          detalheAlteracao = `<strong>${h.valor_novo}</strong>`;
-        }
+    limparFormDependenteModal();
+    limparFormBancarioModal();
+    cancelarNovaVersaoDocumento();
+    if (document.getElementById('det-bank-titular')) document.getElementById('det-bank-titular').value = colab.nome_completo || '';
+    if (document.getElementById('det-bank-cpf')) document.getElementById('det-bank-cpf').value = colab.cpf || '';
 
-        return `
-          <div class="timeline-item">
-            <div class="timeline-header">
-              <span class="timeline-action">${h.campo_alterado}</span>
-              <span class="timeline-date">${h.data_hora}</span>
-            </div>
-            <div class="timeline-body">
-              ${detalheAlteracao}
-              <div class="timeline-user">Registrado por: ${h.usuario_responsavel || 'Sistema'}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
+    renderizarDependentesColaborador(colab.id, Estado.dependentesModal);
+    renderizarDocumentosColaborador(colab.id, Estado.documentosModal);
+    renderizarHistoricoFuncionalColaborador(Estado.histFuncModal);
+    renderizarDadosBancariosColaborador(colab.id, Estado.bancariosModal);
+    renderizarAuditoriaColaborador(colab.historico || []);
+
+    await Promise.allSettled([
+      carregarCategoriasDocumentosSelect(),
+      carregarDependentesDetalhes(colab.id),
+      carregarHistoricoFuncionalDetalhes(colab.id),
+      carregarDocumentosDetalhes(colab.id),
+      carregarDadosBancariosDetalhes(colab.id),
+      carregarAuditoriaDetalhes(colab.id),
+    ]);
 
     // Botão de editar a partir do modal de detalhes
     document.getElementById('btn-editar-a-partir-detalhes').onclick = () => {
@@ -1107,26 +1075,184 @@ async function abrirModalDetalhes(id) {
   }
 }
 
-function renderizarDocumentosColaborador(colabId, docs) {
-  const elQtd = document.getElementById('detalhes-qtd-docs');
-  if (elQtd) elQtd.textContent = docs.length;
-  const container = document.getElementById('detalhes-lista-documentos');
+function _escHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
+}
+
+async function carregarCategoriasDocumentosSelect() {
+  try {
+    const res = await requisitarApi(`${getApiBase()}/documentos/categorias`);
+    const cats = res.dados || [];
+    const selUpload = document.getElementById('doc-categoria-input');
+    const selFiltro = document.getElementById('det-doc-filtro-cat');
+    const selCtrl = document.getElementById('doc-ctrl-filtro-categoria');
+    if (selUpload && cats.length) {
+      selUpload.innerHTML = cats.map(c => `<option value="${_escHtml(c.codigo)}">${_escHtml(c.nome)}</option>`).join('');
+    }
+    if (selFiltro && cats.length) {
+      const atual = selFiltro.value || 'todas';
+      selFiltro.innerHTML = '<option value="todas">Todas as categorias</option>' +
+        cats.map(c => `<option value="${_escHtml(c.codigo)}">${_escHtml(c.nome)}</option>`).join('');
+      selFiltro.value = atual;
+    }
+    if (selCtrl && cats.length) {
+      const atual = selCtrl.value || 'todas';
+      selCtrl.innerHTML = '<option value="todas">Todas as categorias</option>' +
+        cats.map(c => `<option value="${_escHtml(c.codigo)}">${_escHtml(c.nome)}</option>`).join('');
+      selCtrl.value = atual;
+    }
+  } catch (_) { }
+}
+
+// ---------- RF-005: Dependentes ----------
+async function carregarDependentesDetalhes(colabId) {
+  const incluirInativos = document.getElementById('det-dep-incluir-inativos')?.checked ? '1' : '0';
+  const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/dependentes?incluir_inativos=${incluirInativos}`);
+  Estado.dependentesModal = res.dados || [];
+  renderizarDependentesColaborador(colabId, Estado.dependentesModal);
+}
+
+function renderizarDependentesColaborador(colabId, listaDep) {
+  const elQtd = document.getElementById('detalhes-qtd-dep');
+  if (elQtd) elQtd.textContent = (listaDep || []).filter(d => (d.situacao || 'ativo') === 'ativo').length;
+  const container = document.getElementById('detalhes-lista-dependentes');
   if (!container) return;
-  if (!docs.length) {
-    container.innerHTML = '<p class="text-muted" style="padding:0.75rem;">Nenhum documento anexado para este colaborador.</p>';
+  if (!listaDep || !listaDep.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:1rem;">Nenhum dependente cadastrado para este colaborador.</p>';
     return;
   }
   container.innerHTML = `
     <table class="data-table">
-      <thead><tr><th>Tipo</th><th>Arquivo</th><th>Tamanho</th><th>Enviado em</th><th class="text-right">Ações</th></tr></thead>
+      <thead>
+        <tr><th>Nome</th><th>CPF</th><th>Nasc.</th><th>Parentesco</th><th>Vínculos Legais</th><th>Situação</th><th class="text-right">Ações</th></tr>
+      </thead>
       <tbody>
-        ${docs.map(d => `
+        ${listaDep.map(d => {
+    const ativo = (d.situacao || 'ativo') === 'ativo';
+    const vinculos = [
+      Number(d.eh_dependente_irrf ?? 1) ? 'IRRF' : '',
+      Number(d.eh_elegivel_salario_familia || 0) ? 'Sal.Fam' : '',
+      Number(d.eh_plano_saude || 0) ? 'Plano Saúde' : '',
+    ].filter(Boolean).join(' • ') || 'Nenhum';
+    return `
+            <tr>
+              <td><strong>${_escHtml(d.nome)}</strong></td>
+              <td>${_escHtml(d.cpf || 'Não informado')}</td>
+              <td>${d.data_nascimento ? formatarDataBR(d.data_nascimento) : '--'}</td>
+              <td><span class="badge badge-dep">${_escHtml(d.parentesco)}</span></td>
+              <td>${_escHtml(vinculos)}</td>
+              <td><span class="badge ${ativo ? 'badge-ativo' : 'badge-inativo'}">${ativo ? 'Ativo' : 'Inativo'}</span></td>
+              <td class="text-right">
+                ${ativo ? `<button type="button" class="btn btn-outline btn-sm" onclick="editarDependenteModal(${d.id})">Editar</button>
+                <button type="button" class="btn btn-outline btn-sm text-danger" onclick="inativarDependenteModal(${colabId}, ${d.id})">Inativar</button>` : '<span class="text-muted">Encerrado</span>'}
+              </td>
+            </tr>
+          `;
+  }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function limparFormDependenteModal() {
+  const ids = ['det-dep-id', 'det-dep-nome', 'det-dep-cpf', 'det-dep-nasc'];
+  ids.forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+  if (document.getElementById('det-dep-parentesco')) document.getElementById('det-dep-parentesco').value = 'Filho(a)';
+  if (document.getElementById('det-dep-irrf')) document.getElementById('det-dep-irrf').checked = true;
+  if (document.getElementById('det-dep-sf')) document.getElementById('det-dep-sf').checked = false;
+  if (document.getElementById('det-dep-saude')) document.getElementById('det-dep-saude').checked = false;
+  if (document.getElementById('det-dep-titulo-form')) document.getElementById('det-dep-titulo-form').textContent = 'Gerenciar Dependente (RF-005)';
+}
+
+function editarDependenteModal(depId) {
+  const dep = (Estado.dependentesModal || []).find(d => Number(d.id) === Number(depId));
+  if (!dep) return;
+  document.getElementById('det-dep-id').value = dep.id;
+  document.getElementById('det-dep-nome').value = dep.nome || '';
+  document.getElementById('det-dep-parentesco').value = dep.parentesco || 'Filho(a)';
+  document.getElementById('det-dep-cpf').value = dep.cpf || '';
+  document.getElementById('det-dep-nasc').value = (dep.data_nascimento || '').slice(0, 10);
+  document.getElementById('det-dep-irrf').checked = Boolean(Number(dep.eh_dependente_irrf ?? 1));
+  document.getElementById('det-dep-sf').checked = Boolean(Number(dep.eh_elegivel_salario_familia || 0));
+  document.getElementById('det-dep-saude').checked = Boolean(Number(dep.eh_plano_saude || 0));
+  if (document.getElementById('det-dep-titulo-form')) document.getElementById('det-dep-titulo-form').textContent = `Editando Dependente #${dep.id}`;
+}
+
+async function salvarDependenteModal() {
+  const colabId = Estado.colaboradorEmDetalhesId;
+  if (!colabId) return;
+  const depId = document.getElementById('det-dep-id')?.value;
+  const payload = {
+    nome: document.getElementById('det-dep-nome')?.value?.trim(),
+    parentesco: document.getElementById('det-dep-parentesco')?.value,
+    cpf: document.getElementById('det-dep-cpf')?.value?.trim(),
+    data_nascimento: document.getElementById('det-dep-nasc')?.value,
+    eh_dependente_irrf: Boolean(document.getElementById('det-dep-irrf')?.checked),
+    eh_elegivel_salario_familia: Boolean(document.getElementById('det-dep-sf')?.checked),
+    eh_plano_saude: Boolean(document.getElementById('det-dep-saude')?.checked),
+  };
+  try {
+    const url = depId
+      ? `${getApiBase()}/colaboradores/${colabId}/dependentes/${depId}`
+      : `${getApiBase()}/colaboradores/${colabId}/dependentes`;
+    await requisitarApi(url, { method: depId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+    exibirToast(depId ? 'Dependente atualizado com sucesso!' : 'Dependente cadastrado com sucesso!', 'success');
+    limparFormDependenteModal();
+    await Promise.all([carregarDependentesDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao salvar dependente.', 'error');
+  }
+}
+
+async function inativarDependenteModal(colabId, depId) {
+  try {
+    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/dependentes/${depId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ motivo: 'Inativado via ficha do colaborador' })
+    });
+    exibirToast('Dependente inativado com preservação de histórico.', 'success');
+    await Promise.all([carregarDependentesDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao inativar dependente.', 'error');
+  }
+}
+
+// ---------- RF-006: Histórico Funcional ----------
+async function carregarHistoricoFuncionalDetalhes(colabId) {
+  const tipo = document.getElementById('det-hf-filtro-tipo')?.value || '';
+  const dtIni = document.getElementById('det-hf-filtro-inicio')?.value || '';
+  const dtFim = document.getElementById('det-hf-filtro-fim')?.value || '';
+  const params = new URLSearchParams();
+  if (tipo) params.set('tipo', tipo);
+  if (dtIni) params.set('data_inicio', dtIni);
+  if (dtFim) params.set('data_fim', dtFim);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/historico-funcional${qs}`);
+  Estado.histFuncModal = res.dados || [];
+  renderizarHistoricoFuncionalColaborador(Estado.histFuncModal);
+}
+
+function renderizarHistoricoFuncionalColaborador(movs) {
+  const elQtd = document.getElementById('detalhes-qtd-hist-func');
+  if (elQtd) elQtd.textContent = (movs || []).length;
+  const container = document.getElementById('detalhes-lista-hist-funcional');
+  if (!container) return;
+  if (!movs || !movs.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:1rem;">Nenhuma movimentação funcional registrada.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Vigência</th><th>Tipo</th><th>Cargo (Ant. → Novo)</th><th>Setor (Ant. → Novo)</th><th>Salário (Ant. → Novo)</th><th>Motivo</th></tr></thead>
+      <tbody>
+        ${movs.map(m => `
           <tr>
-            <td><span class="badge badge-dep">${d.tipo_documento}</span></td>
-            <td>${d.nome_arquivo}</td>
-            <td>${d.tamanho_bytes ? Math.round(d.tamanho_bytes / 1024) + ' KB' : '--'}</td>
-            <td>${d.criado_em || '--'}</td>
-            <td class="text-right"><button type="button" class="btn btn-outline btn-sm text-danger" onclick="removerDocumentoColaborador(${colabId}, ${d.id})">Excluir</button></td>
+            <td>${m.data_vigencia ? formatarDataBR(m.data_vigencia) : '--'}</td>
+            <td><span class="badge badge-dep">${_escHtml(m.tipo_movimentacao)}</span></td>
+            <td>${_escHtml(m.cargo_anterior || '--')} &rarr; <strong>${_escHtml(m.cargo_novo || '--')}</strong></td>
+            <td>${_escHtml(m.setor_anterior || '--')} &rarr; <strong>${_escHtml(m.setor_novo || '--')}</strong></td>
+            <td>${m.salario_anterior != null ? formatarMoeda(m.salario_anterior) : '--'} &rarr; <strong>${m.salario_novo != null ? formatarMoeda(m.salario_novo) : '--'}</strong></td>
+            <td>${_escHtml(m.motivo || '--')}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1134,9 +1260,149 @@ function renderizarDocumentosColaborador(colabId, docs) {
   `;
 }
 
+async function registrarMovimentacaoFuncionalModal() {
+  const colabId = Estado.colaboradorEmDetalhesId;
+  if (!colabId) return;
+  const salRaw = document.getElementById('det-hf-salario')?.value;
+  const payload = {
+    tipo_movimentacao: document.getElementById('det-hf-tipo')?.value,
+    data_vigencia: document.getElementById('det-hf-data-vigencia')?.value,
+    cargo_novo: document.getElementById('det-hf-cargo')?.value?.trim() || undefined,
+    setor_novo: document.getElementById('det-hf-setor')?.value?.trim() || undefined,
+    centro_custo_novo: document.getElementById('det-hf-cc')?.value?.trim() || undefined,
+    salario_novo: salRaw ? Number(salRaw) : undefined,
+    jornada_nova: document.getElementById('det-hf-jornada')?.value?.trim() || undefined,
+    motivo: document.getElementById('det-hf-motivo')?.value?.trim(),
+  };
+  try {
+    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/historico-funcional`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    exibirToast('Movimentação funcional registrada e aplicada ao cadastro!', 'success');
+    ['det-hf-cargo', 'det-hf-setor', 'det-hf-cc', 'det-hf-salario', 'det-hf-jornada', 'det-hf-motivo'].forEach(i => {
+      const el = document.getElementById(i);
+      if (el) el.value = '';
+    });
+    await abrirModalDetalhes(colabId);
+    if (typeof carregarColaboradores === 'function') carregarColaboradores();
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao registrar movimentação funcional.', 'error');
+  }
+}
+
+// ---------- RF-007: Documentos ----------
+async function carregarDocumentosDetalhes(colabId) {
+  const cat = document.getElementById('det-doc-filtro-cat')?.value || 'todas';
+  const termo = document.getElementById('det-doc-filtro-busca')?.value?.trim() || '';
+  const incluirInativos = document.getElementById('det-doc-incluir-inativos')?.checked ? '1' : '0';
+  const params = new URLSearchParams({ incluir_inativos: incluirInativos });
+  if (cat && cat !== 'todas') params.set('categoria', cat);
+  if (termo) params.set('q', termo);
+  const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos?${params.toString()}`);
+  Estado.documentosModal = res.dados || [];
+  renderizarDocumentosColaborador(colabId, Estado.documentosModal);
+}
+
+function prepararNovaVersaoDocumento(docId, nomeArquivo, categoria) {
+  if (document.getElementById('doc-raiz-id-input')) document.getElementById('doc-raiz-id-input').value = docId;
+  if (categoria && document.getElementById('doc-categoria-input')) document.getElementById('doc-categoria-input').value = categoria;
+  const banner = document.getElementById('doc-versao-banner');
+  const texto = document.getElementById('doc-versao-banner-texto');
+  if (texto) texto.textContent = `Enviando nova versão de: ${nomeArquivo} (Doc #${docId})`;
+  if (banner) banner.classList.remove('hidden');
+}
+
+function cancelarNovaVersaoDocumento() {
+  if (document.getElementById('doc-raiz-id-input')) document.getElementById('doc-raiz-id-input').value = '';
+  const banner = document.getElementById('doc-versao-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function visualizarOuBaixarDocumento(colabId, docId, modo, nomeArquivo) {
+  try {
+    const headers = getAuthHeaders();
+    delete headers['Content-Type'];
+    const resp = await fetch(`${getApiBase()}/colaboradores/${colabId}/documentos/${docId}/download?modo=${modo}`, {
+      headers,
+      credentials: 'include'
+    });
+    if (!resp.ok) throw new Error('Falha ao acessar documento autorizado.');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    if (modo === 'visualizar') {
+      window.open(url, '_blank', 'noopener');
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomeArquivo || `documento_${docId}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) {
+    exibirToast(e.message || 'Erro no download do documento.', 'error');
+  }
+}
+
+async function verVersoesDocumento(colabId, docId) {
+  try {
+    const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos/${docId}/versoes`);
+    const versoes = res.dados || [];
+    const resumo = versoes.map(v => `v${v.versao} — ${v.nome_arquivo} (${v.situacao}) [${v.criado_em}]`).join(' | ');
+    exibirToast(`Versões do documento #${docId}: ${resumo}`, 'info');
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao consultar versões.', 'error');
+  }
+}
+
+function renderizarDocumentosColaborador(colabId, docs) {
+  const elQtd = document.getElementById('detalhes-qtd-docs');
+  if (elQtd) elQtd.textContent = (docs || []).filter(d => (d.situacao || 'ativo') === 'ativo').length;
+  const container = document.getElementById('detalhes-lista-documentos');
+  if (!container) return;
+  if (!docs.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:0.75rem;">Nenhum documento encontrado para este filtro.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Categoria / Tipo</th><th>Arquivo</th><th>Versão / Status</th><th>Validade</th><th>Tamanho</th><th class="text-right">Ações</th></tr></thead>
+      <tbody>
+        ${docs.map(d => {
+    const st = d.situacao || 'ativo';
+    const badgeCls = st === 'ativo' ? 'badge-ativo' : 'badge-inativo';
+    return `
+            <tr>
+              <td><span class="badge badge-dep">${_escHtml(d.categoria || d.tipo_documento)}</span><br><small class="text-muted">${_escHtml(d.tipo_documento)}</small></td>
+              <td><strong>${_escHtml(d.nome_arquivo)}</strong>${d.observacao ? `<br><small class="text-muted">${_escHtml(d.observacao)}</small>` : ''}</td>
+              <td>v${d.versao || 1} <span class="badge ${badgeCls}">${_escHtml(st)}</span></td>
+              <td>${d.data_validade ? formatarDataBR(d.data_validade) : 'Sem validade'}</td>
+              <td>${d.tamanho_bytes ? Math.max(1, Math.round(d.tamanho_bytes / 1024)) + ' KB' : '--'}</td>
+              <td class="text-right" style="white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="visualizarOuBaixarDocumento(${colabId}, ${d.id}, 'visualizar', '${_escHtml(d.nome_arquivo)}')">Ver</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="visualizarOuBaixarDocumento(${colabId}, ${d.id}, 'download', '${_escHtml(d.nome_arquivo)}')">Baixar</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="prepararNovaVersaoDocumento(${d.id}, '${_escHtml(d.nome_arquivo)}', '${_escHtml(d.categoria || '')}')">Nova Versão</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="verVersoesDocumento(${colabId}, ${d.id})">Versões</button>
+                ${st === 'ativo' ? `<button type="button" class="btn btn-outline btn-sm text-danger" onclick="removerDocumentoColaborador(${colabId}, ${d.id})">Inativar</button>` : ''}
+              </td>
+            </tr>
+          `;
+  }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
 async function enviarDocumentoColaborador() {
   const colabId = Estado.colaboradorEmDetalhesId;
+  const categoria = document.getElementById('doc-categoria-input')?.value || 'OUTROS';
   const tipo = document.getElementById('doc-tipo-input')?.value || 'Outros';
+  const dataEmissao = document.getElementById('doc-emissao-input')?.value || null;
+  const dataValidade = document.getElementById('doc-validade-input')?.value || null;
+  const observacao = document.getElementById('doc-obs-input')?.value?.trim() || '';
+  const raizId = document.getElementById('doc-raiz-id-input')?.value || null;
   const inputArq = document.getElementById('doc-arquivo-input');
   const file = inputArq?.files?.[0];
   if (!colabId || !file) {
@@ -1146,19 +1412,29 @@ async function enviarDocumentoColaborador() {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos`, {
+      const endpoint = raizId
+        ? `${getApiBase()}/colaboradores/${colabId}/documentos/${raizId}/versoes`
+        : `${getApiBase()}/colaboradores/${colabId}/documentos`;
+      await requisitarApi(endpoint, {
         method: 'POST',
         body: JSON.stringify({
+          categoria,
           tipo_documento: tipo,
           nome_arquivo: file.name,
           mime_type: file.type,
           tamanho_bytes: file.size,
-          conteudo_base64: String(reader.result || '').slice(0, 500000)
+          data_emissao: dataEmissao,
+          data_validade: dataValidade,
+          observacao,
+          documento_raiz_id: raizId ? Number(raizId) : null,
+          conteudo_base64: String(reader.result || '')
         })
       });
-      exibirToast('Documento anexado com sucesso!', 'success');
+      exibirToast(raizId ? 'Nova versão anexada com sucesso!' : 'Documento anexado com segurança!', 'success');
       if (inputArq) inputArq.value = '';
-      await abrirModalDetalhes(colabId);
+      if (document.getElementById('doc-obs-input')) document.getElementById('doc-obs-input').value = '';
+      cancelarNovaVersaoDocumento();
+      await Promise.all([carregarDocumentosDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
     } catch (e) {
       exibirToast(e.message || 'Erro ao enviar documento.', 'error');
     }
@@ -1168,12 +1444,165 @@ async function enviarDocumentoColaborador() {
 
 async function removerDocumentoColaborador(colabId, docId) {
   try {
-    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos/${docId}`, { method: 'DELETE' });
-    exibirToast('Documento removido.', 'success');
-    await abrirModalDetalhes(colabId);
+    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/documentos/${docId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ motivo: 'Inativado via painel de documentos' })
+    });
+    exibirToast('Documento inativado com rastreabilidade preservada.', 'success');
+    await Promise.all([carregarDocumentosDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
   } catch (e) {
-    exibirToast(e.message || 'Erro ao remover documento.', 'error');
+    exibirToast(e.message || 'Erro ao inativar documento.', 'error');
   }
+}
+
+// ---------- RF-009: Dados Bancários ----------
+async function carregarDadosBancariosDetalhes(colabId) {
+  const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/dados-bancarios`);
+  Estado.bancariosModal = res.dados || [];
+  renderizarDadosBancariosColaborador(colabId, Estado.bancariosModal);
+}
+
+function renderizarDadosBancariosColaborador(colabId, contas) {
+  const elQtd = document.getElementById('detalhes-qtd-banc');
+  if (elQtd) elQtd.textContent = (contas || []).filter(c => Number(c.ativo ?? 1) === 1).length;
+  const container = document.getElementById('detalhes-lista-bancarios');
+  if (!container) return;
+  if (!contas || !contas.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:1rem;">Nenhuma conta bancária cadastrada.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Banco</th><th>Agência / Conta</th><th>Tipo</th><th>Titular / CPF</th><th>PIX</th><th>Principal</th><th class="text-right">Ações</th></tr></thead>
+      <tbody>
+        ${contas.map(c => `
+          <tr>
+            <td><strong>${_escHtml(c.banco_codigo)}</strong> — ${_escHtml(c.banco_nome)}</td>
+            <td>Ag ${_escHtml(c.agencia)} / CC ${_escHtml(c.conta)}${c.digito_conta ? '-' + _escHtml(c.digito_conta) : ''}</td>
+            <td><span class="badge badge-dep">${_escHtml(c.tipo_conta)}</span></td>
+            <td>${_escHtml(c.titular_nome)}<br><small class="text-muted">${_escHtml(c.cpf_titular)}</small></td>
+            <td>${c.chave_pix ? `${_escHtml(c.tipo_chave_pix)}: ${_escHtml(c.chave_pix)}` : '--'}</td>
+            <td>${Number(c.principal) === 1 ? '<span class="badge badge-ativo">Principal</span>' : 'Secundária'}</td>
+            <td class="text-right">
+              <button type="button" class="btn btn-outline btn-sm" onclick="editarDadosBancariosModal(${c.id})">Editar</button>
+              <button type="button" class="btn btn-outline btn-sm text-danger" onclick="inativarDadosBancariosModal(${colabId}, ${c.id})">Inativar</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function limparFormBancarioModal() {
+  ['det-bank-id', 'det-bank-codigo', 'det-bank-nome', 'det-bank-agencia', 'det-bank-conta', 'det-bank-digito', 'det-bank-pix-chave'].forEach(i => {
+    const el = document.getElementById(i);
+    if (el) el.value = '';
+  });
+  if (document.getElementById('det-bank-tipo')) document.getElementById('det-bank-tipo').value = 'corrente';
+  if (document.getElementById('det-bank-pix-tipo')) document.getElementById('det-bank-pix-tipo').value = '';
+  if (document.getElementById('det-bank-principal')) document.getElementById('det-bank-principal').checked = true;
+}
+
+function editarDadosBancariosModal(contaId) {
+  const c = (Estado.bancariosModal || []).find(x => Number(x.id) === Number(contaId));
+  if (!c) return;
+  document.getElementById('det-bank-id').value = c.id;
+  document.getElementById('det-bank-codigo').value = c.banco_codigo || '';
+  document.getElementById('det-bank-nome').value = c.banco_nome || '';
+  document.getElementById('det-bank-agencia').value = c.agencia || '';
+  document.getElementById('det-bank-conta').value = c.conta || '';
+  document.getElementById('det-bank-digito').value = c.digito_conta || '';
+  document.getElementById('det-bank-tipo').value = c.tipo_conta || 'corrente';
+  document.getElementById('det-bank-titular').value = c.titular_nome || '';
+  document.getElementById('det-bank-cpf').value = c.cpf_titular || '';
+  document.getElementById('det-bank-pix-tipo').value = c.tipo_chave_pix || '';
+  document.getElementById('det-bank-pix-chave').value = c.chave_pix || '';
+  document.getElementById('det-bank-principal').checked = Boolean(Number(c.principal));
+}
+
+async function salvarDadosBancariosModal() {
+  const colabId = Estado.colaboradorEmDetalhesId;
+  if (!colabId) return;
+  const contaId = document.getElementById('det-bank-id')?.value;
+  const payload = {
+    banco_codigo: document.getElementById('det-bank-codigo')?.value?.trim(),
+    banco_nome: document.getElementById('det-bank-nome')?.value?.trim(),
+    agencia: document.getElementById('det-bank-agencia')?.value?.trim(),
+    conta: document.getElementById('det-bank-conta')?.value?.trim(),
+    digito_conta: document.getElementById('det-bank-digito')?.value?.trim(),
+    tipo_conta: document.getElementById('det-bank-tipo')?.value,
+    titular_nome: document.getElementById('det-bank-titular')?.value?.trim(),
+    cpf_titular: document.getElementById('det-bank-cpf')?.value?.trim(),
+    tipo_chave_pix: document.getElementById('det-bank-pix-tipo')?.value,
+    chave_pix: document.getElementById('det-bank-pix-chave')?.value?.trim(),
+    principal: Boolean(document.getElementById('det-bank-principal')?.checked),
+  };
+  try {
+    const url = contaId
+      ? `${getApiBase()}/colaboradores/${colabId}/dados-bancarios/${contaId}`
+      : `${getApiBase()}/colaboradores/${colabId}/dados-bancarios`;
+    await requisitarApi(url, { method: contaId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+    exibirToast(contaId ? 'Conta bancária atualizada!' : 'Conta bancária cadastrada!', 'success');
+    limparFormBancarioModal();
+    await Promise.all([carregarDadosBancariosDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao salvar dados bancários.', 'error');
+  }
+}
+
+async function inativarDadosBancariosModal(colabId, contaId) {
+  try {
+    await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/dados-bancarios/${contaId}`, { method: 'DELETE' });
+    exibirToast('Conta bancária inativada.', 'success');
+    await Promise.all([carregarDadosBancariosDetalhes(colabId), carregarAuditoriaDetalhes(colabId)]);
+  } catch (e) {
+    exibirToast(e.message || 'Erro ao inativar conta bancária.', 'error');
+  }
+}
+
+// ---------- RF-010: Auditoria Cadastral Unificada ----------
+async function carregarAuditoriaDetalhes(colabId) {
+  const ent = document.getElementById('det-aud-filtro-entidade')?.value || 'todas';
+  const usr = document.getElementById('det-aud-filtro-usuario')?.value?.trim() || '';
+  const campo = document.getElementById('det-aud-filtro-campo')?.value?.trim() || '';
+  const params = new URLSearchParams();
+  if (ent && ent !== 'todas') params.set('entidade', ent);
+  if (usr) params.set('usuario', usr);
+  if (campo) params.set('campo', campo);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await requisitarApi(`${getApiBase()}/colaboradores/${colabId}/auditoria${qs}`);
+  renderizarAuditoriaColaborador(res.dados || []);
+}
+
+function renderizarAuditoriaColaborador(historico) {
+  const timeline = document.getElementById('detalhes-timeline');
+  const elQtdHist = document.getElementById('detalhes-qtd-hist');
+  if (elQtdHist) elQtdHist.textContent = historico.length;
+  if (!timeline) return;
+  if (historico.length === 0) {
+    timeline.innerHTML = '<p class="text-muted">Nenhuma alteração registrada até o momento.</p>';
+    return;
+  }
+  timeline.innerHTML = historico.map(h => {
+    const detalheAlteracao = (h.valor_anterior !== null && h.valor_anterior !== undefined && h.valor_anterior !== '')
+      ? `De: <s>${_escHtml(h.valor_anterior)}</s> &rarr; Para: <strong>${_escHtml(h.valor_novo)}</strong>`
+      : `<strong>${_escHtml(h.valor_novo)}</strong>`;
+    const tagEnt = h.entidade ? `<span class="badge badge-dep" style="margin-right:0.4rem;">${_escHtml(h.entidade)}</span>` : '';
+    const extraOrigem = h.origem ? ` • Origem: ${_escHtml(h.origem)}` : '';
+    return `
+      <div class="timeline-item">
+        <div class="timeline-header">
+          <span class="timeline-action">${tagEnt}${_escHtml(h.campo_alterado)}</span>
+          <span class="timeline-date">${_escHtml(h.data_hora)}</span>
+        </div>
+        <div class="timeline-body">
+          ${detalheAlteracao}
+          <div class="timeline-user">Registrado por: ${_escHtml(h.usuario_responsavel || 'Sistema')}${extraOrigem}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function fecharModalDetalhes() {
@@ -1264,6 +1693,37 @@ function configurarEventos() {
       const targetId = e.currentTarget.getAttribute('data-tab');
       document.getElementById(targetId).classList.add('active');
     });
+  });
+
+  // Eventos RF-005 a RF-010 no Modal de Detalhes
+  document.getElementById('btn-salvar-dep-detalhes')?.addEventListener('click', salvarDependenteModal);
+  document.getElementById('btn-limpar-dep-detalhes')?.addEventListener('click', limparFormDependenteModal);
+  document.getElementById('det-dep-incluir-inativos')?.addEventListener('change', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarDependentesDetalhes(Estado.colaboradorEmDetalhesId);
+  });
+  document.getElementById('det-dep-cpf')?.addEventListener('input', (e) => { e.target.value = mascaraCpf(e.target.value); });
+  document.getElementById('det-bank-cpf')?.addEventListener('input', (e) => { e.target.value = mascaraCpf(e.target.value); });
+
+  document.getElementById('btn-registrar-hf')?.addEventListener('click', registrarMovimentacaoFuncionalModal);
+  document.getElementById('btn-filtrar-hf')?.addEventListener('click', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarHistoricoFuncionalDetalhes(Estado.colaboradorEmDetalhesId);
+  });
+
+  document.getElementById('btn-cancelar-nova-versao')?.addEventListener('click', cancelarNovaVersaoDocumento);
+  document.getElementById('det-doc-filtro-cat')?.addEventListener('change', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarDocumentosDetalhes(Estado.colaboradorEmDetalhesId);
+  });
+  document.getElementById('det-doc-incluir-inativos')?.addEventListener('change', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarDocumentosDetalhes(Estado.colaboradorEmDetalhesId);
+  });
+  document.getElementById('det-doc-filtro-busca')?.addEventListener('input', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarDocumentosDetalhes(Estado.colaboradorEmDetalhesId);
+  });
+
+  document.getElementById('btn-salvar-bank-detalhes')?.addEventListener('click', salvarDadosBancariosModal);
+  document.getElementById('btn-limpar-bank-detalhes')?.addEventListener('click', limparFormBancarioModal);
+  document.getElementById('btn-filtrar-auditoria')?.addEventListener('click', () => {
+    if (Estado.colaboradorEmDetalhesId) carregarAuditoriaDetalhes(Estado.colaboradorEmDetalhesId);
   });
 
   // Modal Inativar
@@ -3088,6 +3548,7 @@ const FolhaManager = {
     if (elTxt) elTxt.textContent = (fechada ? '🔒 ' : '') + (txtMap[sit] || sit);
 
     const show = (id, cond) => { const el = document.getElementById(id); if (el) el.style.display = cond ? 'inline-flex' : 'none'; };
+    show('ind-btn-importar-beneficios', !fechada);
     show('ind-btn-add-evento', !fechada);
     show('ind-btn-salvar', !fechada);
     show('ind-btn-aprovar', sit === 'calculada');
@@ -3125,6 +3586,49 @@ const FolhaManager = {
     if (this.painelInd.situacao === 'fechada') return;
     this.painelInd.eventosLancados.splice(idx, 1);
     await this.simularPainelIndividual();
+  },
+
+  async importarBeneficiosAtivosPainel() {
+    if (!this.painelInd.colaboradorId) {
+      exibirToast('Selecione um colaborador primeiro.', 'warning');
+      return;
+    }
+    const comp = document.getElementById('ind-competencia')?.value || '2026-10';
+    try {
+      const resp = await fetch(
+        `${API_BASE}/beneficios/descontos-folha?colaborador_id=${this.painelInd.colaboradorId}&competencia=${encodeURIComponent(comp)}`,
+        { headers: getAuthHeaders(), credentials: 'include' }
+      );
+      const json = await resp.json();
+      if (!resp.ok || !json.dados) {
+        exibirToast(json.mensagem || 'Erro ao consultar descontos de benefícios.', 'error');
+        return;
+      }
+      const eventosBen = json.dados.eventos_folha || [];
+      if (!eventosBen.length) {
+        exibirToast('Nenhum desconto de benefício ativo encontrado para esta competência.', 'info');
+        return;
+      }
+      let adicionados = 0;
+      eventosBen.forEach(ev => {
+        const jaExiste = this.painelInd.eventosLancados.some(x => x.codigo === ev.codigo && x.descricao === ev.descricao);
+        if (!jaExiste) {
+          this.painelInd.eventosLancados.push({
+            codigo: ev.codigo,
+            descricao: ev.descricao,
+            tipo: 'desconto',
+            referencia: Number(ev.referencia || 1),
+            percentual: ev.percentual || 0,
+            valor_informado: Number(ev.valor_informado || 0)
+          });
+          adicionados++;
+        }
+      });
+      await this.simularPainelIndividual();
+      exibirToast(`${adicionados} desconto(s) de benefício importado(s) para a folha.`, 'success');
+    } catch (e) {
+      exibirToast('Erro de comunicação ao importar benefícios na folha.', 'error');
+    }
   },
 
   async simularPainelIndividual() {
@@ -4127,6 +4631,7 @@ const PlataformaManager = {
       else if (viewName === 'rescisoes') await this.carregarRescisoes();
       else if (viewName === 'sst') await this.carregarSST();
       else if (viewName === 'esocial') await this.carregarESocial();
+      else if (viewName === 'documentos') await this.carregarControleDocumentacao();
       else if (viewName === 'integracoes') { }
       else if (viewName === 'auditoria') await this.carregarAuditoria();
       else if (viewName === 'multiempresa') await this.carregarMultiempresa();
@@ -4376,9 +4881,44 @@ const PlataformaManager = {
   },
 
   // --------------------------------------------------------------------------
-  // ADMISSÕES & CHECKLIST (RF-011 A RF-020, RN-008, RN-080)
+  // ADMISSÕES & CHECKLIST + CARTÃO ÚNICO (RF-011 A RF-020, RN-008, RN-009, RN-010, RN-080)
   // --------------------------------------------------------------------------
+  admissaoEmPainelId: null,
+  escalasCache: [],
+  centrosCustoCache: [],
+  modelosContratoCache: [],
+
+  async carregarCatalogosAdmissao() {
+    try {
+      const [rEsc, rCc, rMod] = await Promise.all([
+        fetch(`${API_BASE}/admissoes/escalas`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`${API_BASE}/admissoes/centros-custo`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`${API_BASE}/admissoes/contratos/modelos`, { headers: getAuthHeaders(), credentials: 'include' }),
+      ]);
+      if (rEsc.ok) this.escalasCache = (await rEsc.json()).dados || [];
+      if (rCc.ok) this.centrosCustoCache = (await rCc.json()).dados || [];
+      if (rMod.ok) this.modelosContratoCache = (await rMod.json()).dados || [];
+
+      const popSel = (selId, optsHtml, keepFirst) => {
+        const el = document.getElementById(selId);
+        if (!el) return;
+        const firstOpt = keepFirst ? (el.options[0]?.outerHTML || '') : '';
+        el.innerHTML = firstOpt + optsHtml;
+      };
+      const escOpts = this.escalasCache.map(e => `<option value="${e.id}">${_escHtml(e.codigo)} — ${_escHtml(e.descricao)} (${_escHtml(e.entrada_padrao)}-${_escHtml(e.saida_padrao)})</option>`).join('');
+      const ccOpts = this.centrosCustoCache.map(c => `<option value="${_escHtml(c.id)}">${_escHtml(c.codigo)} — ${_escHtml(c.descricao)}</option>`).join('');
+      const modOpts = this.modelosContratoCache.map(m => `<option value="${m.id}">${_escHtml(m.nome)}</option>`).join('');
+
+      popSel('adm-candidato-escala', escOpts, true);
+      popSel('adm-jornada-escala-select', escOpts, false);
+      popSel('adm-candidato-cc', ccOpts, true);
+      popSel('adm-cc-select', ccOpts, false);
+      popSel('adm-ctr-modelo-select', modOpts, false);
+    } catch (_) {}
+  },
+
   async carregarAdmissoes() {
+    await this.carregarCatalogosAdmissao();
     const tbody = document.getElementById('tbody-admissoes');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding: 2rem;">Carregando propostas de admissão...</td></tr>';
@@ -4398,41 +4938,38 @@ const PlataformaManager = {
       lista.forEach(a => {
         const tr = document.createElement('tr');
         const salarioFmt = Number(a.salario_proposto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const nomeCand = a.candidato_nome || a.nome_candidato || '-';
-        const cpfCand = a.candidato_cpf || a.cpf || '';
-        const cargoCand = a.cargo || a.cargo_proposto || '-';
-        const dtAdm = a.data_prevista_admissao || a.data_admissao_prevista || '-';
+        const nomeCand = _escHtml(a.candidato_nome || a.nome_candidato || '-');
+        const cpfExibir = _escHtml(a.candidato_cpf_mascarado || formatarCpf(a.candidato_cpf || ''));
+        const cargoCand = _escHtml(a.cargo || a.cargo_proposto || '-');
+        const dtAdm = _escHtml(a.data_prevista_admissao || a.data_admissao_prevista || '-');
         const stUp = String(a.status || 'em_andamento').toUpperCase();
-        const resumoChk = a.checklist_resumo || `${a.documentos_aprovados || 0}/${a.total_documentos || 6} docs`;
+        const resumoChk = _escHtml(a.checklist_resumo || `${a.documentos_aprovados || 0}/${a.total_documentos || 8} docs`);
+        const concluido = stUp === 'EFETIVADO' || stUp === 'APROVADA';
 
         tr.innerHTML = `
-          <td><strong>${nomeCand}</strong></td>
-          <td>${formatarCpf(cpfCand)}</td>
+          <td><strong>${nomeCand}</strong><br><small class="text-muted">${_escHtml(a.codigo_processo || '')}</small></td>
+          <td>${cpfExibir}</td>
           <td>${cargoCand}</td>
           <td>${salarioFmt}</td>
           <td>${dtAdm}</td>
           <td><span class="badge-status badge-calculada">${resumoChk}</span></td>
-          <td><span class="badge-status ${stUp === 'APROVADA' ? 'badge-fechada' : 'badge-calculada'}">${stUp}</span></td>
-          <td style="display: flex; gap: 0.35rem;">
+          <td><span class="badge-status ${concluido ? 'badge-fechada' : 'badge-calculada'}">${_escHtml(stUp)}</span></td>
+          <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm btn-painel-admissao" data-id="${a.id}">Cartão (RF-011..020)</button>
             <button class="btn btn-outline btn-sm btn-ver-checklist" data-id="${a.id}">Checklist</button>
-            ${stUp !== 'APROVADA' ? `<button class="btn btn-primary btn-sm btn-aprovar-admissao" data-id="${a.id}">Aprovar</button>` : ''}
           </td>
         `;
         tbody.appendChild(tr);
       });
 
-      // Bind checklist e aprovação
-      document.querySelectorAll('.btn-ver-checklist').forEach(b => {
+      document.querySelectorAll('.btn-painel-admissao').forEach(b => {
         b.addEventListener('click', () => {
-          const id = b.getAttribute('data-id');
-          PlataformaManager.abrirChecklistAdmissao(id);
+          PlataformaManager.abrirCartaoAdmissao(Number(b.getAttribute('data-id')));
         });
       });
-
-      document.querySelectorAll('.btn-aprovar-admissao').forEach(b => {
-        b.addEventListener('click', async () => {
-          const id = b.getAttribute('data-id');
-          await PlataformaManager.aprovarAdmissao(id);
+      document.querySelectorAll('.btn-ver-checklist').forEach(b => {
+        b.addEventListener('click', () => {
+          PlataformaManager.abrirChecklistAdmissao(b.getAttribute('data-id'));
         });
       });
     } catch (e) {
@@ -4440,16 +4977,196 @@ const PlataformaManager = {
     }
   },
 
+  async abrirCartaoAdmissao(admissaoId) {
+    this.admissaoEmPainelId = admissaoId;
+    const card = document.getElementById('cartao-processo-admissional');
+    if (card) card.classList.remove('hidden');
+
+    try {
+      await this.carregarCatalogosAdmissao();
+      const [rPainel, rBenef] = await Promise.all([
+        fetch(`${API_BASE}/admissoes/${admissaoId}/painel`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`${API_BASE}/admissoes/${admissaoId}/beneficios-elegiveis`, { headers: getAuthHeaders(), credentials: 'include' }),
+      ]);
+      if (!rPainel.ok) throw new Error('Erro ao carregar Cartão Admissional.');
+      const painel = (await rPainel.json()).dados;
+      const benefEleg = rBenef.ok ? ((await rBenef.json()).dados || []) : [];
+
+      const idf = painel.identificacao || {};
+      const res = painel.resumo || {};
+      const adm = painel.admissao || {};
+
+      document.getElementById('adm-card-titulo').textContent = `CARTÃO: PROCESSO ADMISSIONAL — ${idf.codigo_processo || '#' + admissaoId}`;
+      document.getElementById('adm-card-subtitulo').textContent = `Status atual: ${String(idf.status || '').toUpperCase()} • ${res.etapas_concluidas}/10 etapas concluídas`;
+      document.getElementById('adm-id-cand-nome').textContent = idf.candidato_nome || '--';
+      document.getElementById('adm-id-cpf').textContent = idf.cpf_mascarado || '--';
+      document.getElementById('adm-id-cargo').textContent = `${idf.cargo || '--'} / ${idf.setor || '--'}`;
+      document.getElementById('adm-id-empresa').textContent = idf.empresa || '--';
+      document.getElementById('adm-id-filial').textContent = idf.filial || '--';
+      document.getElementById('adm-id-data-adm').textContent = idf.data_prevista_admissao || '--';
+      document.getElementById('adm-id-responsavel').textContent = idf.responsavel || '--';
+      document.getElementById('adm-id-data-abertura').textContent = idf.data_abertura || '--';
+
+      document.getElementById('adm-resumo-progresso-pct').textContent = `${res.progresso_percentual || 0}%`;
+      document.getElementById('adm-resumo-barra-progresso').style.width = `${res.progresso_percentual || 0}%`;
+      document.getElementById('adm-resumo-concluidas').textContent = `${res.etapas_concluidas || 0}/10`;
+      document.getElementById('adm-resumo-pendentes').textContent = String(res.etapas_pendentes ?? 10);
+      document.getElementById('adm-resumo-proxima').textContent = res.proxima_etapa || '--';
+      document.getElementById('adm-resumo-responsavel-atual').textContent = res.responsavel_atual || '--';
+      const impEl = document.getElementById('adm-resumo-impeditivas');
+      if (impEl) {
+        const imps = res.pendencias_impeditivas || [];
+        impEl.textContent = imps.length ? `Pendências impeditivas (${imps.length}): ${imps.join(' | ')}` : 'Sem pendências impeditivas para aprovação.';
+      }
+
+      // Renderiza as 10 etapas individuais rastreáveis
+      const mapSecao = {
+        'RF-011': 'cartao-processo-admissional',
+        'RF-012': 'adm-secao-rf012',
+        'RF-013': 'adm-secao-rf013',
+        'RF-014': 'adm-secao-rf014',
+        'RF-015': 'adm-secao-rf015',
+        'RF-016': 'adm-secao-rf016',
+        'RF-017': 'adm-secao-rf017',
+        'RF-018': 'adm-secao-rf018',
+        'RF-019': 'adm-secao-rf019',
+        'RF-020': 'adm-secao-rf020',
+      };
+      const tbodyEt = document.getElementById('adm-etapas-lista');
+      if (tbodyEt) {
+        tbodyEt.innerHTML = (painel.etapas || []).map(et => {
+          const badge = et.status === 'concluido' ? 'badge-ativo' : (et.status === 'reprovado' || et.status === 'bloqueado' ? 'badge-inativo' : 'badge-dep');
+          const pendTxt = (et.pendencias || []).length ? `<div class="text-xs text-danger">${_escHtml(et.pendencias.join('; '))}</div>` : '';
+          return `
+            <tr>
+              <td><strong>${_escHtml(et.ordem)} — ${_escHtml(et.rf)}</strong> | ${_escHtml(et.nome)}</td>
+              <td><span class="badge ${badge}">${_escHtml(et.status.toUpperCase())}</span></td>
+              <td>${_escHtml(et.responsavel || '--')}</td>
+              <td>${_escHtml(et.data_conclusao || '--')}</td>
+              <td><div>${_escHtml(et.evidencias || '--')}</div>${pendTxt}</td>
+              <td class="text-right"><button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('${mapSecao[et.rf] || 'cartao-processo-admissional'}')?.scrollIntoView({behavior:'smooth'})">Acessar</button></td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Preenche Checklist RF-012
+      const chk = adm.checklist || [];
+      const selChk = document.getElementById('adm-chk-item-select');
+      if (selChk) selChk.innerHTML = chk.map(c => `<option value="${c.id}">${_escHtml(c.item_descricao)}</option>`).join('');
+      const chkBox = document.getElementById('adm-chk-tbody');
+      if (chkBox) {
+        chkBox.innerHTML = `
+          <table class="data-table">
+            <thead><tr><th>Documento</th><th>Obrig.</th><th>Arquivo / Versão</th><th>Status</th><th class="text-right">Ações</th></tr></thead>
+            <tbody>
+              ${chk.map(c => `
+                <tr>
+                  <td>${_escHtml(c.item_descricao)}${c.motivo_rejeicao ? `<br><small class="text-danger">Motivo: ${_escHtml(c.motivo_rejeicao)}</small>` : ''}</td>
+                  <td>${c.obrigatorio ? 'Sim' : 'Opcional'}</td>
+                  <td>${c.nome_arquivo ? `${_escHtml(c.nome_arquivo)} (v${c.versao || 1})` : '--'}</td>
+                  <td><span class="badge badge-dep">${_escHtml(c.status)}</span></td>
+                  <td class="text-right" style="white-space:nowrap;">
+                    ${c.nome_arquivo ? `<button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarAnexoChecklist(${admissaoId}, ${c.id}, '${_escHtml(c.nome_arquivo)}')">Baixar</button>` : ''}
+                    <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.alterarStatusChecklistDireto(${c.id}, 'validado')">Validar</button>
+                    <button type="button" class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.alterarStatusChecklistDireto(${c.id}, 'rejeitado')">Rejeitar</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      // Preenche Jornada RF-017 e Centro de Custo RF-018
+      if (adm.escala_id && document.getElementById('adm-jornada-escala-select')) document.getElementById('adm-jornada-escala-select').value = String(adm.escala_id);
+      if (adm.jornada_entrada && document.getElementById('adm-jornada-entrada')) document.getElementById('adm-jornada-entrada').value = adm.jornada_entrada;
+      if (adm.jornada_saida && document.getElementById('adm-jornada-saida')) document.getElementById('adm-jornada-saida').value = adm.jornada_saida;
+      if (document.getElementById('adm-jornada-vigencia')) document.getElementById('adm-jornada-vigencia').value = adm.jornada_vigencia_inicio || adm.data_prevista_admissao || '';
+      if (adm.centro_custo_id && document.getElementById('adm-cc-select')) document.getElementById('adm-cc-select').value = adm.centro_custo_id;
+      if (document.getElementById('adm-cc-vigencia')) document.getElementById('adm-cc-vigencia').value = adm.centro_custo_vigencia || adm.data_prevista_admissao || '';
+      if (document.getElementById('adm-benef-vigencia')) document.getElementById('adm-benef-vigencia').value = adm.data_prevista_admissao || '';
+
+      // Preenche ASO RF-016
+      const asoResEl = document.getElementById('adm-aso-resumo');
+      if (asoResEl) {
+        if (adm.aso) {
+          asoResEl.textContent = adm.aso.restrito_sigilo_medico
+            ? `Aptidão: ${adm.aso.resultado} (Detalhes clínicos protegidos por sigilo)`
+            : `ASO #${adm.aso.id}: ${adm.aso.resultado} (${adm.aso.status_exame}) • CRM ${adm.aso.medico_crm}/${adm.aso.medico_uf} • Validade: ${adm.aso.data_validade}`;
+        } else {
+          asoResEl.textContent = 'Nenhum ASO Admissional registrado no SST (RN-009).';
+        }
+      }
+
+      // Preenche Benefícios RF-019
+      const benDiv = document.getElementById('adm-beneficios-disponiveis');
+      const benSelIds = new Set((adm.beneficios || []).map(b => Number(b.beneficio_id)));
+      if (benDiv) {
+        benDiv.innerHTML = benefEleg.map(b => `
+          <label style="display:flex; align-items:center; gap:0.45rem; padding:0.25rem 0; opacity:${b.elegivel ? '1' : '0.55'};">
+            <input type="checkbox" class="adm-benef-chk" value="${b.id}" ${benSelIds.has(Number(b.id)) ? 'checked' : ''} ${b.elegivel ? '' : 'disabled'}>
+            <span><strong>${_escHtml(b.nome)}</strong> (${_escHtml(b.tipo)})${b.elegivel ? '' : ` — <small class="text-danger">${_escHtml((b.motivos_inelegibilidade || []).join('; '))}</small>`}</span>
+          </label>
+        `).join('') || '<p class="text-muted">Nenhum benefício ativo no catálogo.</p>';
+      }
+
+      // Preenche Contratos RF-014
+      const ctrLista = document.getElementById('adm-ctr-lista');
+      if (ctrLista) {
+        const ctrs = adm.contratos || [];
+        ctrLista.innerHTML = ctrs.length ? ctrs.map(c => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0; border-bottom:1px solid #e5e7eb;">
+            <span><strong>${_escHtml(c.nome_arquivo)}</strong> (v${c.versao}) — ${c.formalizado ? '<span class="badge badge-ativo">Formalizado</span>' : 'Minuta'}</span>
+            <span style="display:flex; gap:0.35rem;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarContratoAdmissao(${admissaoId}, ${c.id}, '${_escHtml(c.nome_arquivo)}')">PDF</button>
+              ${!c.formalizado ? `<button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.formalizarContratoAdmissao(${admissaoId}, ${c.id})">Formalizar</button>` : ''}
+            </span>
+          </div>
+        `).join('') : 'Nenhum contrato gerado.';
+      }
+
+      // Preenche eSocial RF-015
+      const aplicEl = document.getElementById('adm-esoc-aplicabilidade');
+      if (aplicEl && res.esocial_aplicabilidade) {
+        aplicEl.textContent = `Recomendado: ${res.esocial_aplicabilidade.evento_recomendado} — ${res.esocial_aplicabilidade.motivo}`;
+      }
+      const esocLista = document.getElementById('adm-esoc-lista');
+      if (esocLista) {
+        const evs = adm.esocial_eventos || [];
+        esocLista.innerHTML = evs.length ? evs.map(ev => `
+          <div style="padding:0.35rem 0; border-bottom:1px solid #e5e7eb;">
+            <strong>${_escHtml(ev.tipo_evento)} #${ev.id}</strong> (${_escHtml(ev.ambiente)}) — <span class="badge badge-dep">${_escHtml(ev.status)}</span>
+            ${ev.numero_recibo ? `• Recibo: ${_escHtml(ev.numero_recibo)}` : '• Sem recibo oficial (simulado/local)'}
+          </div>
+        `).join('') : 'Nenhum evento eSocial gerado para esta admissão.';
+      }
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao carregar cartão da admissão.', 'error');
+    }
+  },
+
   async salvarNovaAdmissao() {
     const nome = document.getElementById('adm-candidato-nome')?.value?.trim();
     const cpf = document.getElementById('adm-candidato-cpf')?.value?.trim();
+    const nasc = document.getElementById('adm-candidato-nasc')?.value;
     const email = document.getElementById('adm-candidato-email')?.value?.trim();
+    const tel = document.getElementById('adm-candidato-telefone')?.value?.trim();
+    const estCiv = document.getElementById('adm-candidato-estado-civil')?.value;
+    const end = document.getElementById('adm-candidato-endereco')?.value?.trim();
     const cargo = document.getElementById('adm-candidato-cargo')?.value?.trim();
+    const setor = document.getElementById('adm-candidato-setor')?.value?.trim();
     const salario = parseFloat(document.getElementById('adm-candidato-salario')?.value || 0);
     const dataInicio = document.getElementById('adm-candidato-data')?.value;
+    const tipoCtr = document.getElementById('adm-candidato-tipo-contrato')?.value || 'experiencia';
+    const filialId = document.getElementById('adm-candidato-filial')?.value || 'b0000000-0000-0000-0000-000000000001';
+    const escalaId = document.getElementById('adm-candidato-escala')?.value || null;
+    const ccId = document.getElementById('adm-candidato-cc')?.value || null;
+    const gestor = document.getElementById('adm-candidato-gestor')?.value?.trim();
+    const localTrab = document.getElementById('adm-candidato-local')?.value?.trim();
 
-    if (!nome || !cpf || !cargo || !dataInicio) {
-      exibirToast('Preencha todos os campos obrigatórios da admissão.', 'error');
+    if (!nome || !cpf || !nasc || !email || !cargo || !setor || !dataInicio) {
+      exibirToast('Preencha todos os campos obrigatórios (nome, CPF, nascimento, e-mail, cargo, setor, data e salário).', 'error');
       return;
     }
 
@@ -4464,12 +5181,23 @@ const PlataformaManager = {
         headers: getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify({
-          nome_candidato: nome,
-          cpf: normalizarCpf(cpf),
-          email: email,
-          cargo_proposto: cargo,
+          candidato_nome: nome,
+          candidato_cpf: normalizarCpf(cpf),
+          candidato_data_nascimento: nasc,
+          candidato_email: email,
+          candidato_telefone: tel,
+          candidato_estado_civil: estCiv,
+          candidato_endereco: end,
+          cargo,
+          setor,
           salario_proposto: salario,
-          data_admissao_prevista: dataInicio
+          data_prevista_admissao: dataInicio,
+          tipo_contrato: tipoCtr,
+          filial_id: filialId,
+          escala_id: escalaId ? Number(escalaId) : null,
+          centro_custo_id: ccId || null,
+          gestor_responsavel: gestor,
+          local_trabalho: localTrab,
         })
       });
       const json = await resp.json();
@@ -4477,11 +5205,305 @@ const PlataformaManager = {
         exibirToast(json.mensagem || 'Erro ao registrar admissão.', 'error');
         return;
       }
-      exibirToast('Proposta de admissão registrada com sucesso!', 'success');
+      exibirToast('Processo admissional aberto com sucesso!', 'success');
       document.getElementById('modal-nova-admissao')?.classList.add('hidden');
       await this.carregarAdmissoes();
+      if (json.dados?.id) await this.abrirCartaoAdmissao(json.dados.id);
     } catch (e) {
-      exibirToast('Erro de rede ao salvar proposta admissional.', 'error');
+      exibirToast('Erro de rede ao salvar processo admissional.', 'error');
+    }
+  },
+
+  async uploadChecklistAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    const itemId = document.getElementById('adm-chk-item-select')?.value;
+    const input = document.getElementById('adm-chk-arquivo');
+    const file = input?.files?.[0];
+    const obs = document.getElementById('adm-chk-obs')?.value?.trim() || '';
+    if (!admId || !itemId || !file) {
+      exibirToast('Selecione o documento e o arquivo para upload.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await requisitarApi(`${API_BASE}/admissoes/${admId}/checklist/${itemId}/upload`, {
+          method: 'POST',
+          body: JSON.stringify({ nome_arquivo: file.name, mime_type: file.type, conteudo_base64: String(reader.result || ''), observacao: obs }),
+        });
+        exibirToast('Documento enviado com sucesso!', 'success');
+        if (input) input.value = '';
+        await Promise.all([this.abrirCartaoAdmissao(admId), this.carregarAdmissoes()]);
+      } catch (e) {
+        exibirToast(e.message || 'Erro no upload.', 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  },
+
+  async alterarStatusChecklistDireto(itemId, novoStatus) {
+    const admId = this.admissaoEmPainelId;
+    const just = document.getElementById('adm-chk-obs')?.value?.trim() || (novoStatus === 'rejeitado' ? 'Documento ilegível ou divergente' : '');
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/checklist/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: novoStatus, justificativa: just }),
+      });
+      exibirToast(`Item atualizado para ${novoStatus}.`, 'success');
+      if (admId) await Promise.all([this.abrirCartaoAdmissao(admId), this.carregarAdmissoes()]);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao atualizar item.', 'error');
+    }
+  },
+
+  async baixarAnexoChecklist(admId, itemId, nomeArq) {
+    try {
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
+      const r = await fetch(`${API_BASE}/admissoes/${admId}/checklist/${itemId}/download`, { headers, credentials: 'include' });
+      if (!r.ok) throw new Error('Falha ao baixar documento.');
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomeArq || `doc_${itemId}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      exibirToast(e.message || 'Erro no download.', 'error');
+    }
+  },
+
+  async salvarJornadaAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/jornada`, {
+        method: 'POST',
+        body: JSON.stringify({
+          escala_id: Number(document.getElementById('adm-jornada-escala-select')?.value),
+          entrada: document.getElementById('adm-jornada-entrada')?.value,
+          saida: document.getElementById('adm-jornada-saida')?.value,
+          intervalo_minutos: Number(document.getElementById('adm-jornada-intervalo')?.value || 60),
+          vigencia_inicio: document.getElementById('adm-jornada-vigencia')?.value,
+        }),
+      });
+      exibirToast('Jornada inicial vinculada!', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao vincular jornada.', 'error');
+    }
+  },
+
+  async salvarCentroCustoAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/centro-custo`, {
+        method: 'POST',
+        body: JSON.stringify({
+          centro_custo_id: document.getElementById('adm-cc-select')?.value,
+          vigencia_inicio: document.getElementById('adm-cc-vigencia')?.value,
+        }),
+      });
+      exibirToast('Centro de Custo vinculado!', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao vincular centro de custo.', 'error');
+    }
+  },
+
+  async salvarAsoAdmissional() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    const inputFile = document.getElementById('adm-aso-arquivo');
+    const file = inputFile?.files?.[0];
+    const enviar = async (b64 = null) => {
+      try {
+        await requisitarApi(`${API_BASE}/admissoes/${admId}/aso`, {
+          method: 'POST',
+          body: JSON.stringify({
+            status_exame: document.getElementById('adm-aso-status')?.value,
+            resultado: document.getElementById('adm-aso-resultado')?.value,
+            data_emissao: document.getElementById('adm-aso-data-real')?.value,
+            data_validade: document.getElementById('adm-aso-data-val')?.value,
+            medico_nome: document.getElementById('adm-aso-medico')?.value?.trim(),
+            medico_crm: document.getElementById('adm-aso-crm')?.value?.trim(),
+            medico_uf: document.getElementById('adm-aso-uf')?.value?.trim(),
+            nome_arquivo: file ? file.name : null,
+            mime_type: file ? file.type : null,
+            conteudo_base64: b64,
+          }),
+        });
+        exibirToast('ASO Admissional registrado no SST!', 'success');
+        if (inputFile) inputFile.value = '';
+        await Promise.all([this.abrirCartaoAdmissao(admId), this.carregarAdmissoes()]);
+      } catch (e) {
+        exibirToast(e.message || 'Erro ao registrar ASO.', 'error');
+      }
+    };
+    if (file) {
+      const r = new FileReader();
+      r.onload = () => enviar(String(r.result || ''));
+      r.readAsDataURL(file);
+    } else {
+      await enviar(null);
+    }
+  },
+
+  async salvarBeneficiosAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    const vig = document.getElementById('adm-benef-vigencia')?.value;
+    const itens = Array.from(document.querySelectorAll('.adm-benef-chk:checked')).map(c => ({
+      beneficio_id: Number(c.value),
+      vigencia_inicio: vig,
+      optante: true,
+    }));
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/beneficios`, {
+        method: 'POST',
+        body: JSON.stringify({ beneficios: itens }),
+      });
+      exibirToast('Benefícios elegíveis associados à admissão!', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao associar benefícios.', 'error');
+    }
+  },
+
+  async executarValidacaoAdmissional() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    try {
+      const res = await requisitarApi(`${API_BASE}/admissoes/${admId}/validar`, { method: 'POST', body: '{}' });
+      const d = res.dados || {};
+      const box = document.getElementById('adm-val-resultado');
+      if (box) {
+        box.innerHTML = `
+          <div><strong>Situação:</strong> ${d.apto_efetivacao ? '<span class="badge badge-ativo">APTO PARA APROVAÇÃO</span>' : '<span class="badge badge-inativo">PENDÊNCIAS IMPEDITIVAS</span>'}</div>
+          <div class="text-xs" style="margin-top:0.35rem;"><strong>Aprovados:</strong> ${_escHtml((d.aprovados || []).join(' • ') || '--')}</div>
+          ${(d.pendentes || []).length ? `<div class="text-xs text-danger"><strong>Pendentes:</strong> ${_escHtml(d.pendentes.join(' • '))}</div>` : ''}
+          ${(d.invalidos || []).length ? `<div class="text-xs text-danger"><strong>Inválidos:</strong> ${_escHtml(d.invalidos.join(' • '))}</div>` : ''}
+        `;
+      }
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao executar validação.', 'error');
+    }
+  },
+
+  async gerarContratoAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/contratos/gerar`, {
+        method: 'POST',
+        body: JSON.stringify({
+          modelo_id: Number(document.getElementById('adm-ctr-modelo-select')?.value || 0) || null,
+          condicoes_adicionais: document.getElementById('adm-ctr-condicoes')?.value?.trim() || '',
+        }),
+      });
+      exibirToast('Contrato de Trabalho PDF gerado com sucesso!', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao gerar contrato.', 'error');
+    }
+  },
+
+  async baixarContratoAdmissao(admId, ctrId, nomeArq) {
+    try {
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
+      const r = await fetch(`${API_BASE}/admissoes/${admId}/contratos/${ctrId}/download`, { headers, credentials: 'include' });
+      if (!r.ok) throw new Error('Falha ao baixar PDF do contrato.');
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomeArq || `contrato_${ctrId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao baixar contrato.', 'error');
+    }
+  },
+
+  async formalizarContratoAdmissao(admId, ctrId) {
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/contratos/${ctrId}/formalizar`, { method: 'POST', body: '{}' });
+      exibirToast('Contrato formalizado! Versão original preservada.', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao formalizar contrato.', 'error');
+    }
+  },
+
+  async gerarESocialAdmissao() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/esocial/gerar`, {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo_evento: document.getElementById('adm-esoc-tipo-select')?.value || null,
+          ambiente: document.getElementById('adm-esoc-ambiente-select')?.value || 'homologacao',
+        }),
+      });
+      exibirToast('Evento eSocial gerado e validado no schema S-1.2!', 'success');
+      await this.abrirCartaoAdmissao(admId);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao gerar evento eSocial.', 'error');
+    }
+  },
+
+  async aprovarAdmissaoPainel() {
+    const admId = this.admissaoEmPainelId;
+    if (!admId) return;
+    const just = document.getElementById('adm-aprov-justificativa')?.value?.trim() || '';
+    try {
+      const json = await requisitarApi(`${API_BASE}/admissoes/${admId}/aprovar`, {
+        method: 'POST',
+        body: JSON.stringify({ justificativa: just }),
+      });
+      exibirToast(json.mensagem || 'Admissão aprovada e efetivada!', 'success');
+      await Promise.all([this.carregarAdmissoes(), this.abrirCartaoAdmissao(admId)]);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao aprovar admissão.', 'error');
+    }
+  },
+
+  async reprovarAdmissaoPainel() {
+    const admId = this.admissaoEmPainelId;
+    const just = document.getElementById('adm-aprov-justificativa')?.value?.trim() || '';
+    if (!admId || !just) {
+      exibirToast('Informe a justificativa para reprovar.', 'error');
+      return;
+    }
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/reprovar`, { method: 'POST', body: JSON.stringify({ motivo: just }) });
+      exibirToast('Processo admissional reprovado.', 'success');
+      await Promise.all([this.carregarAdmissoes(), this.abrirCartaoAdmissao(admId)]);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao reprovar admissão.', 'error');
+    }
+  },
+
+  async cancelarAdmissaoPainel() {
+    const admId = this.admissaoEmPainelId;
+    const just = document.getElementById('adm-aprov-justificativa')?.value?.trim() || '';
+    if (!admId || !just) {
+      exibirToast('Informe o motivo do cancelamento no campo Justificativa.', 'error');
+      return;
+    }
+    try {
+      await requisitarApi(`${API_BASE}/admissoes/${admId}/cancelar`, { method: 'POST', body: JSON.stringify({ motivo: just }) });
+      exibirToast('Processo admissional cancelado.', 'success');
+      await Promise.all([this.carregarAdmissoes(), this.abrirCartaoAdmissao(admId)]);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao cancelar admissão.', 'error');
     }
   },
 
@@ -5608,39 +6630,8 @@ const PlataformaManager = {
   },
 
   async carregarBeneficiosCatalogo() {
-    const tbody = document.getElementById('tbody-beneficios-catalogo');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" style="padding:1rem;"><div class="skeleton-bar" style="width:100%;"></div></td></tr>';
-    try {
-      const resp = await fetch(`${API_BASE}/folha/eventos-catalogo`, {
-        headers: getAuthHeaders(),
-        credentials: 'include'
-      });
-      if (!resp.ok) throw new Error('Falha ao consultar catálogo');
-      const json = await resp.json();
-      const todos = json.dados || [];
-      const benef = todos.filter(e =>
-        /vale|plano|saude|saúde|odonto|alimenta|refeic|refeiç|cesta|auxilio|auxílio|seguro/i.test(e.descricao || '')
-      );
-      if (benef.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted" style="padding:1.5rem;">Nenhuma rubrica de benefício encontrada no catálogo.</td></tr>';
-        return;
-      }
-      tbody.innerHTML = '';
-      benef.forEach(item => {
-        const tr = document.createElement('tr');
-        const incide = (item.incide_inss || item.incide_fgts) ? 'Sim (Salário-Utilidade)' : 'Não (Indenizatório / PAT)';
-        tr.innerHTML = `
-          <td><strong>${item.codigo}</strong></td>
-          <td>${item.descricao}</td>
-          <td><span class="badge-status ${item.tipo === 'provento' ? 'badge-calculada' : 'badge-aberta'}">${item.tipo}</span></td>
-          <td>${incide}</td>
-          <td><span class="badge-status badge-calculada">Ativo</span></td>
-        `;
-        tbody.appendChild(tr);
-      });
-    } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger" style="padding:1.5rem;">Erro ao carregar catálogo de benefícios.</td></tr>';
+    if (typeof BeneficiosManager !== 'undefined') {
+      await BeneficiosManager.carregarTudo();
     }
   },
 
@@ -5719,13 +6710,30 @@ const PlataformaManager = {
       document.getElementById(modalId)?.classList.add('hidden');
     };
 
-    // Modal Nova Admissão
-    document.getElementById('btn-abrir-nova-admissao')?.addEventListener('click', () => {
+    // Modal Nova Admissão & Cartão Único Admissional (RF-011 a RF-020)
+    document.getElementById('btn-abrir-nova-admissao')?.addEventListener('click', async () => {
+      await this.carregarCatalogosAdmissao();
       document.getElementById('modal-nova-admissao')?.classList.remove('hidden');
     });
+    document.getElementById('adm-candidato-cpf')?.addEventListener('input', (e) => { e.target.value = mascaraCpf(e.target.value); });
     document.getElementById('btn-fechar-modal-admissao')?.addEventListener('click', () => fecharModal('modal-nova-admissao'));
     document.getElementById('btn-cancelar-modal-admissao')?.addEventListener('click', () => fecharModal('modal-nova-admissao'));
     document.getElementById('btn-salvar-nova-admissao')?.addEventListener('click', () => this.salvarNovaAdmissao());
+
+    document.getElementById('btn-fechar-cartao-admissional')?.addEventListener('click', () => {
+      document.getElementById('cartao-processo-admissional')?.classList.add('hidden');
+    });
+    document.getElementById('btn-adm-chk-upload')?.addEventListener('click', () => this.uploadChecklistAdmissao());
+    document.getElementById('btn-adm-salvar-jornada')?.addEventListener('click', () => this.salvarJornadaAdmissao());
+    document.getElementById('btn-adm-salvar-cc')?.addEventListener('click', () => this.salvarCentroCustoAdmissao());
+    document.getElementById('btn-adm-salvar-aso')?.addEventListener('click', () => this.salvarAsoAdmissional());
+    document.getElementById('btn-adm-salvar-beneficios')?.addEventListener('click', () => this.salvarBeneficiosAdmissao());
+    document.getElementById('btn-adm-executar-validacao')?.addEventListener('click', () => this.executarValidacaoAdmissional());
+    document.getElementById('btn-adm-gerar-contrato')?.addEventListener('click', () => this.gerarContratoAdmissao());
+    document.getElementById('btn-adm-gerar-esocial')?.addEventListener('click', () => this.gerarESocialAdmissao());
+    document.getElementById('btn-adm-aprovar-final')?.addEventListener('click', () => this.aprovarAdmissaoPainel());
+    document.getElementById('btn-adm-reprovar')?.addEventListener('click', () => this.reprovarAdmissaoPainel());
+    document.getElementById('btn-adm-cancelar')?.addEventListener('click', () => this.cancelarAdmissaoPainel());
 
     // Modal Checklist Admissão
     document.getElementById('btn-fechar-checklist-admissao')?.addEventListener('click', () => fecharModal('modal-checklist-admissao'));
@@ -5838,11 +6846,684 @@ const PlataformaManager = {
 
     // Auditoria
     document.getElementById('btn-atualizar-auditoria')?.addEventListener('click', () => this.carregarAuditoria());
+
+    // Controle de Documentação (RF-008)
+    document.getElementById('doc-ctrl-btn-atualizar')?.addEventListener('click', () => this.carregarControleDocumentacao(false));
+    document.getElementById('doc-ctrl-btn-sincronizar')?.addEventListener('click', () => this.carregarControleDocumentacao(true));
+    document.getElementById('doc-ctrl-filtro-situacao')?.addEventListener('change', () => this.carregarControleDocumentacao(false));
+    document.getElementById('doc-ctrl-filtro-categoria')?.addEventListener('change', () => this.carregarControleDocumentacao(false));
+    document.getElementById('doc-ctrl-btn-salvar-config')?.addEventListener('click', () => this.salvarConfigAlertasDocumentos());
+  },
+
+  async carregarControleDocumentacao(sincronizar = false) {
+    try {
+      await carregarCategoriasDocumentosSelect();
+      const sit = document.getElementById('doc-ctrl-filtro-situacao')?.value || '';
+      const cat = document.getElementById('doc-ctrl-filtro-categoria')?.value || 'todas';
+      const params = new URLSearchParams();
+      if (sit) params.set('situacao', sit);
+      if (cat && cat !== 'todas') params.set('categoria', cat);
+      if (sincronizar) params.set('sincronizar', '1');
+      const res = await requisitarApi(`${getApiBase()}/documentos/controle?${params.toString()}`);
+      const dados = res.dados || {};
+      const resumo = dados.resumo || {};
+      const cfg = dados.config_alertas || {};
+
+      if (document.getElementById('doc-ctrl-total-regulares')) document.getElementById('doc-ctrl-total-regulares').textContent = resumo.regular || 0;
+      if (document.getElementById('doc-ctrl-total-vencendo')) document.getElementById('doc-ctrl-total-vencendo').textContent = resumo.proximo_vencimento || 0;
+      if (document.getElementById('doc-ctrl-total-vencidos')) document.getElementById('doc-ctrl-total-vencidos').textContent = resumo.vencido || 0;
+      if (document.getElementById('doc-ctrl-total-pendentes')) document.getElementById('doc-ctrl-total-pendentes').textContent = resumo.pendentes_obrigatorios || 0;
+      if (document.getElementById('doc-ctrl-dias-alerta') && Array.isArray(cfg.dias_antecedencia_alerta)) {
+        document.getElementById('doc-ctrl-dias-alerta').value = cfg.dias_antecedencia_alerta.join(', ');
+      }
+      if (document.getElementById('doc-ctrl-max-mb') && cfg.tamanho_maximo_mb) {
+        document.getElementById('doc-ctrl-max-mb').value = cfg.tamanho_maximo_mb;
+      }
+
+      const tbody = document.getElementById('doc-ctrl-tbody');
+      const docs = dados.documentos || [];
+      if (tbody) {
+        if (!docs.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center">Nenhum documento encontrado para o filtro selecionado.</td></tr>';
+        } else {
+          tbody.innerHTML = docs.map(d => {
+            const st = d.status_validade || 'regular';
+            const cls = st === 'vencido' ? 'badge-inativo' : (st === 'proximo_vencimento' ? 'badge-dep' : 'badge-ativo');
+            const diasTxt = d.dias_para_vencer !== null && d.dias_para_vencer !== undefined ? ` (${d.dias_para_vencer}d)` : '';
+            return `
+              <tr>
+                <td><strong>${_escHtml(d.colaborador_nome || '')}</strong><br><small class="text-muted">${_escHtml(d.matricula || '')}</small></td>
+                <td>${_escHtml(d.categoria || d.tipo_documento)}<br><small class="text-muted">${_escHtml(d.tipo_documento)}</small></td>
+                <td>${_escHtml(d.nome_arquivo)} (v${d.versao || 1})</td>
+                <td>${d.data_validade ? formatarDataBR(d.data_validade) : 'Sem validade'}</td>
+                <td><span class="badge ${cls}">${_escHtml(st)}${diasTxt}</span></td>
+                <td class="text-right"><button type="button" class="btn btn-outline btn-sm" onclick="abrirModalDetalhes(${d.colaborador_id})">Abrir Ficha</button></td>
+              </tr>
+            `;
+          }).join('');
+        }
+      }
+
+      const pendDiv = document.getElementById('doc-ctrl-pendentes-lista');
+      const pendentes = dados.pendentes || [];
+      if (pendDiv) {
+        if (!pendentes.length) {
+          pendDiv.innerHTML = 'Nenhuma pendência obrigatória encontrada.';
+        } else {
+          pendDiv.innerHTML = pendentes.map(p =>
+            `<div style="padding:0.35rem 0; border-bottom:1px solid #e5e7eb;">
+              <strong>${_escHtml(p.colaborador_nome)} (${_escHtml(p.matricula)})</strong>: pendente ${_escHtml(p.categoria_nome || p.categoria)}
+            </div>`
+          ).join('');
+        }
+      }
+      if (sincronizar) exibirToast('Pendências documentais sincronizadas com sucesso!', 'success');
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao carregar controle documental.', 'error');
+    }
+  },
+
+  async salvarConfigAlertasDocumentos() {
+    try {
+      const diasTxt = document.getElementById('doc-ctrl-dias-alerta')?.value || '30, 15, 7';
+      const dias = diasTxt.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n) && n >= 0);
+      const maxMb = parseInt(document.getElementById('doc-ctrl-max-mb')?.value || '10', 10);
+      await requisitarApi(`${getApiBase()}/documentos/config-alertas`, {
+        method: 'PUT',
+        body: JSON.stringify({ dias_antecedencia_alerta: dias, tamanho_maximo_mb: maxMb })
+      });
+      exibirToast('Regras de alerta documental salvas!', 'success');
+      await this.carregarControleDocumentacao(false);
+    } catch (e) {
+      exibirToast(e.message || 'Erro ao salvar configuração de alertas.', 'error');
+    }
+  }
+};
+
+// ============================================================================
+// GERENCIADOR DO MÓDULO DE BENEFÍCIOS & DESCONTOS (RF071 A RF080)
+// ============================================================================
+const BeneficiosManager = {
+  catalogo: [],
+  vinculos: [],
+  ultimoRelatorio: null,
+
+  inicializar() {
+    document.querySelectorAll('.btn-benef-tab').forEach(btn => {
+      btn.addEventListener('click', () => this.alternarAba(btn.getAttribute('data-benef-tab')));
+    });
+
+    document.getElementById('btn-novo-vinculo-beneficio')?.addEventListener('click', () => this.abrirModalVinculo());
+    document.getElementById('btn-fechar-modal-benef-vinc')?.addEventListener('click', () => this.fecharModal('modal-beneficio-colaborador'));
+    document.getElementById('btn-cancelar-modal-benef-vinc')?.addEventListener('click', () => this.fecharModal('modal-beneficio-colaborador'));
+    document.getElementById('btn-salvar-vinculo-beneficio')?.addEventListener('click', () => this.salvarVinculo());
+    document.getElementById('benef-vinc-catalogo')?.addEventListener('change', () => this.atualizarCamposPorTipoBeneficio());
+
+    document.getElementById('btn-novo-catalogo-beneficio')?.addEventListener('click', () => this.abrirModalCatalogo());
+    document.getElementById('btn-fechar-modal-benef-cat')?.addEventListener('click', () => this.fecharModal('modal-beneficio-catalogo'));
+    document.getElementById('btn-cancelar-modal-benef-cat')?.addEventListener('click', () => this.fecharModal('modal-beneficio-catalogo'));
+    document.getElementById('btn-salvar-catalogo-beneficio')?.addEventListener('click', () => this.salvarCatalogo());
+
+    document.getElementById('benef-filtro-colab')?.addEventListener('change', () => this.carregarVinculos());
+    document.getElementById('benef-filtro-tipo')?.addEventListener('change', () => this.carregarVinculos());
+    document.getElementById('btn-verificar-elegibilidade')?.addEventListener('click', () => this.verificarElegibilidade());
+    document.getElementById('btn-simular-desc-folha')?.addEventListener('click', () => this.simularDescontosFolha());
+    document.getElementById('btn-enviar-beneficios-folha')?.addEventListener('click', () => this.abrirNaFolhaComBeneficios());
+    document.getElementById('btn-atualizar-rel-beneficios')?.addEventListener('click', () => this.carregarRelatorio());
+    document.getElementById('btn-exportar-beneficios-csv')?.addEventListener('click', () => this.exportarRelatorioCSV());
+    document.getElementById('btn-imprimir-beneficios')?.addEventListener('click', () => window.print());
+  },
+
+  alternarAba(aba) {
+    ['vinculos', 'catalogo', 'folha', 'relatorio'].forEach(nome => {
+      document.getElementById(`tab-benef-${nome}`)?.classList.toggle('hidden', nome !== aba);
+    });
+    document.querySelectorAll('.btn-benef-tab').forEach(btn => {
+      const ativo = btn.getAttribute('data-benef-tab') === aba;
+      btn.classList.toggle('btn-primary', ativo);
+      btn.classList.toggle('btn-outline', !ativo);
+    });
+    if (aba === 'relatorio') this.carregarRelatorio();
+  },
+
+  fecharModal(id) {
+    document.getElementById(id)?.classList.add('hidden');
+  },
+
+  async carregarTudo() {
+    await PlataformaManager.carregarColaboradoresCache();
+    ['benef-filtro-colab', 'benef-eleg-colab', 'benef-folha-colab', 'benef-vinc-colab'].forEach(id => {
+      PlataformaManager.popularSelectColaboradores(id);
+    });
+    const fColab = document.getElementById('benef-filtro-colab');
+    if (fColab && fColab.options.length > 0) fColab.options[0].textContent = 'Todos os colaboradores';
+
+    await this.carregarCatalogo();
+    await this.carregarVinculos();
+    await this.carregarRelatorio();
+  },
+
+  async carregarCatalogo() {
+    const tbody = document.getElementById('tbody-beneficios-catalogo');
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/catalogo`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.mensagem || 'Erro ao carregar catálogo');
+      this.catalogo = json.dados || [];
+
+      const sel = document.getElementById('benef-vinc-catalogo');
+      if (sel) {
+        sel.innerHTML = '<option value="">Selecione um benefício...</option>' +
+          this.catalogo.filter(b => b.ativo).map(b => `<option value="${b.id}" data-tipo="${b.tipo}">[${b.codigo}] ${b.nome} (${b.tipo})</option>`).join('');
+      }
+
+      if (!tbody) return;
+      if (!this.catalogo.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding:1.5rem;">Nenhum benefício cadastrado no catálogo.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      this.catalogo.forEach(item => {
+        const tr = document.createElement('tr');
+        const copTxt = item.coparticipacao_tipo === 'percentual'
+          ? `${Number(item.coparticipacao_valor || 0)}% (teto ${Number(item.teto_legal_percentual || 0)}%)`
+          : `R$ ${Number(item.coparticipacao_valor || 0).toFixed(2)} (teto ${Number(item.teto_legal_percentual || 0)}%)`;
+        tr.innerHTML = `
+          <td><strong>${item.codigo}</strong></td>
+          <td>${item.nome}</td>
+          <td>${item.tipo}</td>
+          <td>${copTxt}</td>
+          <td><span class="badge-status badge-aberta">${item.rubrica_codigo || '0511'}</span></td>
+          <td><span class="badge-status ${item.ativo ? 'badge-calculada' : 'badge-inativa'}">${item.ativo ? 'Ativo' : 'Inativo'}</span></td>
+          <td>
+            <div style="display:flex; gap:0.35rem;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="BeneficiosManager.abrirModalCatalogo(${item.id})">Editar</button>
+              <button type="button" class="btn btn-danger btn-sm" onclick="BeneficiosManager.excluirCatalogo(${item.id})">Excluir</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger" style="padding:1.5rem;">Erro ao carregar catálogo de benefícios.</td></tr>';
+    }
+  },
+
+  async carregarVinculos() {
+    const tbody = document.getElementById('tbody-beneficios-colaboradores');
+    if (!tbody) return;
+    const colabId = document.getElementById('benef-filtro-colab')?.value || '';
+    const tipo = document.getElementById('benef-filtro-tipo')?.value || 'todos';
+    const qs = new URLSearchParams();
+    if (colabId) qs.set('colaborador_id', colabId);
+    if (tipo && tipo !== 'todos') qs.set('tipo', tipo);
+
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/colaboradores?${qs.toString()}`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.mensagem || 'Erro ao listar vínculos');
+      this.vinculos = json.dados || [];
+
+      if (!this.vinculos.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding:1.5rem;">Nenhum benefício vinculado aos colaboradores.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      this.vinculos.forEach(v => {
+        const tr = document.createElement('tr');
+        const vigTxt = `${v.vigencia_inicio}${v.vigencia_fim ? ' até ' + v.vigencia_fim : ' (vigente)'}`;
+        tr.innerHTML = `
+          <td><strong>${v.colaborador_nome || ''}</strong><div class="text-xs text-muted">${v.colaborador_matricula || ''} &bull; ${v.colaborador_setor || ''}</div></td>
+          <td><strong>${v.beneficio_nome || ''}</strong><div class="text-xs text-muted">${v.beneficio_tipo} (Rub. ${v.rubrica_codigo || '0511'})</div></td>
+          <td>${vigTxt}</td>
+          <td>${formatarMoeda(v.custo_total_mes)}</td>
+          <td style="color:#b91c1c;"><strong>${formatarMoeda(v.desconto_colaborador)}</strong></td>
+          <td style="color:#0f766e;">${formatarMoeda(v.custo_empresa)}</td>
+          <td><span class="badge-status ${v.ativo ? 'badge-calculada' : 'badge-inativa'}">${v.ativo ? 'Ativo' : 'Inativo'}</span></td>
+          <td>
+            <div style="display:flex; gap:0.35rem;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="BeneficiosManager.abrirModalVinculo(${v.id})">Editar</button>
+              <button type="button" class="btn btn-danger btn-sm" onclick="BeneficiosManager.excluirVinculo(${v.id})">Excluir</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger" style="padding:1.5rem;">Erro ao carregar vínculos de benefícios.</td></tr>';
+    }
+  },
+
+  atualizarCamposPorTipoBeneficio() {
+    const sel = document.getElementById('benef-vinc-catalogo');
+    const bid = Number(sel?.value || 0);
+    const cat = this.catalogo.find(b => Number(b.id) === bid);
+    const tipo = cat ? cat.tipo : '';
+
+    document.getElementById('benef-vinc-grupo-saude')?.classList.toggle('hidden', !['plano_saude', 'plano_odontologico', ''].includes(tipo));
+    document.getElementById('benef-vinc-grupo-farmacia')?.classList.toggle('hidden', tipo !== 'farmacia');
+    document.getElementById('benef-vinc-grupo-flex')?.classList.toggle('hidden', tipo !== 'beneficio_flexivel');
+
+    if (cat && !document.getElementById('benef-vinc-id')?.value) {
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v ?? 0); };
+      setVal('benef-vinc-valor-diario', cat.valor_diario_padrao || 0);
+      setVal('benef-vinc-valor-mensal', cat.valor_mensal_padrao || 0);
+      setVal('benef-vinc-limite', cat.limite_padrao || 0);
+      setVal('benef-vinc-saldo-flex', cat.valor_mensal_padrao || 600);
+    }
+  },
+
+  abrirModalVinculo(vinculoId = null) {
+    const alerta = document.getElementById('benef-vinc-alerta');
+    if (alerta) { alerta.textContent = ''; alerta.classList.add('hidden'); }
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+
+    if (vinculoId) {
+      const v = this.vinculos.find(x => Number(x.id) === Number(vinculoId));
+      if (!v) return;
+      document.getElementById('benef-vinc-titulo').textContent = `Editar Benefício #${v.id}`;
+      setVal('benef-vinc-id', String(v.id));
+      setVal('benef-vinc-colab', String(v.colaborador_id));
+      setVal('benef-vinc-catalogo', String(v.beneficio_id));
+      setVal('benef-vinc-vig-inicio', v.vigencia_inicio || '');
+      setVal('benef-vinc-vig-fim', v.vigencia_fim || '');
+      setVal('benef-vinc-optante', String(v.optante ?? 1));
+      setVal('benef-vinc-valor-diario', v.valor_diario ?? 0);
+      setVal('benef-vinc-dias-uteis', v.dias_uteis_mes ?? 22);
+      setVal('benef-vinc-valor-mensal', v.valor_mensal_base ?? 0);
+      setVal('benef-vinc-qtd-dep', v.qtd_dependentes ?? 0);
+      setVal('benef-vinc-valor-dep', v.valor_dependente ?? 0);
+      setVal('benef-vinc-copart-extra', v.coparticipacao_extra ?? 0);
+      setVal('benef-vinc-limite', v.limite_mensal ?? 0);
+      setVal('benef-vinc-utilizado', v.valor_utilizado_mes ?? 0);
+      setVal('benef-vinc-saldo-flex', v.saldo_flexivel ?? 0);
+      const aloc = v.alocacao_obj || {};
+      setVal('benef-flex-alimentacao', aloc.alimentacao ?? 0);
+      setVal('benef-flex-mobilidade', aloc.mobilidade ?? 0);
+      setVal('benef-flex-saude', aloc.saude ?? 0);
+      setVal('benef-flex-educacao', aloc.educacao ?? 0);
+      setVal('benef-flex-cultura', aloc.cultura ?? 0);
+      setVal('benef-vinc-obs', v.observacoes || '');
+    } else {
+      document.getElementById('benef-vinc-titulo').textContent = 'Conceder Benefício ao Colaborador';
+      setVal('benef-vinc-id', '');
+      setVal('benef-vinc-vig-inicio', new Date().toISOString().slice(0, 10));
+      setVal('benef-vinc-vig-fim', '');
+      setVal('benef-vinc-optante', '1');
+      setVal('benef-vinc-dias-uteis', '22');
+      setVal('benef-vinc-valor-diario', '0');
+      setVal('benef-vinc-valor-mensal', '0');
+      setVal('benef-vinc-qtd-dep', '0');
+      setVal('benef-vinc-valor-dep', '0');
+      setVal('benef-vinc-copart-extra', '0');
+      setVal('benef-vinc-limite', '400');
+      setVal('benef-vinc-utilizado', '0');
+      setVal('benef-vinc-saldo-flex', '600');
+      ['alimentacao', 'mobilidade', 'saude', 'educacao', 'cultura'].forEach(k => setVal(`benef-flex-${k}`, '0'));
+      setVal('benef-vinc-obs', '');
+    }
+    this.atualizarCamposPorTipoBeneficio();
+    document.getElementById('modal-beneficio-colaborador')?.classList.remove('hidden');
+  },
+
+  async salvarVinculo() {
+    const alerta = document.getElementById('benef-vinc-alerta');
+    const mostrarErro = (msg) => {
+      if (alerta) { alerta.textContent = msg; alerta.classList.remove('hidden'); }
+      exibirToast(msg, 'error');
+    };
+    const id = document.getElementById('benef-vinc-id')?.value;
+    const colabId = document.getElementById('benef-vinc-colab')?.value;
+    const benefId = document.getElementById('benef-vinc-catalogo')?.value;
+    const vigInicio = document.getElementById('benef-vinc-vig-inicio')?.value;
+    if (!colabId || !benefId || !vigInicio) {
+      mostrarErro('Selecione o colaborador, o benefício e a data de início da vigência.');
+      return;
+    }
+
+    const cat = this.catalogo.find(b => Number(b.id) === Number(benefId));
+    const num = (eid) => Number(document.getElementById(eid)?.value || 0);
+    const payload = {
+      colaborador_id: Number(colabId),
+      beneficio_id: Number(benefId),
+      vigencia_inicio: vigInicio,
+      vigencia_fim: document.getElementById('benef-vinc-vig-fim')?.value || null,
+      optante: Number(document.getElementById('benef-vinc-optante')?.value || 1),
+      dias_uteis_mes: Number(document.getElementById('benef-vinc-dias-uteis')?.value || 22),
+      valor_diario: num('benef-vinc-valor-diario'),
+      valor_mensal_base: num('benef-vinc-valor-mensal'),
+      qtd_dependentes: Number(document.getElementById('benef-vinc-qtd-dep')?.value || 0),
+      valor_dependente: num('benef-vinc-valor-dep'),
+      coparticipacao_extra: num('benef-vinc-copart-extra'),
+      limite_mensal: num('benef-vinc-limite'),
+      valor_utilizado_mes: num('benef-vinc-utilizado'),
+      saldo_flexivel: num('benef-vinc-saldo-flex'),
+      observacoes: document.getElementById('benef-vinc-obs')?.value || '',
+    };
+    if (cat && cat.tipo === 'beneficio_flexivel') {
+      payload.alocacao_json = {
+        alimentacao: num('benef-flex-alimentacao'),
+        mobilidade: num('benef-flex-mobilidade'),
+        saude: num('benef-flex-saude'),
+        educacao: num('benef-flex-educacao'),
+        cultura: num('benef-flex-cultura'),
+      };
+    }
+
+    const url = id ? `${API_BASE}/beneficios/colaboradores/${id}` : `${API_BASE}/beneficios/colaboradores`;
+    const method = id ? 'PUT' : 'POST';
+    try {
+      const resp = await fetch(url, { method, headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify(payload) });
+      const json = await resp.json();
+      if (!resp.ok) {
+        mostrarErro(json.mensagem || 'Erro ao salvar benefício do colaborador.');
+        return;
+      }
+      exibirToast(json.mensagem || 'Benefício salvo com sucesso!', 'success');
+      this.fecharModal('modal-beneficio-colaborador');
+      await this.carregarVinculos();
+      await this.carregarRelatorio();
+    } catch (e) {
+      mostrarErro('Erro de comunicação ao salvar benefício.');
+    }
+  },
+
+  async excluirVinculo(id) {
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/colaboradores/${id}`, {
+        method: 'DELETE', headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) { exibirToast(json.mensagem || 'Erro ao excluir vínculo.', 'error'); return; }
+      exibirToast(json.mensagem || 'Vínculo removido.', 'success');
+      await this.carregarVinculos();
+      await this.carregarRelatorio();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao excluir vínculo.', 'error');
+    }
+  },
+
+  abrirModalCatalogo(benefId = null) {
+    const alerta = document.getElementById('benef-cat-alerta');
+    if (alerta) { alerta.textContent = ''; alerta.classList.add('hidden'); }
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+    if (benefId) {
+      const b = this.catalogo.find(x => Number(x.id) === Number(benefId));
+      if (!b) return;
+      const reg = b.regra_elegibilidade_obj || {};
+      document.getElementById('benef-cat-titulo').textContent = `Editar Benefício ${b.codigo}`;
+      setVal('benef-cat-id', String(b.id));
+      setVal('benef-cat-codigo', b.codigo);
+      setVal('benef-cat-nome', b.nome);
+      setVal('benef-cat-tipo', b.tipo);
+      setVal('benef-cat-rubrica', b.rubrica_codigo || '0511');
+      setVal('benef-cat-copart-tipo', b.coparticipacao_tipo || 'percentual');
+      setVal('benef-cat-copart-valor', b.coparticipacao_valor ?? 0);
+      setVal('benef-cat-teto', b.teto_legal_percentual ?? 0);
+      setVal('benef-cat-valor-mensal', b.valor_mensal_padrao ?? 0);
+      setVal('benef-cat-valor-diario', b.valor_diario_padrao ?? 0);
+      setVal('benef-cat-limite', b.limite_padrao ?? 0);
+      setVal('benef-cat-tempo-min', reg.tempo_minimo_dias ?? 0);
+      setVal('benef-cat-contratos', (reg.tipos_contrato_permitidos || []).join(', '));
+      setVal('benef-cat-setores', (reg.setores_permitidos || []).join(', '));
+      setVal('benef-cat-descricao', b.descricao || '');
+    } else {
+      document.getElementById('benef-cat-titulo').textContent = 'Novo Item no Catálogo de Benefícios';
+      setVal('benef-cat-id', '');
+      setVal('benef-cat-codigo', '');
+      setVal('benef-cat-nome', '');
+      setVal('benef-cat-tipo', 'vale_refeicao');
+      setVal('benef-cat-rubrica', '0511');
+      setVal('benef-cat-copart-tipo', 'percentual');
+      setVal('benef-cat-copart-valor', '0');
+      setVal('benef-cat-teto', '20');
+      setVal('benef-cat-valor-mensal', '0');
+      setVal('benef-cat-valor-diario', '0');
+      setVal('benef-cat-limite', '0');
+      setVal('benef-cat-tempo-min', '0');
+      setVal('benef-cat-contratos', '');
+      setVal('benef-cat-setores', '');
+      setVal('benef-cat-descricao', '');
+    }
+    document.getElementById('modal-beneficio-catalogo')?.classList.remove('hidden');
+  },
+
+  async salvarCatalogo() {
+    const alerta = document.getElementById('benef-cat-alerta');
+    const mostrarErro = (msg) => {
+      if (alerta) { alerta.textContent = msg; alerta.classList.remove('hidden'); }
+      exibirToast(msg, 'error');
+    };
+    const id = document.getElementById('benef-cat-id')?.value;
+    const codigo = document.getElementById('benef-cat-codigo')?.value?.trim();
+    const nome = document.getElementById('benef-cat-nome')?.value?.trim();
+    if (!codigo || !nome) {
+      mostrarErro('Código e nome do benefício são obrigatórios.');
+      return;
+    }
+    const splitCsv = (eid) => (document.getElementById(eid)?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    const num = (eid) => Number(document.getElementById(eid)?.value || 0);
+    const payload = {
+      codigo,
+      nome,
+      tipo: document.getElementById('benef-cat-tipo')?.value,
+      rubrica_codigo: document.getElementById('benef-cat-rubrica')?.value?.trim() || '0511',
+      coparticipacao_tipo: document.getElementById('benef-cat-copart-tipo')?.value || 'percentual',
+      coparticipacao_valor: num('benef-cat-copart-valor'),
+      teto_legal_percentual: num('benef-cat-teto'),
+      valor_mensal_padrao: num('benef-cat-valor-mensal'),
+      valor_diario_padrao: num('benef-cat-valor-diario'),
+      limite_padrao: num('benef-cat-limite'),
+      descricao: document.getElementById('benef-cat-descricao')?.value?.trim() || '',
+      regra_elegibilidade: {
+        situacoes_permitidas: ['ativo'],
+        tempo_minimo_dias: Number(document.getElementById('benef-cat-tempo-min')?.value || 0),
+        tipos_contrato_permitidos: splitCsv('benef-cat-contratos'),
+        setores_permitidos: splitCsv('benef-cat-setores'),
+      }
+    };
+    const url = id ? `${API_BASE}/beneficios/catalogo/${id}` : `${API_BASE}/beneficios/catalogo`;
+    const method = id ? 'PUT' : 'POST';
+    try {
+      const resp = await fetch(url, { method, headers: getAuthHeaders(), credentials: 'include', body: JSON.stringify(payload) });
+      const json = await resp.json();
+      if (!resp.ok) { mostrarErro(json.mensagem || 'Erro ao salvar item no catálogo.'); return; }
+      exibirToast(json.mensagem || 'Catálogo atualizado!', 'success');
+      this.fecharModal('modal-beneficio-catalogo');
+      await this.carregarCatalogo();
+    } catch (e) {
+      mostrarErro('Erro de comunicação ao salvar item no catálogo.');
+    }
+  },
+
+  async excluirCatalogo(id) {
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/catalogo/${id}`, {
+        method: 'DELETE', headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) { exibirToast(json.mensagem || 'Não foi possível excluir.', 'error'); return; }
+      exibirToast(json.mensagem || 'Item removido do catálogo.', 'success');
+      await this.carregarCatalogo();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao excluir benefício.', 'error');
+    }
+  },
+
+  async verificarElegibilidade() {
+    const colabId = document.getElementById('benef-eleg-colab')?.value;
+    const tbody = document.getElementById('tbody-beneficios-elegibilidade');
+    if (!colabId || !tbody) {
+      exibirToast('Selecione um colaborador para verificar a elegibilidade.', 'warning');
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/elegibilidade?colaborador_id=${colabId}`, {
+        headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      const lista = json.dados || [];
+      tbody.innerHTML = '';
+      lista.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${r.beneficio_codigo}</strong></td>
+          <td>${r.beneficio_nome}</td>
+          <td>${r.beneficio_tipo}</td>
+          <td><span class="badge-status ${r.elegivel ? 'badge-calculada' : 'badge-pendente'}">${r.elegivel ? 'Elegível' : 'Inelegível'}</span></td>
+          <td>${r.elegivel ? 'Atende a todas as regras configuradas' : (r.motivos || []).join(' ')}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao verificar elegibilidade.</td></tr>';
+    }
+  },
+
+  async simularDescontosFolha() {
+    const colabId = document.getElementById('benef-folha-colab')?.value;
+    const comp = document.getElementById('benef-folha-comp')?.value || '2026-10';
+    const tbody = document.getElementById('tbody-beneficios-descontos-folha');
+    const resumoEl = document.getElementById('benef-folha-resumo');
+    if (!colabId || !tbody) {
+      exibirToast('Selecione um colaborador e uma competência.', 'warning');
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/descontos-folha?colaborador_id=${colabId}&competencia=${encodeURIComponent(comp)}`, {
+        headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.dados) {
+        exibirToast(json.mensagem || 'Erro ao simular descontos.', 'error');
+        return;
+      }
+      const d = json.dados;
+      if (resumoEl) {
+        resumoEl.innerHTML = `<strong>${d.colaborador_nome}</strong> (Salário-base: ${formatarMoeda(d.salario_base)}) &bull; Competência <strong>${d.competencia}</strong> &bull; Desconto total em folha: <strong style="color:#b91c1c;">${formatarMoeda(d.total_descontos_beneficios)}</strong> &bull; Custeio empresa: <strong style="color:#0f766e;">${formatarMoeda(d.total_custo_empresa)}</strong>`;
+      }
+      const itens = d.itens || [];
+      if (!itens.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding:1.25rem;">Nenhum benefício ativo vigente na competência.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      itens.forEach(it => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${it.rubrica_codigo}</strong></td>
+          <td>${it.nome}</td>
+          <td>${it.tipo}</td>
+          <td>${formatarMoeda(it.custo_total_mes)}</td>
+          <td style="color:#b91c1c;"><strong>${formatarMoeda(it.desconto_colaborador)}</strong></td>
+          <td style="color:#0f766e;">${formatarMoeda(it.custo_empresa)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      exibirToast('Erro de comunicação ao simular descontos.', 'error');
+    }
+  },
+
+  async abrirNaFolhaComBeneficios() {
+    const colabId = document.getElementById('benef-folha-colab')?.value;
+    const comp = document.getElementById('benef-folha-comp')?.value || '2026-10';
+    if (!colabId) {
+      exibirToast('Selecione um colaborador primeiro.', 'warning');
+      return;
+    }
+    await PlataformaManager.navegarPara('folha');
+    const elComp = document.getElementById('ind-competencia');
+    if (elComp) elComp.value = comp;
+    await FolhaManager.abrirPainelIndividual(Number(colabId));
+    await FolhaManager.importarBeneficiosAtivosPainel();
+  },
+
+  async carregarRelatorio() {
+    const comp = document.getElementById('benef-rel-comp')?.value || '';
+    const tipo = document.getElementById('benef-rel-tipo')?.value || 'todos';
+    const setor = document.getElementById('benef-rel-setor')?.value?.trim() || '';
+    const qs = new URLSearchParams();
+    if (comp) qs.set('competencia', comp);
+    if (tipo && tipo !== 'todos') qs.set('tipo', tipo);
+    if (setor) qs.set('setor', setor);
+
+    try {
+      const resp = await fetch(`${API_BASE}/beneficios/relatorio?${qs.toString()}`, {
+        headers: getAuthHeaders(), credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.dados) return;
+      const rel = json.dados;
+      this.ultimoRelatorio = rel;
+      const r = rel.resumo || {};
+
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      setTxt('benef-kpi-vinculos', String(r.total_vinculos_ativos || 0));
+      setTxt('benef-kpi-custo-total', formatarMoeda(r.custo_total_mensal || 0));
+      setTxt('benef-kpi-custo-empresa', formatarMoeda(r.total_custo_empresa || 0));
+      setTxt('benef-kpi-desconto-colab', formatarMoeda(r.total_desconto_colaboradores || 0));
+
+      const resEl = document.getElementById('benef-rel-resumo');
+      if (resEl) {
+        resEl.innerHTML = `Colaboradores beneficiados: <strong>${r.total_colaboradores_beneficiados || 0}</strong> &bull; Vínculos ativos: <strong>${r.total_vinculos_ativos || 0}</strong> &bull; Custo médio/colaborador: <strong>${formatarMoeda(r.custo_medio_por_colaborador || 0)}</strong> &bull; Total Empresa: <strong>${formatarMoeda(r.total_custo_empresa || 0)}</strong> &bull; Descontos Folha: <strong>${formatarMoeda(r.total_desconto_colaboradores || 0)}</strong>`;
+      }
+
+      const tbTipo = document.getElementById('tbody-benef-rel-tipo');
+      if (tbTipo) {
+        tbTipo.innerHTML = (rel.por_tipo || []).length
+          ? rel.por_tipo.map(x => `<tr><td>${x.tipo}</td><td>${x.quantidade}</td><td>${formatarMoeda(x.custo_total)}</td><td>${formatarMoeda(x.custo_empresa)}</td><td>${formatarMoeda(x.desconto_colaborador)}</td></tr>`).join('')
+          : '<tr><td colspan="5" class="text-center text-muted">Sem dados.</td></tr>';
+      }
+      const tbSetor = document.getElementById('tbody-benef-rel-setor');
+      if (tbSetor) {
+        tbSetor.innerHTML = (rel.por_setor || []).length
+          ? rel.por_setor.map(x => `<tr><td>${x.setor}</td><td>${x.colaboradores}</td><td>${formatarMoeda(x.custo_total)}</td><td>${formatarMoeda(x.custo_empresa)}</td><td>${formatarMoeda(x.desconto_colaborador)}</td></tr>`).join('')
+          : '<tr><td colspan="5" class="text-center text-muted">Sem dados.</td></tr>';
+      }
+      const tbItens = document.getElementById('tbody-benef-rel-itens');
+      if (tbItens) {
+        tbItens.innerHTML = (rel.itens || []).length
+          ? rel.itens.map(x => `<tr><td><strong>${x.colaborador_nome}</strong></td><td>${x.setor}</td><td>${x.beneficio_nome}</td><td>${x.vigencia_inicio}${x.vigencia_fim ? ' até ' + x.vigencia_fim : ''}</td><td>${formatarMoeda(x.custo_total_mes)}</td><td>${formatarMoeda(x.desconto_colaborador)}</td><td>${formatarMoeda(x.custo_empresa)}</td></tr>`).join('')
+          : '<tr><td colspan="7" class="text-center text-muted">Nenhum benefício encontrado.</td></tr>';
+      }
+    } catch (e) { /* ignore */ }
+  },
+
+  exportarRelatorioCSV() {
+    const itens = this.ultimoRelatorio?.itens || [];
+    if (!itens.length) {
+      exibirToast('Nenhum dado de benefício para exportar.', 'warning');
+      return;
+    }
+    const cab = ['Matricula', 'Colaborador', 'Setor', 'Codigo', 'Beneficio', 'Tipo', 'Rubrica', 'Custo Total', 'Desconto Colaborador', 'Custo Empresa'];
+    const linhas = itens.map(i => [
+      `"${i.matricula || ''}"`,
+      `"${(i.colaborador_nome || '').replace(/"/g, '""')}"`,
+      `"${(i.setor || '').replace(/"/g, '""')}"`,
+      `"${i.beneficio_codigo || ''}"`,
+      `"${(i.beneficio_nome || '').replace(/"/g, '""')}"`,
+      `"${i.tipo || ''}"`,
+      `"${i.rubrica_codigo || ''}"`,
+      Number(i.custo_total_mes || 0).toFixed(2),
+      Number(i.desconto_colaborador || 0).toFixed(2),
+      Number(i.custo_empresa || 0).toFixed(2),
+    ].join(';'));
+    const csv = '\uFEFF' + [cab.join(';'), ...linhas].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rh20_relatorio_beneficios_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    exibirToast(`Relatório exportado com ${itens.length} registro(s)!`, 'success');
   }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
   PlataformaManager.inicializar();
+  BeneficiosManager.inicializar();
   configurarEventos();
   AuthManager.inicializar();
   FolhaManager.inicializar();

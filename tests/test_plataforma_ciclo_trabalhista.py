@@ -67,9 +67,11 @@ class TestPlataformaCicloTrabalhista(unittest.TestCase):
         dados = {
             "candidato_nome": "Mariana Souza Oliveira",
             "candidato_cpf": "85328103068",
+            "candidato_data_nascimento": "1995-03-14",
             "candidato_email": "mariana.souza@forcaverde.com.br",
             "cargo": "Operadora de Moenda I",
             "setor": "Operações Industriais",
+            "escala_id": 1,
             "salario_proposto": 2500.00,
             "data_prevista_admissao": "2026-11-20",
             "tipo_contrato": "experiencia",
@@ -90,9 +92,23 @@ class TestPlataformaCicloTrabalhista(unittest.TestCase):
             self.service.aprovar_admissao(adm_id, aprovador="Gestor Carlos")
         self.assertIn("itens obrigatórios pendentes", str(ctx_doc.exception))
 
-        # 3. Valida os itens do checklist (RF-012)
+        # 3. Valida os itens do checklist (RF-012) e registra ASO admissional apto (RF-016 / RN-009)
         for item in adm["checklist"]:
             self.service.atualizar_item_checklist(item["id"], status="validado", usuario="Gestor Carlos")
+
+        self.service.registrar_aso_admissional(
+            adm_id,
+            {
+                "status_exame": "realizado",
+                "resultado": "apto",
+                "data_emissao": "2026-11-01",
+                "data_validade": "2027-11-01",
+                "medico_nome": "Dr. João Mendes",
+                "medico_crm": "112233",
+                "medico_uf": "SP",
+            },
+            usuario="SST",
+        )
 
         # 4. Aprovação por outro usuário (Gestor Carlos)
         res_aprov = self.service.aprovar_admissao(adm_id, aprovador="Gestor Carlos")

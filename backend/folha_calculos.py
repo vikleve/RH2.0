@@ -1392,8 +1392,8 @@ def processar_calculo_folha(
             tot, p_aplic, mem = calcular_desconto_vale_transporte(sb, custo_total_vt=val_manual or qtd, percentual_maximo=perc or 6.0)
             adicionar_item(codigo_saida, desc, "desconto", p_aplic, "%", sb, tot, mem, "calculado", "0510", incidencias)
 
-        # 0511 a 0515: Vale-refeição, Saúde, Odonto, Seguro de vida, Previdência privada
-        elif cod_oficial in ("0511", "0512", "0513", "0514", "0515"):
+        # 0511 a 0517: Vale-refeição/alimentação, Saúde, Odonto, Seguro de vida, Previdência, Farmácia, Benefícios Flexíveis
+        elif cod_oficial in ("0511", "0512", "0513", "0514", "0515", "0516", "0517"):
             tot = val_manual if val_manual > Decimal("0.00") else (arredondar_moeda(sb * (perc / Decimal("100.00"))) if perc > 0 else qtd)
             mem = f"{desc}: R$ {tot:,.2f}".replace(".", ",")
             adicionar_item(codigo_saida, desc, "desconto", perc if perc > 0 else 1, "%" if perc > 0 else "un", tot, tot, mem, "calculado", cod_oficial, incidencias)

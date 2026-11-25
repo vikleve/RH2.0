@@ -30,6 +30,9 @@ from tests.test_rbac_enterprise import TestRBACEnterprise
 from tests.test_responsividade_desktop_mobile import TestResponsividadeDesktopMobile
 from tests.test_folha_enterprise_completa import TestFolhaEnterpriseCompleta
 from tests.test_holerite_pdf import TestHoleritePDF
+from tests.test_beneficios_rf071_rf080 import TestBeneficiosRF071RF080
+from tests.test_colaborador_rf005_rf010 import TestColaboradorRF005RF010
+from tests.test_admissao_rf011_rf020 import TestAdmissaoRF011RF020
 
 
 def executar():
@@ -76,6 +79,15 @@ def executar():
 
     # 8. Testes de Geração Real de Contracheques em PDF A4 (Individual e Lote)
     suite.addTests(carregador.loadTestsFromTestCase(TestHoleritePDF))
+
+    # 9. Testes Reais de Gestão de Benefícios e Descontos (RF071 a RF080)
+    suite.addTests(carregador.loadTestsFromTestCase(TestBeneficiosRF071RF080))
+
+    # 10. Testes Completos de Consolidação do Cadastro do Colaborador (RF-005 a RF-010)
+    suite.addTests(carregador.loadTestsFromTestCase(TestColaboradorRF005RF010))
+
+    # 11. Testes Completos do Processo Admissional Enterprise (RF-011 a RF-020)
+    suite.addTests(carregador.loadTestsFromTestCase(TestAdmissaoRF011RF020))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"

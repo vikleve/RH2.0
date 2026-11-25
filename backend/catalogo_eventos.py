@@ -64,6 +64,8 @@ CATALOGO_EVENTOS_FOLHA: List[Dict[str, Any]] = [
     {"codigo": "0513", "evento": "Plano odontológico", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": ""},
     {"codigo": "0514", "evento": "Seguro de vida", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": ""},
     {"codigo": "0515", "evento": "Previdência privada", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": ""},
+    {"codigo": "0516", "evento": "Convênio farmácia (coparticipação / compras)", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": "Desconto mediante uso autorizado em convênio"},
+    {"codigo": "0517", "evento": "Benefícios flexíveis (coparticipação / excedente)", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": "Conforme política de benefícios flexíveis"},
     {"codigo": "0520", "evento": "Adiantamento salarial", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": "Recuperação do valor pago antes"},
     {"codigo": "0521", "evento": "Adiantamento de 13º (compensação)", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": ""},
     {"codigo": "0522", "evento": "Adiantamento de férias", "tipo": "desconto", "categoria": "Descontos", "inss": 0, "irrf": 0, "fgts": 0, "observacao": ""},

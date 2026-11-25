@@ -99,3 +99,6 @@ desktop.ini
 
 # Pastas temporárias de análise
 scratch/
+
+# Storage privado de documentos (RF-007)
+storage/
