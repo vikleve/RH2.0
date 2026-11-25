@@ -1314,7 +1314,7 @@
               <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Controle de Jornada, Ponto &amp; Banco de Horas</h2>
               <p style="color: var(--text-muted); font-size: 0.88rem;">Espelho de ponto mensal, marcações, horas extras 50%/100% e adicional noturno</p>
             </div>
-            <div style="display: flex; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button id="btn-abrir-bater-ponto" class="btn btn-primary" type="button">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"></circle>
@@ -1329,6 +1329,8 @@
                 </svg>
                 Solicitar Ajuste de Ponto
               </button>
+              <button id="btn-ponto-fechar-competencia" class="btn btn-outline" type="button">Fechar Competência</button>
+              <button id="btn-ponto-relatorio-ausencias" class="btn btn-outline" type="button">Relatório Ausências CSV</button>
             </div>
           </div>
 
@@ -1446,11 +1448,12 @@
                     <th>Abono (Dias)</th>
                     <th>Adiantamento 13º</th>
                     <th>Status</th>
+                    <th class="text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-ferias">
                   <tr>
-                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando histórico e programação de férias...</td>
+                    <td colspan="10" class="text-center text-muted" style="padding: 2rem;">Carregando histórico e programação de férias...</td>
                   </tr>
                 </tbody>
               </table>
@@ -1469,13 +1472,16 @@
               <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">Afastamentos, Licenças &amp; Estabilidade Legal</h2>
               <p style="color: var(--text-muted); font-size: 0.88rem;">Controle de 15 dias empresa / INSS, CID-10, ASO de retorno e travas de estabilidade provisória</p>
             </div>
-            <button id="btn-abrir-novo-afastamento" class="btn btn-primary" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Registrar Afastamento
-            </button>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button id="btn-afast-relatorio-csv" class="btn btn-outline" type="button">Exportar Relatório CSV</button>
+              <button id="btn-abrir-novo-afastamento" class="btn btn-primary" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Registrar Afastamento
+              </button>
+            </div>
           </div>
 
           <section class="table-card">
@@ -1492,11 +1498,12 @@
                     <th>Dias INSS</th>
                     <th>Estabilidade Pós-Retorno</th>
                     <th>Status</th>
+                    <th class="text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-afastamentos">
                   <tr>
-                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando afastamentos cadastrados...</td>
+                    <td colspan="10" class="text-center text-muted" style="padding: 2rem;">Carregando afastamentos cadastrados...</td>
                   </tr>
                 </tbody>
               </table>
@@ -1840,6 +1847,29 @@
           </div>
         </section>
 
+        <!-- Barra Consolidada de Rotinas Enterprise da Folha (RF-081 a RF-105) -->
+        <section class="filters-card" style="margin-bottom: 1rem;">
+          <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between;">
+            <strong style="font-size: 0.9rem; color: var(--text-main);">Rotinas Enterprise &amp; 13º Salário:</strong>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+              <button type="button" id="btn-folha-decimo-lote" class="btn btn-outline btn-sm">Calcular 13º em Lote</button>
+              <button type="button" id="btn-folha-conferencia" class="btn btn-outline btn-sm">Conferência Analítica</button>
+              <button type="button" id="btn-folha-fechar-lote" class="btn btn-outline btn-sm">Fechar Competência em Lote</button>
+              <button type="button" id="btn-folha-rateio-cc" class="btn btn-outline btn-sm">Rateio Centros de Custo</button>
+              <button type="button" id="btn-folha-integracao-fin" class="btn btn-outline btn-sm">Integração Financeira</button>
+              <button type="button" id="btn-folha-esocial-periodicos" class="btn btn-outline btn-sm">Gerar eSocial Periódicos</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="folha-painel-resultado-enterprise" class="table-card hidden" style="margin-bottom: 1rem;">
+          <div class="table-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="folha-resultado-enterprise-titulo" style="font-size: 1rem; font-weight: 600;">Resultado Enterprise</h3>
+            <button type="button" id="btn-fechar-resultado-enterprise" class="btn btn-outline btn-sm">Fechar</button>
+          </div>
+          <div id="folha-resultado-enterprise-corpo" style="padding: 1rem; font-size: 0.88rem; overflow-x: auto;"></div>
+        </section>
+
         <!-- Tabela de Folhas de Pagamento -->
         <section class="table-card">
           <div class="table-responsive">
@@ -1913,11 +1943,12 @@
                     <th>Total Verbas</th>
                     <th>Multa FGTS</th>
                     <th>Status</th>
+                    <th class="text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-rescisoes">
                   <tr>
-                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">Carregando rescisões processadas...</td>
+                    <td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando rescisões processadas...</td>
                   </tr>
                 </tbody>
               </table>
@@ -2109,6 +2140,15 @@
                 </select>
               </div>
               <div class="form-group">
+                <label for="cnab-tipo-pagamento">Finalidade da Remessa</label>
+                <select id="cnab-tipo-pagamento" class="form-control">
+                  <option value="folha_mensal">Folha Mensal</option>
+                  <option value="decimo_terceiro">13º Salário</option>
+                  <option value="ferias">Férias</option>
+                  <option value="rescisao">Rescisão Contratual</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label for="cnab-competencia-input">Competência da Folha</label>
                 <input type="month" id="cnab-competencia-input" class="form-control" value="2026-03">
               </div>
@@ -2132,6 +2172,22 @@
                 Selecione os parâmetros e clique em "Gerar Remessa CNAB 240" para consolidar as contas bancárias dos colaboradores.
               </div>
               <pre id="cnab-conteudo-preview" style="background: #0f172a; color: #38bdf8; padding: 1rem; border-radius: 6px; font-size: 0.75rem; overflow-x: auto; max-height: 280px; display: none;"></pre>
+            </div>
+          </section>
+
+          <section class="table-card mt-3">
+            <div class="table-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="font-size: 1.1rem; font-weight: 600;">Processamento de Retorno Bancário CNAB 240 (RF-105)</h3>
+              <button id="btn-processar-retorno-cnab" class="btn btn-outline btn-sm" type="button">Processar Retorno Bancário</button>
+            </div>
+            <div class="p-3" style="padding: 1.25rem;">
+              <div class="form-group">
+                <label for="cnab-retorno-conteudo">Conteúdo do Arquivo de Retorno (.RET)</label>
+                <textarea id="cnab-retorno-conteudo" class="form-control" rows="4" placeholder="Cole as linhas do arquivo retorno CNAB 240 (ex: código 00 = liquidado)"></textarea>
+              </div>
+              <div id="cnab-retorno-resumo" style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.9rem;">
+                Nenhum arquivo de retorno processado nesta sessão.
+              </div>
             </div>
           </section>
         </div>
@@ -2885,27 +2941,27 @@
             <div class="colab-profile-header">
               <div class="colab-avatar" id="colab-avatar">👤</div>
               <div class="colab-details">
-                <h3 id="colab-nome-display">Colaborador Conectado</h3>
-                <p id="colab-cargo-display">Analista Operacional &bull; Matrícula: <strong id="colab-matricula-display">MAT-2026-001</strong></p>
+                <h3 id="colab-nome-display">Carregando colaborador...</h3>
+                <p id="colab-cargo-display">-- &bull; Matrícula: <strong id="colab-matricula-display">--</strong></p>
                 <div class="colab-tags">
-                  <span class="badge-status badge-calculada" id="colab-situacao-badge">Ativo (CLT)</span>
-                  <span class="colab-tag-info" id="colab-admissao-display">Admissão: 01/02/2024</span>
-                  <span class="colab-tag-info" id="colab-departamento-display">Departamento: Operações Industriais</span>
+                  <span class="badge-status badge-calculada" id="colab-situacao-badge">--</span>
+                  <span class="colab-tag-info" id="colab-admissao-display">Admissão: --</span>
+                  <span class="colab-tag-info" id="colab-departamento-display">Departamento: --</span>
                 </div>
               </div>
             </div>
             <div class="colab-kpis-row">
               <div class="colab-kpi-item">
                 <span class="colab-kpi-label">Saldo Banco de Horas</span>
-                <span class="colab-kpi-value text-success" id="colab-saldo-banco">+04:30h</span>
+                <span class="colab-kpi-value text-success" id="colab-saldo-banco">0h 00m</span>
               </div>
               <div class="colab-kpi-item">
                 <span class="colab-kpi-label">Dias de Férias Disponíveis</span>
-                <span class="colab-kpi-value" id="colab-ferias-saldo">30 dias</span>
+                <span class="colab-kpi-value" id="colab-ferias-saldo">--</span>
               </div>
               <div class="colab-kpi-item">
                 <span class="colab-kpi-label">Último Holerite</span>
-                <span class="colab-kpi-value text-primary" id="colab-ultimo-holerite">Competência 10/2026</span>
+                <span class="colab-kpi-value text-primary" id="colab-ultimo-holerite">--</span>
               </div>
             </div>
           </div>
@@ -2943,30 +2999,7 @@
                     </thead>
                     <tbody id="tbody-meus-holerites">
                       <tr>
-                        <td><strong>10/2026</strong></td>
-                        <td>Folha Mensal</td>
-                        <td>R$ 4.500,00</td>
-                        <td class="text-success">R$ 5.125,00</td>
-                        <td class="text-danger">R$ 1.025,40</td>
-                        <td><strong class="text-primary">R$ 4.099,60</strong></td>
-                        <td>
-                          <button class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('folha'); exibirToast('Selecione a competência para visualizar ou imprimir seu holerite.', 'info');">
-                            Visualizar / Imprimir
-                          </button>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td><strong>09/2026</strong></td>
-                        <td>Folha Mensal</td>
-                        <td>R$ 4.500,00</td>
-                        <td class="text-success">R$ 4.800,00</td>
-                        <td class="text-danger">R$ 960,00</td>
-                        <td><strong class="text-primary">R$ 3.840,00</strong></td>
-                        <td>
-                          <button class="btn btn-outline btn-sm" onclick="PlataformaManager.navegarPara('folha'); exibirToast('Selecione a competência 09/2026 para visualizar ou imprimir.', 'info');">
-                            Visualizar / Imprimir
-                          </button>
-                        </td>
+                        <td colspan="7" class="text-center text-muted" style="padding: 1.5rem;">Carregando holerites do servidor...</td>
                       </tr>
                     </tbody>
                   </table>
@@ -3000,24 +3033,7 @@
                     </thead>
                     <tbody id="tbody-meu-espelho-ponto">
                       <tr>
-                        <td>18/11/2026 (Hoje)</td>
-                        <td>08:00</td>
-                        <td>12:00</td>
-                        <td>13:00</td>
-                        <td>17:00</td>
-                        <td><strong>08:00h</strong></td>
-                        <td>00:00</td>
-                        <td><span class="badge-status badge-calculada">Regular</span></td>
-                      </tr>
-                      <tr>
-                        <td>17/11/2026</td>
-                        <td>08:02</td>
-                        <td>12:05</td>
-                        <td>13:00</td>
-                        <td>18:30</td>
-                        <td><strong>09:23h</strong></td>
-                        <td class="text-success">+01:23h</td>
-                        <td><span class="badge-status badge-calculada">Regular</span></td>
+                        <td colspan="8" class="text-center text-muted" style="padding: 1.5rem;">Carregando espelho de ponto...</td>
                       </tr>
                     </tbody>
                   </table>
@@ -3048,20 +3064,7 @@
                     </thead>
                     <tbody id="tbody-minhas-ferias">
                       <tr>
-                        <td>01/02/2024 a 31/01/2025</td>
-                        <td>31/12/2025</td>
-                        <td>30 dias</td>
-                        <td>20 dias (Abono 10d)</td>
-                        <td>0 dias</td>
-                        <td><span class="badge-status badge-paga">Quitadas</span></td>
-                      </tr>
-                      <tr>
-                        <td>01/02/2025 a 31/01/2026</td>
-                        <td>31/12/2026</td>
-                        <td>30 dias</td>
-                        <td>0 dias</td>
-                        <td><strong>30 dias</strong></td>
-                        <td><span class="badge-status badge-aberta">Disponíveis</span></td>
+                        <td colspan="6" class="text-center text-muted" style="padding: 1.5rem;">Carregando períodos aquisitivos...</td>
                       </tr>
                     </tbody>
                   </table>
@@ -3085,17 +3088,9 @@
                         <th>Download</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="tbody-meus-informes">
                       <tr>
-                        <td><strong>2025</strong></td>
-                        <td>2026</td>
-                        <td>R$ 58.400,00</td>
-                        <td>R$ 4.210,50</td>
-                        <td>
-                          <button class="btn btn-outline btn-sm" onclick="exibirToast('Comprovante anual de rendimentos IRPF 2026/2025 preparado para impressão.', 'success'); window.print();">
-                            Baixar Informe (PDF)
-                          </button>
-                        </td>
+                        <td colspan="5" class="text-center text-muted" style="padding: 1.5rem;">Consolidando rendimentos anuais...</td>
                       </tr>
                     </tbody>
                   </table>
@@ -3136,7 +3131,7 @@
               </div>
               <div class="metric-info">
                 <span class="metric-label">Equipe Sob Gestão</span>
-                <span class="metric-value" id="kpi-gestor-equipe-total">18</span>
+                <span class="metric-value" id="kpi-gestor-equipe-total">0</span>
                 <span class="metric-trend text-muted">Colaboradores ativos</span>
               </div>
             </div>
@@ -3150,8 +3145,8 @@
               </div>
               <div class="metric-info">
                 <span class="metric-label">Presentes Hoje</span>
-                <span class="metric-value text-success" id="kpi-gestor-presentes">16</span>
-                <span class="metric-trend text-success">88,8% de assiduidade</span>
+                <span class="metric-value text-success" id="kpi-gestor-presentes">0</span>
+                <span class="metric-trend text-success">Equipe ativa no posto</span>
               </div>
             </div>
 
@@ -3165,8 +3160,8 @@
               </div>
               <div class="metric-info">
                 <span class="metric-label">Em Férias</span>
-                <span class="metric-value text-warning" id="kpi-gestor-ferias">1</span>
-                <span class="metric-trend text-muted">Retorno previsto: 25/11</span>
+                <span class="metric-value text-warning" id="kpi-gestor-ferias">0</span>
+                <span class="metric-trend text-muted">Programações vigentes</span>
               </div>
             </div>
 
@@ -3178,7 +3173,7 @@
               </div>
               <div class="metric-info">
                 <span class="metric-label">Aprovações Pendentes</span>
-                <span class="metric-value text-danger" id="kpi-gestor-aprovacoes-pendentes">3</span>
+                <span class="metric-value text-danger" id="kpi-gestor-aprovacoes-pendentes">0</span>
                 <span class="metric-trend text-danger">Requer atenção do gestor</span>
               </div>
             </div>
@@ -3207,32 +3202,7 @@
                 </thead>
                 <tbody id="tbody-aprovacoes-gestor">
                   <tr>
-                    <td><input type="checkbox" class="chk-gestor-item" checked></td>
-                    <td><strong>Carlos Eduardo Mendes</strong><br><small class="text-muted">Operador de Moenda</small></td>
-                    <td><span class="badge-status badge-aberta">Ajuste de Ponto</span></td>
-                    <td>14/11/2026</td>
-                    <td>Esquecimento de registro no retorno do almoço (trabalho ininterrupto com supervisor)</td>
-                    <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
-                    <td>
-                      <div class="btn-group-actions">
-                        <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'Ajuste de ponto aprovado', true)">Aprovar</button>
-                        <button class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.processarAcaoGestor(this, 'Ajuste de ponto rejeitado', false)">Rejeitar</button>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td><input type="checkbox" class="chk-gestor-item" checked></td>
-                    <td><strong>Mariana Silva Costa</strong><br><small class="text-muted">Técnica de Laboratório</small></td>
-                    <td><span class="badge-status badge-calculada">Programação Férias</span></td>
-                    <td>01/12/2026 a 20/12/2026 (20d + Abono 10d)</td>
-                    <td>Programação de férias conforme escala departamental</td>
-                    <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
-                    <td>
-                      <div class="btn-group-actions">
-                        <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'Férias homologadas e enviadas ao DP', true)">Aprovar</button>
-                        <button class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.processarAcaoGestor(this, 'Solicitação de férias rejeitada', false)">Rejeitar</button>
-                      </div>
-                    </td>
+                    <td colspan="7" class="text-center text-muted" style="padding: 1.5rem;">Carregando pendências reais do departamento...</td>
                   </tr>
                 </tbody>
               </table>
@@ -3261,28 +3231,7 @@
                 </thead>
                 <tbody id="tbody-equipe-gestor">
                   <tr>
-                    <td><strong>Carlos Eduardo Mendes</strong></td>
-                    <td>MAT-00104</td>
-                    <td>Operador de Moenda</td>
-                    <td>220h (44h semanais)</td>
-                    <td><span class="badge-status badge-calculada">Presente</span></td>
-                    <td class="text-success">+02:15h</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Mariana Silva Costa</strong></td>
-                    <td>MAT-00112</td>
-                    <td>Técnica de Laboratório</td>
-                    <td>220h (44h semanais)</td>
-                    <td><span class="badge-status badge-calculada">Presente</span></td>
-                    <td class="text-success">+05:40h</td>
-                  </tr>
-                  <tr>
-                    <td><strong>João Paulo Rocha</strong></td>
-                    <td>MAT-00120</td>
-                    <td>Mecânico Industrial</td>
-                    <td>220h (44h semanais)</td>
-                    <td><span class="badge-status badge-aberta">Em Férias</span></td>
-                    <td>00:00h</td>
+                    <td colspan="6" class="text-center text-muted" style="padding: 1.5rem;">Carregando equipe subordinada...</td>
                   </tr>
                 </tbody>
               </table>

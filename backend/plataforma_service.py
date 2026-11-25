@@ -37,6 +37,11 @@ from backend.folha_calculos_2026 import (
 
 
 from .admissao_service import AdmissaoService
+from .afastamento_service import AfastamentoService
+from .esocial_eventos_trabalhistas import validar_xml_esocial_trabalhista
+from .ferias_service import FeriasService
+from .ponto_service import PontoService
+from .rescisao_service import RescisaoService
 from .plataforma_exceptions import (
     PlataformaAcessoNegadoException,
     PlataformaRecursoNaoEncontradoException,
@@ -51,6 +56,22 @@ class PlataformaService:
             db_path=self.db_path,
             auditoria_cb=self.registrar_auditoria,
             calcular_beneficio_cb=self._calcular_valores_beneficio,
+        )
+        self.ponto_service = PontoService(
+            db_path=self.db_path,
+            auditoria_cb=self.registrar_auditoria,
+        )
+        self.ferias_service = FeriasService(
+            db_path=self.db_path,
+            auditoria_cb=self.registrar_auditoria,
+        )
+        self.afastamento_service = AfastamentoService(
+            db_path=self.db_path,
+            auditoria_cb=self.registrar_auditoria,
+        )
+        self.rescisao_service = RescisaoService(
+            db_path=self.db_path,
+            auditoria_cb=self.registrar_auditoria,
         )
 
     def _conn(self):
@@ -243,386 +264,150 @@ class PlataformaService:
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 03: JORNADA E PONTO (RF-021 a RF-030)
     # ─────────────────────────────────────────────────────────────────────────
-    def registrar_marcacao_ponto(self, colaborador_id: int, data: str, hora: str, tipo_registro: str = "manual", coletor_id: Optional[str] = None) -> Dict[str, Any]:
-        """RF-021, RF-022, RN-012: Registra batida de ponto com preservação de origem e detecção de duplicidades."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # MÓDULO 03, 04 e 05: PONTO, AUSÊNCIAS, HORAS EXTRAS E ADICIONAIS (RF021-RF050)
+    # ─────────────────────────────────────────────────────────────────────────
+    def registrar_marcacao_ponto(self, colaborador_id: int, data: str, hora: str, tipo_registro: str = "manual", coletor_id: Optional[str] = None, tipo_marcacao: Optional[str] = None, usuario: str = "Sistema", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.registrar_marcacao_ponto(
+            colaborador_id, data, hora, tipo_registro=tipo_registro, coletor_id=coletor_id,
+            tipo_marcacao=tipo_marcacao, usuario=usuario, empresa_id=empresa_id,
+        )
 
-            # Verifica duplicidade idêntica (mesmo colaborador, data e hora)
-            cur.execute(f"SELECT COUNT(*) FROM marcacoes_ponto WHERE colaborador_id = {p} AND data = {p} AND hora = {p};", (colaborador_id, data, hora))
-            if cur.fetchone()[0] > 0:
-                return {"sucesso": False, "mensagem": "Marcação idêntica já registrada anteriormente (RF-022, idempotência)."}
+    def importar_arquivo_ponto(self, nome_arquivo: str, conteudo_texto_ou_base64: str, eh_base64: bool = False, usuario: str = "Operador Ponto", empresa_id: str = "a0000000-0000-0000-0000-000000000001") -> Dict[str, Any]:
+        return self.ponto_service.importar_arquivo_ponto(nome_arquivo, conteudo_texto_ou_base64, eh_base64=eh_base64, usuario=usuario, empresa_id=empresa_id)
 
-            sql_pg = f"""
-                INSERT INTO marcacoes_ponto (colaborador_id, data, hora, tipo_registro, id_coletor, criado_em)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p}) RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO marcacoes_ponto (colaborador_id, data, hora, tipo_registro, id_coletor, criado_em)
-                VALUES ({p}, {p}, {p}, {p}, {p}, {p});
-            """
-            params = (colaborador_id, data, hora, tipo_registro, coletor_id, agora)
-            m_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-            conn.commit()
+    def importar_marcacoes_api(self, marcacoes: List[Dict[str, Any]], idempotency_key: str, coletor_id: str = "API_EXTERNA", usuario: str = "Integração API", empresa_id: str = "a0000000-0000-0000-0000-000000000001") -> Dict[str, Any]:
+        return self.ponto_service.importar_marcacoes_api(marcacoes, idempotency_key, coletor_id=coletor_id, usuario=usuario, empresa_id=empresa_id)
 
-            return {"sucesso": True, "marcacao_id": m_id, "data": data, "hora": hora}
-        finally:
-            conn.close()
+    def validar_marcacoes_periodo(self, colaborador_id: int, competencia: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.validar_marcacoes_periodo(colaborador_id, competencia, empresa_id=empresa_id)
 
-    def solicitar_ajuste_ponto(self, colaborador_id: int, data: str, hora_ajustada: str, tipo_marcacao: str, motivo: str, solicitante: str, hora_original: Optional[str] = None) -> Dict[str, Any]:
-        """RF-025: Solicitação de ajuste de ponto com justificativa obrigatória."""
-        if not motivo or not motivo.strip():
-            raise PlataformaValidacaoException("Justificativa é estritamente obrigatória para ajuste manual de ponto (RF-025, RN-013).")
+    def listar_ajustes_ponto(self, empresa_id: Optional[str] = None, colaborador_id: Optional[int] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.ponto_service.listar_ajustes_ponto(empresa_id=empresa_id, colaborador_id=colaborador_id, status=status)
 
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    def solicitar_ajuste_ponto(self, colaborador_id: int, data: str, hora_ajustada: str, tipo_marcacao: str, motivo: str, solicitante: str, hora_original: Optional[str] = None, solicitante_usuario_id: Optional[int] = None, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.solicitar_ajuste_ponto(
+            colaborador_id, data, hora_ajustada, tipo_marcacao, motivo, solicitante,
+            hora_original=hora_original, solicitante_usuario_id=solicitante_usuario_id, empresa_id=empresa_id,
+        )
 
-            sql_pg = f"""
-                INSERT INTO ajustes_ponto (
-                    colaborador_id, data, hora_original, hora_ajustada, tipo_marcacao,
-                    motivo, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, 'pendente', {p}, {p}) RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO ajustes_ponto (
-                    colaborador_id, data, hora_original, hora_ajustada, tipo_marcacao,
-                    motivo, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, 'pendente', {p}, {p});
-            """
-            params = (colaborador_id, data, hora_original, hora_ajustada, tipo_marcacao, motivo.strip(), solicitante, agora)
-            ajuste_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-            conn.commit()
+    def aprovar_ajuste_ponto(self, ajuste_id: int, aprovador: str, aprovar: bool = True, motivo_reprovacao: Optional[str] = None, aprovador_usuario_id: Optional[int] = None, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.aprovar_ajuste_ponto(
+            ajuste_id, aprovador, aprovar=aprovar, motivo_reprovacao=motivo_reprovacao,
+            aprovador_usuario_id=aprovador_usuario_id, empresa_id=empresa_id,
+        )
 
-            self.registrar_auditoria(
-                modulo="Ponto",
-                operacao="inclusao",
-                registro_tipo="ajustes_ponto",
-                registro_id=ajuste_id,
-                usuario=solicitante,
-                detalhes=f"Ajuste solicitado para Colaborador {colaborador_id} em {data}: {hora_ajustada} ({motivo})",
-            )
+    def obter_espelho_ponto(self, colaborador_id: int, mes_ano: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.obter_espelho_ponto(colaborador_id, mes_ano, empresa_id=empresa_id)
 
-            return {"sucesso": True, "ajuste_id": ajuste_id, "mensagem": "Ajuste de ponto submetido para aprovação do gestor/DP."}
-        finally:
-            conn.close()
+    def registrar_ocorrencia_ponto(self, colaborador_id: int, data_inicio: str, data_fim: Optional[str], tipo_ocorrencia: str, justificativa: str, minutos_ausencia: int = 0, cid: Optional[str] = None, artigo_clt: Optional[str] = None, status: str = "aprovado", usuario: str = "DP / RH", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.registrar_ocorrencia(
+            colaborador_id, data_inicio, data_fim, tipo_ocorrencia, justificativa,
+            minutos_ausencia=minutos_ausencia, cid=cid, artigo_clt=artigo_clt,
+            status=status, usuario=usuario, empresa_id=empresa_id,
+        )
 
-    def aprovar_ajuste_ponto(self, ajuste_id: int, aprovador: str, aprovar: bool = True, motivo_reprovacao: Optional[str] = None) -> Dict[str, Any]:
-        """RF-026: Aprovação ou reprovação de ajuste de ponto com segregação de funções."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            cur.execute(f"SELECT * FROM ajustes_ponto WHERE id = {p};", (ajuste_id,))
-            ajuste = fetchone_dict(cur, self.db_path)
-            if not ajuste:
-                raise PlataformaRecursoNaoEncontradoException("Ajuste de ponto não encontrado.")
+    def listar_ocorrencias_ponto(self, empresa_id: Optional[str] = None, colaborador_id: Optional[int] = None, competencia: Optional[str] = None, tipo: Optional[str] = None, setor: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.ponto_service.listar_ocorrencias(empresa_id=empresa_id, colaborador_id=colaborador_id, competencia=competencia, tipo=tipo, setor=setor)
 
-            if ajuste["criado_por"].strip().lower() == aprovador.strip().lower():
-                raise PlataformaAcessoNegadoException("Autoaprovação de ajuste de ponto é proibida (RN-080, RF-026).")
+    def registrar_justificativa_ponto(self, colaborador_id: int, data_referencia: str, tipo: str, motivo: str, solicitante: str, cid: Optional[str] = None, dias_abono: int = 1, artigo_clt: Optional[str] = None, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.registrar_justificativa(colaborador_id, data_referencia, tipo, motivo, solicitante, cid=cid, dias_abono=dias_abono, artigo_clt=artigo_clt, empresa_id=empresa_id)
 
-            novo_status = "aprovado" if aprovar else "reprovado"
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    def listar_justificativas_ponto(self, empresa_id: Optional[str] = None, colaborador_id: Optional[int] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.ponto_service.listar_justificativas(empresa_id=empresa_id, colaborador_id=colaborador_id, status=status)
 
-            cur.execute(
-                f"""
-                UPDATE ajustes_ponto
-                SET status = {p}, aprovado_por = {p}, aprovado_em = {p}, motivo_reprovacao = {p}
-                WHERE id = {p};
-            """,
-                (novo_status, aprovador, agora, motivo_reprovacao, ajuste_id),
-            )
+    def decidir_justificativa_ponto(self, justificativa_id: int, aprovador: str, aprovar: bool = True, motivo_decisao: Optional[str] = None, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.decidir_justificativa(justificativa_id, aprovador, aprovar=aprovar, motivo_decisao=motivo_decisao, empresa_id=empresa_id)
 
-            if aprovar:
-                # Insere a marcação ajustada na base oficial preservando rastreio (RN-013)
-                cur.execute(
-                    f"""
-                    INSERT INTO marcacoes_ponto (colaborador_id, data, hora, tipo_registro, id_coletor, criado_em)
-                    VALUES ({p}, {p}, {p}, 'manual', 'ajuste_aprovado', {p});
-                """,
-                    (ajuste["colaborador_id"], ajuste["data"], ajuste["hora_ajustada"], agora),
-                )
+    def fechar_ponto_periodo(self, competencia: str, usuario: str = "DP / Gestor", empresa_id: str = "a0000000-0000-0000-0000-000000000001", filial_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.fechar_ponto_periodo(competencia, usuario=usuario, empresa_id=empresa_id, filial_id=filial_id)
 
-            conn.commit()
+    def reabrir_ponto_periodo(self, competencia: str, justificativa: str, usuario: str = "Administrador DP", empresa_id: str = "a0000000-0000-0000-0000-000000000001") -> Dict[str, Any]:
+        return self.ponto_service.reabrir_ponto_periodo(competencia, justificativa, usuario=usuario, empresa_id=empresa_id)
 
-            self.registrar_auditoria(
-                modulo="Ponto",
-                operacao="aprovacao" if aprovar else "alteracao",
-                registro_tipo="ajustes_ponto",
-                registro_id=ajuste_id,
-                usuario=aprovador,
-                detalhes=f"Ajuste {ajuste_id} {novo_status} por {aprovador}.",
-            )
+    def movimentar_banco_horas(self, colaborador_id: int, data_referencia: str, tipo_movimento: str, minutos: int, observacao: str = "", prazo_meses: int = 6, usuario: str = "DP", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.movimentar_banco_horas(colaborador_id, data_referencia, tipo_movimento, minutos, observacao=observacao, prazo_meses=prazo_meses, usuario=usuario, empresa_id=empresa_id)
 
-            return {"sucesso": True, "status": novo_status, "mensagem": f"Ajuste de ponto {novo_status} com sucesso."}
-        finally:
-            conn.close()
+    def obter_saldo_banco_horas(self, colaborador_id: int, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.obter_saldo_banco_horas(colaborador_id, empresa_id=empresa_id)
 
-    def obter_espelho_ponto(self, colaborador_id: int, mes_ano: str) -> Dict[str, Any]:
-        """RF-027: Espelho de ponto completo por colaborador e período (marcações, ajustes e ocorrências)."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
+    def relatorio_ausencias(self, empresa_id: str = "a0000000-0000-0000-0000-000000000001", competencia: Optional[str] = None, setor: Optional[str] = None, colaborador_id: Optional[int] = None, tipo: Optional[str] = None) -> Dict[str, Any]:
+        return self.ponto_service.relatorio_ausencias(empresa_id=empresa_id, competencia=competencia, setor=setor, colaborador_id=colaborador_id, tipo=tipo)
 
-            # Dados do colaborador
-            cur.execute(f"SELECT id, nome_completo, matricula, cargo, setor, salario_base FROM colaboradores WHERE id = {p};", (colaborador_id,))
-            colab = fetchone_dict(cur, self.db_path)
-            if not colab:
-                raise PlataformaRecursoNaoEncontradoException("Colaborador não encontrado.")
-
-            # Marcações do período
-            cur.execute(
-                f"""
-                SELECT * FROM marcacoes_ponto
-                WHERE colaborador_id = {p} AND data LIKE {p}
-                ORDER BY data ASC, hora ASC;
-            """,
-                (colaborador_id, f"{mes_ano}%"),
-            )
-            marcacoes = fetchall_dict(cur, self.db_path)
-
-            # Ocorrências do período
-            cur.execute(
-                f"""
-                SELECT * FROM ocorrencias_ponto
-                WHERE colaborador_id = {p} AND (data_inicio LIKE {p} OR data_fim LIKE {p})
-                ORDER BY data_inicio ASC;
-            """,
-                (colaborador_id, f"{mes_ano}%", f"{mes_ano}%"),
-            )
-            ocorrencias = fetchall_dict(cur, self.db_path)
-
-            # Ajustes do período
-            cur.execute(
-                f"""
-                SELECT * FROM ajustes_ponto
-                WHERE colaborador_id = {p} AND data LIKE {p}
-                ORDER BY data ASC;
-            """,
-                (colaborador_id, f"{mes_ano}%"),
-            )
-            ajustes = fetchall_dict(cur, self.db_path)
-
-            # Agrupa batidas por data
-            dias_map = {}
-            for m in marcacoes:
-                dt = m["data"]
-                if dt not in dias_map:
-                    dias_map[dt] = []
-                dias_map[dt].append(m["hora"][:5])
-
-            return {
-                "colaborador": colab,
-                "periodo": mes_ano,
-                "dias_trabalhados": len(dias_map),
-                "total_marcacoes": len(marcacoes),
-                "grade_dias": [{"data": k, "batidas": v} for k, v in sorted(dias_map.items())],
-                "ocorrencias": ocorrencias,
-                "ajustes": ajustes,
-            }
-        finally:
-            conn.close()
+    def calcular_medias_variaveis_colaborador(self, colaborador_id: int, ano: Optional[int] = None, ultimos_meses: int = 12) -> Dict[str, Any]:
+        return self.ponto_service.calcular_medias_variaveis_colaborador(colaborador_id, ano=ano, ultimos_meses=ultimos_meses)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 06: FÉRIAS (RF-051 a RF-060)
     # ─────────────────────────────────────────────────────────────────────────
+    def sincronizar_periodos_aquisitivos(
+        self, colaborador_id: int, data_referencia: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        return self.ferias_service.sincronizar_periodos_aquisitivos(colaborador_id, data_referencia=data_referencia)
+
+    def listar_periodos_aquisitivos(
+        self, colaborador_id: Optional[int] = None, empresa_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        return self.ferias_service.listar_periodos_aquisitivos(colaborador_id=colaborador_id, empresa_id=empresa_id)
+
     def programar_ferias(
         self,
         colaborador_id: int,
         data_inicio: str,
         dias_gozo: int,
         abono_pecuniario: bool = False,
+        dias_abono: Optional[int] = None,
         adiantar_13: bool = False,
         solicitante: str = "DP",
+        exigir_aviso_30d: bool = False,
+        incluir_medias_variaveis: bool = True,
+        gerar_esocial: bool = True,
     ) -> Dict[str, Any]:
-        """
-        RF-053, RF-054, RF-055, RN-029: Programação e cálculo de férias.
-        Verifica período concessivo, fracionamento mínimo (14d ou 5d), bloqueio 2 dias antes de feriado/DSR.
-        """
-        if dias_gozo < 5:
-            raise PlataformaValidacaoException("Período de férias não pode ser inferior a 5 dias corridos (RF-054, RN-029).")
+        """RF-051 a RF-060, RN-029: Delega programação e cálculo completo de férias para FeriasService."""
+        return self.ferias_service.programar_ferias(
+            colaborador_id=colaborador_id,
+            data_inicio=data_inicio,
+            dias_gozo=dias_gozo,
+            abono_pecuniario=abono_pecuniario,
+            dias_abono=dias_abono,
+            adiantar_13=adiantar_13,
+            solicitante=solicitante,
+            exigir_aviso_30d=exigir_aviso_30d,
+            incluir_medias_variaveis=incluir_medias_variaveis,
+            gerar_esocial=gerar_esocial,
+        )
 
-        dt_ini = datetime.strptime(data_inicio, "%Y-%m-%d")
-        # Início não pode ser em sexta-feira ou sábado se DSR for no domingo (2 dias antes do repouso semanal)
-        if dt_ini.weekday() in (4, 5):  # 4=Sexta, 5=Sábado
-            raise PlataformaValidacaoException("Início das férias não pode ocorrer nos 2 dias que antecedem o repouso semanal remunerado (art. 134 § 3º CLT, RF-053).")
+    def aprovar_ferias(self, ferias_id: int, aprovador: str, aprovar: bool = True, motivo: str = "") -> Dict[str, Any]:
+        return self.ferias_service.aprovar_ferias(ferias_id, aprovador, aprovar=aprovar, motivo=motivo)
 
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
+    def cancelar_ferias(self, ferias_id: int, motivo: str, usuario: str) -> Dict[str, Any]:
+        return self.ferias_service.cancelar_ferias(ferias_id, motivo, usuario)
 
-            # Busca período aquisitivo com saldo (cria automaticamente se colaborador ainda não possuir)
-            cur.execute(
-                f"""
-                SELECT * FROM periodos_aquisitivos
-                WHERE colaborador_id = {p} AND saldo_dias >= {p}
-                ORDER BY inicio_aquisitivo ASC LIMIT 1;
-            """,
-                (colaborador_id, dias_gozo),
-            )
-            pa = fetchone_dict(cur, self.db_path)
-            if not pa:
-                cur.execute(f"SELECT data_admissao FROM colaboradores WHERE id = {p};", (colaborador_id,))
-                row_adm = cur.fetchone()
-                if row_adm:
-                    dt_adm_str = row_adm[0] if isinstance(row_adm, tuple) else row_adm["data_admissao"]
-                    dt_fim_aq = (datetime.strptime(dt_adm_str[:10], "%Y-%m-%d") + timedelta(days=365)).strftime("%Y-%m-%d")
-                    dt_lim_conc = (datetime.strptime(dt_fim_aq, "%Y-%m-%d") + timedelta(days=365)).strftime("%Y-%m-%d")
-                    agora_pa = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    cur.execute(
-                        f"""
-                        INSERT INTO periodos_aquisitivos (
-                            colaborador_id, inicio_aquisitivo, fim_aquisitivo, limite_concessivo,
-                            faltas_injustificadas, dias_direito, dias_gozados, saldo_dias, situacao,
-                            criado_em, atualizado_em
-                        ) VALUES ({p}, {p}, {p}, {p}, 0, 30, 0, 30, 'adquirido', {p}, {p});
-                    """,
-                        (colaborador_id, dt_adm_str[:10], dt_fim_aq, dt_lim_conc, agora_pa, agora_pa),
-                    )
-                    conn.commit()
-                    cur.execute(
-                        f"SELECT * FROM periodos_aquisitivos WHERE colaborador_id = {p} AND saldo_dias >= {p} ORDER BY inicio_aquisitivo ASC LIMIT 1;",
-                        (colaborador_id, dias_gozo),
-                    )
-                    pa = fetchone_dict(cur, self.db_path)
-            if not pa:
-                raise PlataformaValidacaoException("Colaborador não possui período aquisitivo com saldo suficiente de dias para esta solicitação.")
+    def registrar_pagamento_ferias(self, ferias_id: int, data_pagamento: str, usuario: str) -> Dict[str, Any]:
+        return self.ferias_service.registrar_pagamento_ferias(ferias_id, data_pagamento, usuario)
 
-            # Busca remuneração do colaborador
-            cur.execute(f"SELECT salario_base FROM colaboradores WHERE id = {p};", (colaborador_id,))
-            salario = to_d(cur.fetchone()[0])
+    def gerar_documentos_ferias_pdf(self, ferias_id: int, tipo_documento: str = "aviso") -> Dict[str, Any]:
+        return self.ferias_service.gerar_documentos_ferias_pdf(ferias_id, tipo_documento=tipo_documento)
 
-            # Dias de abono pecuniário (máx 10 dias / 1/3)
-            dias_abono = 10 if abono_pecuniario else 0
-            if dias_gozo + dias_abono > pa["saldo_dias"]:
-                raise PlataformaValidacaoException(f"Soma dos dias de gozo ({dias_gozo}) e abono ({dias_abono}) ultrapassa saldo disponível ({pa['saldo_dias']} dias).")
+    def integrar_ferias_folha(self, ferias_id: int, competencia: str, usuario: str = "DP") -> Dict[str, Any]:
+        return self.ferias_service.integrar_ferias_folha(ferias_id, competencia, usuario=usuario)
 
-            dt_fim = (dt_ini + timedelta(days=dias_gozo - 1)).strftime("%Y-%m-%d")
-            dt_limite_pag = (dt_ini - timedelta(days=2)).strftime("%Y-%m-%d")
-            aviso_dt = (dt_ini - timedelta(days=30)).strftime("%Y-%m-%d")
+    def programar_ferias_coletivas(
+        self,
+        data_inicio: str,
+        dias_gozo: int,
+        setor: Optional[str] = None,
+        empresa_id: Optional[str] = None,
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        return self.ferias_service.programar_ferias_coletivas(
+            data_inicio=data_inicio, dias_gozo=dias_gozo, setor=setor, empresa_id=empresa_id, usuario=usuario
+        )
 
-            # Cálculo dos valores
-            valor_dia = salario / Decimal("30.00")
-            valor_ferias = round2(Decimal(str(dias_gozo)) * valor_dia)
-            valor_terco = round2(valor_ferias / Decimal("3.00"))
-            valor_abono = round2(Decimal(str(dias_abono)) * valor_dia) if abono_pecuniario else Decimal("0.00")
-            valor_terco_abono = round2(valor_abono / Decimal("3.00")) if abono_pecuniario else Decimal("0.00")
-
-            # Tributação de férias (INSS e IRRF)
-            base_inss = valor_ferias + valor_terco
-            inss_ferias, _, _, _ = calcular_inss_2026(base_inss)
-            irrf_ferias, _, _, _, _ = calcular_irrf_2026(rendimento_bruto=base_inss, desconto_inss=inss_ferias)
-
-            bruto = valor_ferias + valor_terco + valor_abono + valor_terco_abono
-            liquido = max(Decimal("0.00"), bruto - inss_ferias - irrf_ferias)
-
-            # Verifica se está vencido o concessivo (paga em dobro — RF-052, RN-027)
-            em_dobro = 0
-            if data_inicio > pa["limite_concessivo"]:
-                em_dobro = 1
-                valor_ferias = valor_ferias * Decimal("2.00")
-                valor_terco = valor_terco * Decimal("2.00")
-                liquido = valor_ferias + valor_terco + valor_abono + valor_terco_abono - inss_ferias - irrf_ferias
-
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sql_pg = f"""
-                INSERT INTO ferias_programadas (
-                    colaborador_id, periodo_aquisitivo_id, data_inicio, data_fim, dias_gozo,
-                    abono_pecuniario, dias_abono, adiantar_decimo, aviso_ferias_emitido,
-                    data_pagamento_limite, valor_ferias, valor_terco, valor_abono,
-                    valor_terco_abono, desconto_inss, desconto_irrf, valor_liquido,
-                    em_dobro, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'solicitada', {p}, {p})
-                RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO ferias_programadas (
-                    colaborador_id, periodo_aquisitivo_id, data_inicio, data_fim, dias_gozo,
-                    abono_pecuniario, dias_abono, adiantar_decimo, aviso_ferias_emitido,
-                    data_pagamento_limite, valor_ferias, valor_terco, valor_abono,
-                    valor_terco_abono, desconto_inss, desconto_irrf, valor_liquido,
-                    em_dobro, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'solicitada', {p}, {p});
-            """
-            params = (
-                colaborador_id,
-                pa["id"],
-                data_inicio,
-                dt_fim,
-                dias_gozo,
-                1 if abono_pecuniario else 0,
-                dias_abono,
-                1 if adiantar_13 else 0,
-                aviso_dt,
-                dt_limite_pag,
-                float(valor_ferias),
-                float(valor_terco),
-                float(valor_abono),
-                float(valor_terco_abono),
-                float(inss_ferias),
-                float(irrf_ferias),
-                float(liquido),
-                em_dobro,
-                solicitante,
-                agora,
-            )
-            ferias_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-
-            conn.commit()
-
-            self.registrar_auditoria(
-                modulo="Ferias",
-                operacao="inclusao",
-                registro_tipo="ferias_programadas",
-                registro_id=ferias_id,
-                usuario=solicitante,
-                detalhes=f"Férias programadas para Colab {colaborador_id}: {data_inicio} a {dt_fim} ({dias_gozo} dias) - Líquido R$ {liquido:.2f}",
-            )
-
-            return {
-                "sucesso": True,
-                "ferias_id": ferias_id,
-                "data_inicio": data_inicio,
-                "data_fim": dt_fim,
-                "data_limite_pagamento": dt_limite_pag,
-                "valor_ferias": float(valor_ferias),
-                "valor_terco": float(valor_terco),
-                "valor_abono": float(valor_abono),
-                "valor_liquido": float(liquido),
-                "em_dobro": bool(em_dobro),
-            }
-        finally:
-            conn.close()
-
-    def listar_ferias(self, colaborador_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    def listar_ferias(
+        self, colaborador_id: Optional[int] = None, empresa_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Lista histórico e programações de férias."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            query = """
-                SELECT f.*, c.nome_completo, c.matricula, c.setor,
-                       pa.inicio_aquisitivo, pa.fim_aquisitivo, pa.limite_concessivo
-                FROM ferias_programadas f
-                JOIN colaboradores c ON c.id = f.colaborador_id
-                LEFT JOIN periodos_aquisitivos pa ON pa.id = f.periodo_aquisitivo_id
-                WHERE 1=1
-            """
-            params = []
-            if colaborador_id:
-                query += f" AND f.colaborador_id = {self._p()}"
-                params.append(colaborador_id)
-            query += " ORDER BY f.data_inicio DESC"
-            cur.execute(query, tuple(params))
-            return fetchall_dict(cur, self.db_path)
-        finally:
-            conn.close()
+        return self.ferias_service.listar_ferias(colaborador_id=colaborador_id, empresa_id=empresa_id, status=status)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 07: AFASTAMENTOS (RF-061 a RF-070)
@@ -634,137 +419,80 @@ class PlataformaService:
         data_inicio: str,
         data_fim_prevista: str,
         cid: Optional[str] = None,
+        subtipo_licenca: Optional[str] = None,
+        cat_id: Optional[int] = None,
+        observacoes: Optional[str] = None,
         usuario: str = "DP",
     ) -> Dict[str, Any]:
-        """
-        RF-061 a RF-070, RN-032 a RN-035: Registro de afastamento temporário.
-        Auxílio-doença: 15 dias pela empresa, 16º+ INSS.
-        Acidente de trabalho: CAT obrigatória, estabilidade 12 meses.
-        Maternidade: 120 dias, estabilidade até 5 meses pós-parto.
-        """
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """RF-061 a RF-070, RN-032 a RN-035: Delega registro e regras previdenciárias/eSocial para AfastamentoService."""
+        return self.afastamento_service.registrar_afastamento(
+            colaborador_id=colaborador_id,
+            tipo=tipo,
+            data_inicio=data_inicio,
+            data_fim_prevista=data_fim_prevista,
+            cid=cid,
+            subtipo_licenca=subtipo_licenca,
+            cat_id=cat_id,
+            observacoes=observacoes,
+            usuario=usuario,
+        )
 
-            dt_ini = datetime.strptime(data_inicio, "%Y-%m-%d")
-            dt_fim = datetime.strptime(data_fim_prevista, "%Y-%m-%d")
-            dias_totais = (dt_fim - dt_ini).days + 1
+    def prorrogar_afastamento(
+        self,
+        afastamento_id: int,
+        nova_data_fim: str,
+        motivo: str,
+        cid: Optional[str] = None,
+        documento_ref: Optional[str] = None,
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        return self.afastamento_service.prorrogar_afastamento(
+            afastamento_id=afastamento_id,
+            nova_data_fim=nova_data_fim,
+            motivo=motivo,
+            cid=cid,
+            documento_ref=documento_ref,
+            usuario=usuario,
+        )
 
-            dias_empresa = min(15, dias_totais) if tipo in ("doenca", "acidente_trabalho") else dias_totais
-            dias_inss = max(0, dias_totais - 15) if tipo in ("doenca", "acidente_trabalho") else 0
-            exige_aso_retorno = 1 if dias_totais >= 30 else 0
+    def registrar_retorno_afastamento(
+        self,
+        afastamento_id: int,
+        data_retorno: str,
+        aso_id: Optional[int] = None,
+        usuario: str = "SST / DP",
+    ) -> Dict[str, Any]:
+        return self.afastamento_service.registrar_retorno_afastamento(
+            afastamento_id=afastamento_id,
+            data_retorno=data_retorno,
+            aso_id=aso_id,
+            usuario=usuario,
+        )
 
-            # Estabilidade legal (RN-032)
-            estabilidade_fim = None
-            if tipo == "acidente_trabalho":
-                estabilidade_fim = (dt_fim + timedelta(days=365)).strftime("%Y-%m-%d")
-            elif tipo == "maternidade":
-                estabilidade_fim = (dt_fim + timedelta(days=150)).strftime("%Y-%m-%d")
+    def relatorio_afastamentos(
+        self,
+        empresa_id: Optional[str] = None,
+        tipo: Optional[str] = None,
+        setor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.afastamento_service.relatorio_afastamentos(
+            empresa_id=empresa_id, tipo=tipo, setor=setor
+        )
 
-            sql_pg = f"""
-                INSERT INTO afastamentos (
-                    colaborador_id, tipo, data_inicio, data_fim_prevista, cid,
-                    estabilidade_fim, dias_empresa, dias_inss, exige_aso_retorno,
-                    status_esocial, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pendente', {p}, {p})
-                RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO afastamentos (
-                    colaborador_id, tipo, data_inicio, data_fim_prevista, cid,
-                    estabilidade_fim, dias_empresa, dias_inss, exige_aso_retorno,
-                    status_esocial, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'pendente', {p}, {p});
-            """
-            params = (
-                colaborador_id,
-                tipo,
-                data_inicio,
-                data_fim_prevista,
-                cid,
-                estabilidade_fim,
-                dias_empresa,
-                dias_inss,
-                exige_aso_retorno,
-                usuario,
-                agora,
-            )
-            afast_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-
-            # Gera evento eSocial S-2230
-            xml_s2230 = f"""<eSocial><evtAfastTemp><ideEmpregador><nrInsc>12345678000190</nrInsc></ideEmpregador><ideVinculo><cpfTrab>00000000000</cpfTrab></ideVinculo><iniAfastamento><dtIniAfast>{data_inicio}</dtIniAfast><codMotAfast>{tipo}</codMotAfast></iniAfastamento></evtAfastTemp></eSocial>"""
-            cur.execute(
-                f"""
-                INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em)
-                VALUES ('a0000000-0000-0000-0000-000000000001', 'S-2230', {p}, 'homologacao', 'validado', {p}, {p}, {p});
-            """,
-                (str(afast_id), xml_s2230, usuario, agora),
-            )
-
-            # Se exige ASO de retorno, cadastra pendência de retorno na Central (RF-151, RN-035)
-            if exige_aso_retorno:
-                cur.execute(
-                    f"""
-                    INSERT INTO pendencias_operacionais (
-                        empresa_id, modulo, tipo_pendencia, titulo, descricao, severidade,
-                        colaborador_id, prazo_limite, responsavel, status, criado_em
-                    ) VALUES ('a0000000-0000-0000-0000-000000000001', 'Afastamentos', 'retorno_afastamento',
-                             {p}, {p}, 'alta', {p}, {p}, 'SST / DP', 'pendente', {p});
-                """,
-                    (
-                        f"Retorno de Afastamento (ASO Obrigatório) — Colaborador {colaborador_id}",
-                        f"Afastamento >= 30 dias ({dias_totais} dias) exige realização e validação de ASO de Retorno antes da reativação no ponto e folha.",
-                        colaborador_id,
-                        data_fim_prevista,
-                        agora,
-                    ),
-                )
-
-            conn.commit()
-
-            self.registrar_auditoria(
-                modulo="Afastamentos",
-                operacao="inclusao",
-                registro_tipo="afastamentos",
-                registro_id=afast_id,
-                usuario=usuario,
-                detalhes=f"Afastamento {tipo} registrado para Colab {colaborador_id} de {data_inicio} a {data_fim_prevista}",
-            )
-
-            return {
-                "sucesso": True,
-                "afastamento_id": afast_id,
-                "dias_totais": dias_totais,
-                "dias_empresa": dias_empresa,
-                "dias_inss": dias_inss,
-                "estabilidade_ate": estabilidade_fim,
-                "exige_aso_retorno": bool(exige_aso_retorno),
-            }
-        finally:
-            conn.close()
-
-    def listar_afastamentos(self, colaborador_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    def listar_afastamentos(
+        self,
+        colaborador_id: Optional[int] = None,
+        empresa_id: Optional[str] = None,
+        tipo: Optional[str] = None,
+        apenas_ativos: bool = False,
+    ) -> List[Dict[str, Any]]:
         """Lista afastamentos registrados."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            query = """
-                SELECT a.*, c.nome_completo, c.matricula, c.setor
-                FROM afastamentos a
-                JOIN colaboradores c ON c.id = a.colaborador_id
-                WHERE 1=1
-            """
-            params = []
-            if colaborador_id:
-                query += f" AND a.colaborador_id = {self._p()}"
-                params.append(colaborador_id)
-            query += " ORDER BY a.data_inicio DESC"
-            cur.execute(query, tuple(params))
-            return fetchall_dict(cur, self.db_path)
-        finally:
-            conn.close()
+        return self.afastamento_service.listar_afastamentos(
+            colaborador_id=colaborador_id,
+            empresa_id=empresa_id,
+            tipo=tipo,
+            apenas_ativos=apenas_ativos,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 11: RESCISÃO (RF-106 a RF-120)
@@ -779,217 +507,43 @@ class PlataformaService:
         ferias_vencidas_dias: int = 0,
         meses_trabalhados_ano: int = 0,
         saldo_fgts: Any = Decimal("0.00"),
+        dias_restantes_contrato_prazo: int = 0,
+        desconto_faltas_valor: Any = Decimal("0.00"),
+        exigir_aso_demissional: bool = False,
+        incluir_medias_variaveis: bool = True,
         usuario: str = "DP",
         simular: bool = False,
     ) -> Dict[str, Any]:
-        """
-        RF-106 a RF-120, RN-054 a RN-060: Abertura e cálculo de rescisão trabalhista.
-        Valida estabilidades ativas e afastamentos antes de prosseguir.
-        Calcula verbas estritas por modalidade, multa FGTS (40% ou 20%) e prazo legal de 10 dias.
-        """
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
+        """RF-106 a RF-120, RN-054 a RN-060: Delega cálculo e registro rescisório para RescisaoService."""
+        return self.rescisao_service.registrar_rescisao(
+            colaborador_id=colaborador_id,
+            tipo_rescisao=tipo_rescisao,
+            data_afastamento=data_afastamento,
+            tipo_aviso=tipo_aviso,
+            saldo_salario_dias=saldo_salario_dias,
+            ferias_vencidas_dias=ferias_vencidas_dias,
+            meses_trabalhados_ano=meses_trabalhados_ano,
+            saldo_fgts=saldo_fgts,
+            dias_restantes_contrato_prazo=dias_restantes_contrato_prazo,
+            desconto_faltas_valor=desconto_faltas_valor,
+            exigir_aso_demissional=exigir_aso_demissional,
+            incluir_medias_variaveis=incluir_medias_variaveis,
+            usuario=usuario,
+            simular=simular,
+        )
 
-            # Busca dados do colaborador
-            cur.execute(f"SELECT * FROM colaboradores WHERE id = {p};", (colaborador_id,))
-            colab = fetchone_dict(cur, self.db_path)
-            if not colab:
-                raise PlataformaRecursoNaoEncontradoException("Colaborador não encontrado.")
+    def homologar_rescisao(self, rescisao_id: int, homologador: str, usuario_dp_observacao: str = "") -> Dict[str, Any]:
+        return self.rescisao_service.homologar_rescisao(rescisao_id, homologador, usuario_dp_observacao=usuario_dp_observacao)
 
-            if colab["situacao"] == "inativo":
-                raise PlataformaValidacaoException("Colaborador já se encontra inativo / rescindido.")
+    def registrar_pagamento_rescisao(self, rescisao_id: int, data_pagamento: str, usuario: str = "Financeiro") -> Dict[str, Any]:
+        return self.rescisao_service.registrar_pagamento_rescisao(rescisao_id, data_pagamento, usuario=usuario)
 
-            # Verifica estabilidade ativa (RF-106, RN-079)
-            cur.execute(
-                f"""
-                SELECT estabilidade_fim, tipo FROM afastamentos
-                WHERE colaborador_id = {p} AND estabilidade_fim >= {p}
-                ORDER BY estabilidade_fim DESC LIMIT 1;
-            """,
-                (colaborador_id, data_afastamento),
-            )
-            estab = fetchone_dict(cur, self.db_path)
-            if estab and tipo_rescisao in ("sem_justa_causa", "acordo_484a"):
-                raise PlataformaValidacaoException(
-                    f"Atenção: Colaborador possui ESTABILIDADE PROVISÓRIA ATIVA até {estab['estabilidade_fim']} decorrente de {estab['tipo']}. Rescisão sem justa causa bloqueada (RF-106)."
-                )
+    def gerar_documentos_rescisao_pdf(self, rescisao_id: int, tipo_documento: str = "trct") -> Dict[str, Any]:
+        return self.rescisao_service.gerar_documentos_rescisao_pdf(rescisao_id, tipo_documento=tipo_documento)
 
-            # Executa o cálculo oficial de rescisão
-            tipo_norm = str(tipo_rescisao or "sem_justa_causa").strip().lower()
-            if tipo_norm == "acordo_mutuo":
-                tipo_norm = "acordo_484a"
-            elif tipo_norm == "termino_contrato":
-                tipo_norm = "termino_experiencia"
-
-            if not saldo_salario_dias:
-                try:
-                    saldo_salario_dias = min(30, int(data_afastamento.split("-")[2]))
-                except Exception:
-                    saldo_salario_dias = 15
-            if not meses_trabalhados_ano:
-                try:
-                    meses_trabalhados_ano = int(data_afastamento.split("-")[1])
-                except Exception:
-                    meses_trabalhados_ano = 3
-
-            calc = calcular_rescisao_oficial(
-                tipo_rescisao=tipo_norm,
-                salario_base=colab["salario_base"],
-                data_admissao=colab["data_admissao"],
-                data_afastamento=data_afastamento,
-                tipo_aviso=tipo_aviso,
-                saldo_salario_dias=saldo_salario_dias,
-                ferias_vencidas_dias=ferias_vencidas_dias,
-                meses_trabalhados_ano=meses_trabalhados_ano,
-                saldo_fgts_estimado=saldo_fgts,
-            )
-
-            dados_resumo = {
-                "saldo_salario": float(calc["saldo_salario"]),
-                "aviso_previo_valor": float(calc["aviso_previo_indenizado"]),
-                "dias_aviso_previo": calc["dias_aviso_previo"],
-                "decimo_terceiro_proporcional": float(calc["decimo_terceiro_proporcional"]),
-                "ferias_totais": float(to_d(calc["ferias_vencidas_com_terco"]) + to_d(calc["ferias_proporcionais_com_terco"])),
-                "percentual_multa_fgts": calc["multa_fgts_percentual"],
-                "multa_fgts": float(calc["multa_fgts_valor"]),
-                "data_limite_pagamento": calc["data_limite_pagamento"],
-                "total_rescisao_liquido": float(calc["valor_liquido"]),
-            }
-
-            if simular:
-                return {
-                    "sucesso": True,
-                    "simulado": True,
-                    "colaborador_nome": colab["nome_completo"],
-                    "valor_liquido": float(calc["valor_liquido"]),
-                    "data_limite_pagamento": calc["data_limite_pagamento"],
-                    "calculo": calc,
-                    "dados": dados_resumo,
-                }
-
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sql_pg = f"""
-                INSERT INTO rescisoes (
-                    colaborador_id, tipo_rescisao, data_comunicacao, data_afastamento,
-                    tipo_aviso_previo, dias_aviso_previo, saldo_salario_dias, saldo_salario_valor,
-                    aviso_indenizado_valor, ferias_vencidas_valor, ferias_prop_dias, ferias_prop_valor,
-                    decimo_prop_avos, decimo_prop_valor, multa_fgts_percentual, multa_fgts_valor,
-                    total_proventos, desconto_inss, desconto_aviso_previo, total_descontos,
-                    valor_liquido, data_limite_pagamento, seguro_desemprego_gerado, trct_gerado,
-                    status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 1, 'calculada', {p}, {p})
-                RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO rescisoes (
-                    colaborador_id, tipo_rescisao, data_comunicacao, data_afastamento,
-                    tipo_aviso_previo, dias_aviso_previo, saldo_salario_dias, saldo_salario_valor,
-                    aviso_indenizado_valor, ferias_vencidas_valor, ferias_prop_dias, ferias_prop_valor,
-                    decimo_prop_avos, decimo_prop_valor, multa_fgts_percentual, multa_fgts_valor,
-                    total_proventos, desconto_inss, desconto_aviso_previo, total_descontos,
-                    valor_liquido, data_limite_pagamento, seguro_desemprego_gerado, trct_gerado,
-                    status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 1, 'calculada', {p}, {p});
-            """
-            params = (
-                colaborador_id,
-                tipo_rescisao,
-                agora[:10],
-                data_afastamento,
-                tipo_aviso,
-                calc["dias_aviso_previo"],
-                saldo_salario_dias,
-                float(calc["saldo_salario"]),
-                float(calc["aviso_previo_indenizado"]),
-                float(calc["ferias_vencidas_com_terco"]),
-                meses_trabalhados_ano,
-                float(calc["ferias_proporcionais_com_terco"]),
-                meses_trabalhados_ano,
-                float(calc["decimo_terceiro_proporcional"]),
-                calc["multa_fgts_percentual"],
-                float(calc["multa_fgts_valor"]),
-                float(calc["total_proventos"]),
-                float(calc["desconto_inss"]),
-                float(calc["desconto_aviso_previo"]),
-                float(calc["total_descontos"]),
-                float(calc["valor_liquido"]),
-                calc["data_limite_pagamento"],
-                1 if calc["seguro_desemprego_elegivel"] else 0,
-                usuario,
-                agora,
-            )
-            resc_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-
-            # Inativa o vínculo do colaborador (RT-02, RF-004)
-            cur.execute(f"UPDATE colaboradores SET situacao = 'inativo', atualizado_em = {p} WHERE id = {p};", (agora, colaborador_id))
-
-            # Gera evento eSocial S-2299 (Desligamento)
-            xml_s2299 = f"""<eSocial><evtDeslig><ideEmpregador><nrInsc>12345678000190</nrInsc></ideEmpregador><ideVinculo><cpfTrab>{colab['cpf']}</cpfTrab><matricula>{colab['matricula']}</matricula></ideVinculo><infoDeslig><dtDeslig>{data_afastamento}</dtDeslig><mtvDeslig>{tipo_rescisao}</mtvDeslig><verbasResc><vrLiq>{calc['valor_liquido']}</vrLiq></verbasResc></infoDeslig></evtDeslig></eSocial>"""
-            cur.execute(
-                f"""
-                INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em)
-                VALUES ('a0000000-0000-0000-0000-000000000001', 'S-2299', {p}, 'homologacao', 'validado', {p}, {p}, {p});
-            """,
-                (str(resc_id), xml_s2299, usuario, agora),
-            )
-
-            # Cria alerta de prazo de pagamento na Central (RF-151, RN-079: 10 dias corridos)
-            cur.execute(
-                f"""
-                INSERT INTO pendencias_operacionais (
-                    empresa_id, modulo, tipo_pendencia, titulo, descricao, severidade,
-                    colaborador_id, prazo_limite, responsavel, status, criado_em
-                ) VALUES ('a0000000-0000-0000-0000-000000000001', 'Rescisão', 'rescisao_prazo',
-                         {p}, {p}, 'critica', {p}, {p}, 'Financeiro / DP', 'pendente', {p});
-            """,
-                (
-                    f"Prazo Pagamento Rescisão — {colab['nome_completo']} ({calc['data_limite_pagamento']})",
-                    f"Pagamento de verbas rescisórias no valor de R$ {calc['valor_liquido']:.2f} deve ser quitado até {calc['data_limite_pagamento']} sob pena de multa de 1 salário (art. 477 da CLT).",
-                    colaborador_id,
-                    calc["data_limite_pagamento"],
-                    agora,
-                ),
-            )
-
-            conn.commit()
-
-            self.registrar_auditoria(
-                modulo="Rescisao",
-                operacao="inclusao",
-                registro_tipo="rescisoes",
-                registro_id=resc_id,
-                usuario=usuario,
-                detalhes=f"Rescisão {tipo_rescisao} calculada para {colab['nome_completo']}: Líquido R$ {calc['valor_liquido']:.2f}. Colaborador inativado.",
-            )
-
-            return {
-                "sucesso": True,
-                "rescisao_id": resc_id,
-                "colaborador_nome": colab["nome_completo"],
-                "valor_liquido": float(calc["valor_liquido"]),
-                "data_limite_pagamento": calc["data_limite_pagamento"],
-                "calculo": calc,
-                "dados": dados_resumo,
-            }
-        finally:
-            conn.close()
-
-    def listar_rescisoes(self) -> List[Dict[str, Any]]:
+    def listar_rescisoes(self, empresa_id: Optional[str] = None, colaborador_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Lista histórico de rescisões contratuais."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT r.*, c.nome_completo, c.matricula, c.cargo, c.setor
-                FROM rescisoes r
-                JOIN colaboradores c ON c.id = r.colaborador_id
-                ORDER BY r.id DESC;
-            """)
-            return fetchall_dict(cur, self.db_path)
-        finally:
-            conn.close()
+        return self.rescisao_service.listar_rescisoes(empresa_id=empresa_id, colaborador_id=colaborador_id)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 12: SST — SAÚDE E SEGURANÇA DO TRABALHO (RF-121 a RF-130)
@@ -1244,7 +798,9 @@ class PlataformaService:
             conn.close()
 
     def transmitir_lote_esocial(self, evento_ids: List[int], usuario: str) -> Dict[str, Any]:
-        """RF-134, RN-065: Transmissão em lote e recebimento de recibos de protocolo."""
+        """RF-134, RN-065: Validação real de schema XML e simulação transparente (sem recibos fictícios)."""
+        import xml.etree.ElementTree as ET
+
         conn = self._conn()
         try:
             cur = conn.cursor()
@@ -1252,25 +808,62 @@ class PlataformaService:
             agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not evento_ids:
-                cur.execute("SELECT id FROM esocial_eventos WHERE status != 'aceito';")
-                evento_ids = [r[0] if isinstance(r, tuple) else r["id"] for r in cur.fetchall()]
-
-            processados = 0
-            ultimo_prot = f"SIM-PROT-{int(datetime.now().timestamp())}"
-            for eid in evento_ids:
-                ultimo_prot = f"SIM-PROT-{int(datetime.now().timestamp())}-{eid}"
+                cur.execute("SELECT id, tipo_evento, xml_conteudo FROM esocial_eventos WHERE status != 'aceito';")
+                evs = fetchall_dict(cur, self.db_path)
+            else:
+                ph_list = ",".join([p] * len(evento_ids))
                 cur.execute(
-                    f"""
-                    UPDATE esocial_eventos
-                    SET status = 'validado', protocolo_envio = {p}, numero_recibo = NULL,
-                        codigo_resposta = 'SIM-200',
-                        mensagem_resposta = '[SIMULAÇÃO/HOMOLOGAÇÃO LOCAL] Validação estrutural de schema XML concluída com sucesso internamente. Aguardando transmissão oficial via Web Services eSocial com Certificado Digital A1/A3 ICP-Brasil.',
-                        enviado_em = NULL, processado_em = {p}
-                    WHERE id = {p};
-                """,
-                    (ultimo_prot, agora, eid),
+                    f"SELECT id, tipo_evento, xml_conteudo FROM esocial_eventos WHERE id IN ({ph_list});",
+                    tuple(int(x) for x in evento_ids),
                 )
-                processados += 1
+                evs = fetchall_dict(cur, self.db_path)
+
+            validos = 0
+            invalidos = 0
+            erros_detalhes = []
+            ultimo_prot = f"LOCAL-VAL-{int(datetime.now().timestamp())}"
+            for ev in evs:
+                eid = int(ev["id"])
+                tipo_ev = str(ev.get("tipo_evento") or "").upper().strip()
+                xml_str = ev.get("xml_conteudo") or ""
+                if tipo_ev in ("S-2190", "S-2200", "S-2230", "S-1200", "S-1210", "S-1299", "S-2299"):
+                    ok_xml, errs = validar_xml_esocial_trabalhista(tipo_ev, xml_str)
+                else:
+                    try:
+                        ET.fromstring(xml_str.strip())
+                        ok_xml, errs = True, []
+                    except Exception as exc_xml:
+                        ok_xml, errs = False, [f"XML malformado: {exc_xml}"]
+
+                ultimo_prot = f"LOCAL-VAL-{int(datetime.now().timestamp())}-{eid}"
+                if ok_xml:
+                    cur.execute(
+                        f"""
+                        UPDATE esocial_eventos
+                        SET status = 'validado', protocolo_envio = {p}, numero_recibo = NULL,
+                            codigo_resposta = 'XML-OK-LOCAL',
+                            mensagem_resposta = '[SIMULAÇÃO/HOMOLOGAÇÃO LOCAL] Schema XML v_S_01_02_00 validado com sucesso. Aguardando transmissão oficial via Certificado Digital A1/A3 ICP-Brasil.',
+                            enviado_em = NULL, processado_em = {p}
+                        WHERE id = {p};
+                    """,
+                        (ultimo_prot, agora, eid),
+                    )
+                    validos += 1
+                else:
+                    msg_err = "; ".join(errs)[:400]
+                    cur.execute(
+                        f"""
+                        UPDATE esocial_eventos
+                        SET status = 'erro_schema', protocolo_envio = NULL, numero_recibo = NULL,
+                            codigo_resposta = 'XSD-ERR',
+                            mensagem_resposta = {p},
+                            enviado_em = NULL, processado_em = {p}
+                        WHERE id = {p};
+                    """,
+                        (msg_err, agora, eid),
+                    )
+                    invalidos += 1
+                    erros_detalhes.append({"evento_id": eid, "tipo_evento": tipo_ev, "erros": errs})
 
             conn.commit()
 
@@ -1280,16 +873,19 @@ class PlataformaService:
                 registro_tipo="esocial_eventos",
                 registro_id="lote",
                 usuario=usuario,
-                detalhes=f"Simulação e homologação estrutural de {processados} eventos eSocial realizada (sem transmissão oficial; aguardando certificado ICP-Brasil).",
+                detalhes=f"Validação estrutural XML concluída: {validos} validado(s), {invalidos} erro(s) de schema (aguardando certificado ICP-Brasil).",
             )
 
             return {
                 "sucesso": True,
                 "simulacao": True,
-                "eventos_processados": processados,
+                "transmissao_real_disponivel": False,
+                "eventos_processados": validos,
+                "eventos_erro_schema": invalidos,
+                "erros_schema": erros_detalhes,
                 "status_atribuido": "validado",
-                "dados": {"protocolo_simulado": ultimo_prot, "eventos_processados": processados},
-                "mensagem": f"[SIMULAÇÃO] {processados} evento(s) validado(s) estruturalmente no schema XML. Nenhum recibo oficial fictício foi gerado (transmissão oficial requer Certificado Digital ICP-Brasil).",
+                "dados": {"protocolo_simulado": ultimo_prot, "eventos_processados": validos, "eventos_erro_schema": invalidos},
+                "mensagem": f"[SIMULAÇÃO] {validos} evento(s) validado(s) no schema XML v_S_01_02_00 ({invalidos} erro(s)). Nenhum recibo oficial fictício gerado (requer Certificado Digital ICP-Brasil).",
             }
         finally:
             conn.close()
@@ -1449,11 +1045,11 @@ class PlataformaService:
         banco_codigo: str = "001",
         usuario: str = "Financeiro",
         empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        tipo_pagamento: str = "folha_mensal",
     ) -> Dict[str, Any]:
         """
-        RF-097, RF-178: Gera arquivo bancário CNAB 240 de pagamento de folha
-        com validação dinâmica de contas correntes, suporte multibanco (BB, Bradesco, Itaú, Santander, Caixa),
-        segmentos A e B, controle de integridade financeira e status de processamento (Seção 9).
+        RF-097, RF-104, RF-178: Gera arquivo bancário CNAB 240 multi-empresa e multi-finalidade
+        (folha_mensal, decimo_terceiro, ferias, rescisao), com suporte PIX em Segmento B e retorno bancário.
         """
         BANCOS_HOMOLOGADOS_CNAB = {
             "001": "BANCO DO BRASIL S.A.",
@@ -1465,32 +1061,70 @@ class PlataformaService:
 
         banco_cod = str(banco_codigo).zfill(3)
         banco_nome = BANCOS_HOMOLOGADOS_CNAB.get(banco_cod, "BANCO DO BRASIL S.A.")
+        tipo_pg_norm = str(tipo_pagamento or "folha_mensal").strip().lower()
 
         conn = self._conn()
         try:
             cur = conn.cursor()
             p = self._p()
 
-            # 1. Carregar dados cadastrais da empresa pagadora
+            # 1. Carregar dados cadastrais e bancários da empresa pagadora (Multi-Tenant)
             cur.execute(f"SELECT * FROM empresas WHERE id = {p}", (empresa_id,))
             empresa = fetchone_dict(cur, self.db_path)
             cnpj_empresa = re.sub(r"\D", "", empresa["cnpj"]).zfill(14) if empresa and empresa.get("cnpj") else "12345678000190"
             nome_empresa = (empresa.get("razao_social") or "EMPRESA CONTRATANTE RH2.0")[:30].upper().ljust(30)
+            ag_emp = re.sub(r"\D", "", str((empresa or {}).get("banco_agencia") or "01234")).zfill(5)[:5]
+            cc_emp = re.sub(r"\D", "", str((empresa or {}).get("banco_conta") or "000012345678")).zfill(12)[:12]
 
-            # 2. Carregar folhas fechadas para a competência
-            cur.execute(
-                f"""
-                SELECT f.id, f.salario_liquido, c.id as colab_id, c.nome_completo, c.cpf, c.matricula,
-                       c.email, c.telefone
-                FROM folhas_pagamento f
-                JOIN colaboradores c ON c.id = f.colaborador_id
-                WHERE f.competencia = {p} AND f.situacao = 'fechada';
-            """,
-                (competencia,),
-            )
+            # 2. Carregar títulos fechados conforme tipo_pagamento + filtro empresa_id
+            if tipo_pg_norm == "decimo_terceiro":
+                ano_ref = int(str(competencia)[:4])
+                cur.execute(
+                    f"""
+                    SELECT d.id, d.valor_liquido as salario_liquido, c.id as colab_id, c.nome_completo, c.cpf, c.matricula
+                    FROM decimo_terceiro d
+                    JOIN colaboradores c ON c.id = d.colaborador_id
+                    WHERE d.ano_base = {p} AND COALESCE(c.empresa_id, 'a0000000-0000-0000-0000-000000000001') = {p};
+                """,
+                    (ano_ref, empresa_id),
+                )
+            elif tipo_pg_norm == "ferias":
+                cur.execute(
+                    f"""
+                    SELECT fp.id, fp.valor_liquido as salario_liquido, c.id as colab_id, c.nome_completo, c.cpf, c.matricula
+                    FROM ferias_programadas fp
+                    JOIN colaboradores c ON c.id = fp.colaborador_id
+                    WHERE fp.data_inicio LIKE {p} AND fp.status IN ('aprovada', 'solicitada')
+                      AND COALESCE(fp.empresa_id, c.empresa_id, 'a0000000-0000-0000-0000-000000000001') = {p};
+                """,
+                    (f"{competencia}%", empresa_id),
+                )
+            elif tipo_pg_norm == "rescisao":
+                cur.execute(
+                    f"""
+                    SELECT r.id, r.valor_liquido as salario_liquido, c.id as colab_id, c.nome_completo, c.cpf, c.matricula
+                    FROM rescisoes r
+                    JOIN colaboradores c ON c.id = r.colaborador_id
+                    WHERE r.data_afastamento LIKE {p} AND r.status != 'cancelada'
+                      AND COALESCE(r.empresa_id, c.empresa_id, 'a0000000-0000-0000-0000-000000000001') = {p};
+                """,
+                    (f"{competencia}%", empresa_id),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT f.id, f.salario_liquido, c.id as colab_id, c.nome_completo, c.cpf, c.matricula,
+                           c.email, c.telefone
+                    FROM folhas_pagamento f
+                    JOIN colaboradores c ON c.id = f.colaborador_id
+                    WHERE f.competencia = {p} AND f.situacao = 'fechada'
+                      AND COALESCE(f.empresa_id, 'a0000000-0000-0000-0000-000000000001') = {p};
+                """,
+                    (competencia, empresa_id),
+                )
             folhas = fetchall_dict(cur, self.db_path)
             if not folhas:
-                raise PlataformaValidacaoException(f"Não existem folhas de pagamento fechadas para a competência {competencia} (RF-097).")
+                raise PlataformaValidacaoException(f"Não existem registros aptos ({tipo_pg_norm}) para CNAB 240 na competência {competencia} (RF-097).")
 
             total_liquido = sum(to_d(f["salario_liquido"]) for f in folhas)
             qtd_pagamentos = len(folhas)
@@ -1504,9 +1138,9 @@ class PlataformaService:
                 f"2"
                 f"{cnpj_empresa[:14].zfill(14)}"
                 f"{'':20}"
-                f"01234"
+                f"{ag_emp}"
                 f" "
-                f"000012345678"
+                f"{cc_emp}"
                 f" "
                 f" "
                 f"{nome_empresa}"
@@ -1533,13 +1167,13 @@ class PlataformaService:
                 f"2"
                 f"{cnpj_empresa[:14].zfill(14)}"
                 f"{'':20}"
-                f"01234"
+                f"{ag_emp}"
                 f" "
-                f"000012345678"
+                f"{cc_emp}"
                 f" "
                 f" "
                 f"{nome_empresa}"
-                f"PAGAMENTO SALARIO        "
+                f"{tipo_pg_norm[:25].upper().ljust(25)}"
                 f"{'':10}"
                 f"00000001"
                 f"{data_hoje_cnab}"
@@ -1556,14 +1190,15 @@ class PlataformaService:
                 val_centavos = int(to_d(f["salario_liquido"]) * 100)
                 colab_id_num = f["colab_id"]
 
-                # Segmento A (Crédito em Conta Corrente/Salário - integrado com RF-009)
+                # Segmento A (Crédito em Conta Corrente/Salário ou PIX - integrado com RF-009)
                 banco_fav = "000"
                 agencia_fav = "01234"
                 conta_fav_num = f"{colab_id_num:012d}"
                 conta_dv = "9"
+                chave_pix = ""
                 try:
                     cur.execute(
-                        f"SELECT banco_codigo, agencia, conta, conta_digito FROM colaborador_dados_bancarios WHERE colaborador_id = {p} AND ativo = 1 ORDER BY principal DESC, id DESC LIMIT 1",
+                        f"SELECT banco_codigo, agencia, conta, conta_digito, chave_pix FROM colaborador_dados_bancarios WHERE colaborador_id = {p} AND ativo = 1 ORDER BY principal DESC, id DESC LIMIT 1",
                         (colab_id_num,),
                     )
                     conta_row = fetchone_dict(cur, self.db_path)
@@ -1572,6 +1207,7 @@ class PlataformaService:
                         ag_num = re.sub(r"\D", "", str(conta_row.get("agencia") or ""))
                         cc_num = re.sub(r"\D", "", str(conta_row.get("conta") or ""))
                         cc_dv = str(conta_row.get("conta_digito") or "0")[:1]
+                        chave_pix = str(conta_row.get("chave_pix") or "").strip()[:60]
                         if b_cod:
                             banco_fav = b_cod.zfill(3)[:3]
                         if ag_num:
@@ -1592,7 +1228,7 @@ class PlataformaService:
                     f"{conta_dv}"
                     f" "
                     f"{nome}"
-                    f"{'FOLHA':20}"
+                    f"{str(f['id']).ljust(20)[:20]}"
                     f"{data_hoje_cnab}"
                     f"BRL"
                     f"{val_centavos:015d}"
@@ -1604,7 +1240,7 @@ class PlataformaService:
                 linhas.append(seg_a)
                 seq_lote += 1
 
-                # Segmento B (Identificação do Favorecido e Dados Complementares)
+                # Segmento B (Identificação do Favorecido e Chave PIX quando configurada)
                 seg_b = (
                     f"{banco_cod}00013{seq_lote:05d}B "
                     f"1"
@@ -1614,7 +1250,7 @@ class PlataformaService:
                     f"{'':20}"
                     f"{data_hoje_cnab}"
                     f"{val_centavos:015d}"
-                    f"{'':60}"
+                    f"{chave_pix.ljust(60)[:60]}"
                 )[:240].ljust(240)
                 linhas.append(seg_b)
                 seq_lote += 1
@@ -1649,16 +1285,16 @@ class PlataformaService:
                 INSERT INTO arquivos_bancarios_cnab (
                     empresa_id, competencia, tipo_folha, banco_codigo, layout_cnab,
                     total_registros, valor_total_liquido, conteudo_arquivo, gerado_por, gerado_em
-                ) VALUES ({p}, {p}, 'mensal', {p}, 'CNAB240', {p}, {p}, {p}, {p}, {p})
+                ) VALUES ({p}, {p}, {p}, {p}, 'CNAB240', {p}, {p}, {p}, {p}, {p})
                 RETURNING id;
             """
             sql_sqlite = f"""
                 INSERT INTO arquivos_bancarios_cnab (
                     empresa_id, competencia, tipo_folha, banco_codigo, layout_cnab,
                     total_registros, valor_total_liquido, conteudo_arquivo, gerado_por, gerado_em
-                ) VALUES ({p}, {p}, 'mensal', {p}, 'CNAB240', {p}, {p}, {p}, {p}, {p});
+                ) VALUES ({p}, {p}, {p}, {p}, 'CNAB240', {p}, {p}, {p}, {p}, {p});
             """
-            params = (empresa_id, competencia, banco_cod, qtd_pagamentos, float(total_liquido), conteudo_cnab, usuario, agora)
+            params = (empresa_id, competencia, tipo_pg_norm, banco_cod, qtd_pagamentos, float(total_liquido), conteudo_cnab, usuario, agora)
             cnab_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
             conn.commit()
 
@@ -1668,7 +1304,7 @@ class PlataformaService:
                 registro_tipo="arquivos_bancarios_cnab",
                 registro_id=cnab_id,
                 usuario=usuario,
-                detalhes=f"CNAB 240 gerado para {banco_nome} ({banco_cod}) | Competência: {competencia} | {qtd_pagamentos} pagamentos | Total Líquido R$ {total_liquido:.2f} | Status: gerado",
+                detalhes=f"CNAB 240 ({tipo_pg_norm}) gerado para {banco_nome} ({banco_cod}) | Competência: {competencia} | {qtd_pagamentos} pagamentos | Total Líquido R$ {total_liquido:.2f}",
                 empresa_id=empresa_id,
             )
 
@@ -1676,6 +1312,7 @@ class PlataformaService:
                 "sucesso": True,
                 "cnab_id": cnab_id,
                 "competencia": competencia,
+                "tipo_pagamento": tipo_pg_norm,
                 "banco_codigo": banco_cod,
                 "banco_nome": banco_nome,
                 "status_fluxo": "gerado",
@@ -1683,7 +1320,110 @@ class PlataformaService:
                 "total_registros_arquivo": total_linhas_arquivo,
                 "valor_total_liquido": float(total_liquido),
                 "conteudo_cnab": conteudo_cnab,
-                "mensagem": f"Arquivo CNAB 240 gerado com sucesso para {banco_nome} ({qtd_pagamentos} pagamentos, R$ {total_liquido:.2f}). Pronto para validação e remessa bancária.",
+                "mensagem": f"Arquivo CNAB 240 ({tipo_pg_norm}) gerado com sucesso para {banco_nome} ({qtd_pagamentos} pagamentos, R$ {total_liquido:.2f}).",
+            }
+        finally:
+            conn.close()
+
+    def processar_retorno_cnab240(
+        self,
+        nome_arquivo: str,
+        conteudo_retorno: str,
+        usuario: str = "Tesouraria",
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        arquivo_cnab_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """RF-105: Processa arquivo de retorno bancário CNAB 240 ('00'=liquidado, demais=rejeitado), persistindo em cnab_retornos."""
+        if not conteudo_retorno or not str(conteudo_retorno).strip():
+            raise PlataformaValidacaoException("Conteúdo do arquivo de retorno CNAB vazio.")
+
+        ocorrencias = []
+        liquidados = 0
+        rejeitados = 0
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            p = self._p()
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt_hoje = agora[:10]
+
+            for raw_line in str(conteudo_retorno).splitlines():
+                ln = raw_line.strip()
+                if not ln:
+                    continue
+                folha_id_ref = None
+                cod_oc = "00"
+                desc_oc = "Liquidado"
+                if ln.startswith("RET;"):
+                    parts = ln.split(";")
+                    if len(parts) >= 3 and parts[1].strip().isdigit():
+                        folha_id_ref = int(parts[1].strip())
+                        cod_oc = parts[2].strip()[:2]
+                        desc_oc = parts[3].strip() if len(parts) > 3 else ("Liquidado" if cod_oc == "00" else "Rejeitado")
+                elif len(raw_line) >= 240 and raw_line[7] == "3" and raw_line[13] == "A":
+                    seu_num = raw_line[73:93].strip()
+                    if seu_num.isdigit():
+                        folha_id_ref = int(seu_num)
+                    cod_oc = raw_line[230:232].strip() or "00"
+                    desc_oc = "Liquidado CNAB" if cod_oc == "00" else f"Ocorrência {cod_oc}"
+                else:
+                    continue
+
+                status_pg = "liquidado" if cod_oc in ("00", "BD") else "rejeitado"
+                if status_pg == "liquidado":
+                    liquidados += 1
+                    if folha_id_ref:
+                        cur.execute(
+                            f"SELECT observacoes FROM folhas_pagamento WHERE id = {p};",
+                            (folha_id_ref,),
+                        )
+                        row_f_obs = cur.fetchone()
+                        obs_atual = (row_f_obs[0] or "") if row_f_obs else ""
+                        nova_obs = f"{obs_atual} [CNAB 240 Liquidado em {dt_hoje}]".strip()
+                        cur.execute(
+                            f"UPDATE folhas_pagamento SET data_pagamento = COALESCE(data_pagamento, {p}), observacoes = {p}, atualizado_por = {p}, atualizado_em = {p} WHERE id = {p} AND COALESCE(empresa_id, 'a0000000-0000-0000-0000-000000000001') = {p};",
+                            (dt_hoje, nova_obs, usuario, agora, folha_id_ref, empresa_id),
+                        )
+                        cur.execute(
+                            f"INSERT INTO folha_historico (folha_id, data_hora, acao, descricao, usuario_responsavel) VALUES ({p}, {p}, 'PAGAMENTO_CNAB', {p}, {p});",
+                            (folha_id_ref, agora, f"Pagamento liquidado via retorno CNAB ({nome_arquivo})", usuario),
+                        )
+                else:
+                    rejeitados += 1
+
+                ocorrencias.append({"folha_id": folha_id_ref, "codigo_ocorrencia": cod_oc, "status": status_pg, "descricao": desc_oc})
+
+            sql_pg = f"""
+                INSERT INTO cnab_retornos (
+                    empresa_id, arquivo_cnab_id, nome_arquivo, total_registros, total_liquidados,
+                    total_rejeitados, ocorrencias_json, processado_por, processado_em
+                ) VALUES ({','.join([p]*9)}) RETURNING id;
+            """
+            sql_sq = f"""
+                INSERT INTO cnab_retornos (
+                    empresa_id, arquivo_cnab_id, nome_arquivo, total_registros, total_liquidados,
+                    total_rejeitados, ocorrencias_json, processado_por, processado_em
+                ) VALUES ({','.join([p]*9)});
+            """
+            ret_id = insert_returning_id(
+                cur, conn, sql_pg, sql_sq,
+                (empresa_id, arquivo_cnab_id, nome_arquivo, len(ocorrencias), liquidados, rejeitados, json.dumps(ocorrencias, ensure_ascii=False), usuario, agora),
+                self.db_path,
+            )
+            conn.commit()
+            self.registrar_auditoria(
+                modulo="Financeiro", operacao="retorno_cnab240", registro_tipo="cnab_retornos",
+                registro_id=ret_id, usuario=usuario,
+                detalhes=f"Retorno CNAB '{nome_arquivo}': {liquidados} liquidado(s), {rejeitados} rejeitado(s).",
+                empresa_id=empresa_id,
+            )
+            return {
+                "sucesso": True,
+                "retorno_id": ret_id,
+                "total_registros": len(ocorrencias),
+                "total_liquidados": liquidados,
+                "total_rejeitados": rejeitados,
+                "ocorrencias": ocorrencias,
             }
         finally:
             conn.close()

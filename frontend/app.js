@@ -3640,6 +3640,7 @@ const FolhaManager = {
         credentials: 'include',
         body: JSON.stringify({
           colaborador_id: this.painelInd.colaboradorId,
+          competencia: this.painelInd.competencia || document.getElementById('ind-competencia')?.value,
           eventos: this.painelInd.eventosLancados
         })
       });
@@ -5597,6 +5598,54 @@ const PlataformaManager = {
     this.popularSelectColaboradores('ajuste-colab-select');
   },
 
+  async baixarArquivoAutenticado(url, nomeArquivoFallback = 'documento.pdf') {
+    try {
+      const resp = await fetch(url, { headers: getAuthHeaders(), credentials: 'include' });
+      if (!resp.ok) {
+        let msg = 'Erro ao baixar arquivo.';
+        try {
+          const j = await resp.json();
+          msg = j.mensagem || msg;
+        } catch (_) {}
+        exibirToast(msg, 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = nomeArquivoFallback;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objUrl);
+    } catch (e) {
+      exibirToast('Erro de comunicação ao baixar documento.', 'error');
+    }
+  },
+
+  exportarCSVGenerico(cabecalho, linhas, nomeArquivo) {
+    if (!linhas || linhas.length === 0) {
+      exibirToast('Nenhum dado disponível para exportar em CSV.', 'warning');
+      return;
+    }
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const conteudo = '\uFEFF' + [
+      cabecalho.map(esc).join(';'),
+      ...linhas.map(row => row.map(esc).join(';'))
+    ].join('\n');
+    const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    exibirToast(`Relatório ${nomeArquivo} exportado em CSV.`, 'success');
+  },
+
   async carregarEspelhoPonto() {
     const colabId = document.getElementById('ponto-colaborador-select')?.value;
     const competencia = document.getElementById('ponto-competencia-input')?.value || '2026-03';
@@ -5621,29 +5670,36 @@ const PlataformaManager = {
       if (dias.length === 0 && Array.isArray(espelho.grade_dias)) {
         dias = espelho.grade_dias.map(g => {
           const b = g.batidas || [];
-          const trab = b.length >= 4 ? 8.0 : (b.length >= 2 ? 4.0 : 0.0);
+          const trab = Number(g.horas_trab ?? g.horas_trabalhadas ?? 0);
+          const saldoHoras = Number(g.saldo ?? g.saldo_horas ?? 0);
+          const temIncons = Boolean(g.incons_msg);
           return {
             data: g.data,
-            dia_semana: 'Dia Útil',
+            dia_semana: g.dia_semana || 'Dia',
             entrada_1: b[0] || '--:--',
             saida_1: b[1] || '--:--',
             entrada_2: b[2] || '--:--',
             saida_2: b[3] || '--:--',
             total_trabalhado: trab,
-            saldo_diario: trab - 8.0,
-            status: b.length % 2 === 0 ? 'COMPLETO' : 'INCOMPLETO'
+            saldo_diario: saldoHoras,
+            status: temIncons ? g.incons_msg : ((g.ocorrencias && g.ocorrencias.length > 0) ? g.ocorrencias[0] : (b.length % 2 === 0 ? 'COMPLETO' : 'INCOMPLETO'))
           };
         });
       }
 
-      // Atualiza totais
+      // Atualiza totais reais do motor PontoService
       const tot = espelho.totais || {};
-      const totNormais = tot.horas_normais ?? (dias.length * 8);
-      document.getElementById('ponto-tot-normais').textContent = `${Number(totNormais || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-he50').textContent = `${Number(tot.horas_extras_50 || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-he100').textContent = `${Number(tot.horas_extras_100 || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-noturno').textContent = `${Number(tot.adicional_noturno || 0).toFixed(1)}h`;
-      document.getElementById('ponto-tot-faltas').textContent = `${Number(tot.faltas_atrasos || (espelho.ocorrencias?.length || 0) * 8).toFixed(1)}h`;
+      const totNormais = tot.normais_horas ?? tot.horas_normais ?? 0;
+      const totHe50 = tot.he_50_horas ?? tot.horas_extras_50 ?? 0;
+      const totHe100 = (Number(tot.he_100_horas ?? tot.horas_extras_100 ?? 0) + Number(tot.feriado_100_horas ?? 0));
+      const totNoturno = tot.noturno_horas ?? tot.adicional_noturno ?? 0;
+      const totAtrasos = Number(tot.atraso_horas ?? 0) + (Number(tot.faltas_injustificadas_dias ?? 0) * 8);
+
+      document.getElementById('ponto-tot-normais').textContent = `${Number(totNormais).toFixed(2)}h`;
+      document.getElementById('ponto-tot-he50').textContent = `${Number(totHe50).toFixed(2)}h`;
+      document.getElementById('ponto-tot-he100').textContent = `${Number(totHe100).toFixed(2)}h`;
+      document.getElementById('ponto-tot-noturno').textContent = `${Number(totNoturno).toFixed(2)}h`;
+      document.getElementById('ponto-tot-faltas').textContent = `${Number(totAtrasos).toFixed(2)}h`;
 
       if (dias.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Nenhuma batida registrada para esta competência.</td></tr>';
@@ -5653,6 +5709,8 @@ const PlataformaManager = {
       tbody.innerHTML = '';
       dias.forEach(d => {
         const tr = document.createElement('tr');
+        const trabNum = Number(d.total_trabalhado || 0);
+        const saldoNum = Number(d.saldo_diario || 0);
         tr.innerHTML = `
           <td><strong>${d.data}</strong></td>
           <td>${d.dia_semana || '-'}</td>
@@ -5660,14 +5718,67 @@ const PlataformaManager = {
           <td><span class="batida-pill">${d.saida_1 || '--:--'}</span></td>
           <td><span class="batida-pill">${d.entrada_2 || '--:--'}</span></td>
           <td><span class="batida-pill">${d.saida_2 || '--:--'}</span></td>
-          <td><strong>${(d.total_trabalhado || 0).toFixed(2)}h</strong></td>
-          <td>${(d.saldo_diario || 0) >= 0 ? `+${(d.saldo_diario || 0).toFixed(2)}h` : `${(d.saldo_diario || 0).toFixed(2)}h`}</td>
+          <td><strong>${trabNum.toFixed(2)}h</strong></td>
+          <td>${saldoNum >= 0 ? `+${saldoNum.toFixed(2)}h` : `${saldoNum.toFixed(2)}h`}</td>
           <td><span class="badge-status badge-calculada">${d.status || 'OK'}</span></td>
         `;
         tbody.appendChild(tr);
       });
     } catch (e) {
       if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar espelho de ponto.</td></tr>';
+    }
+  },
+
+  async fecharCompetenciaPonto() {
+    const competencia = document.getElementById('ponto-competencia-input')?.value || '2026-03';
+    if (!confirm(`Confirmar o fechamento da competência de ponto ${competencia}?`)) return;
+    try {
+      const resp = await fetch(`${API_BASE}/ponto/fechar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao fechar competência de ponto.', 'error');
+        return;
+      }
+      exibirToast(`Competência de ponto ${competencia} fechada e congelada para folha!`, 'success');
+    } catch (e) {
+      exibirToast('Erro ao comunicar fechamento de ponto.', 'error');
+    }
+  },
+
+  async exportarRelatorioAusenciasPonto() {
+    const competencia = document.getElementById('ponto-competencia-input')?.value || '2026-03';
+    try {
+      const resp = await fetch(`${API_BASE}/ponto/relatorio-ausencias?competencia=${encodeURIComponent(competencia)}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao consultar relatório de ausências.', 'error');
+        return;
+      }
+      const dados = json.dados || {};
+      const itens = Array.isArray(dados) ? dados : (dados.ocorrencias || dados.itens || dados.detalhes || []);
+      const linhas = itens.map(it => [
+        it.colaborador_nome || it.nome_completo || `#${it.colaborador_id || ''}`,
+        it.setor || '-',
+        it.data_ocorrencia || it.data_inicio || '-',
+        it.tipo || '-',
+        it.horas ?? it.dias ?? 0,
+        it.justificada ? 'Sim' : 'Não'
+      ]);
+      this.exportarCSVGenerico(
+        ['Colaborador', 'Setor', 'Data', 'Tipo', 'Quantidade', 'Justificada'],
+        linhas,
+        `ausencias_ponto_${competencia}.csv`
+      );
+    } catch (e) {
+      exibirToast('Erro ao exportar relatório de ausências.', 'error');
     }
   },
 
@@ -5751,7 +5862,7 @@ const PlataformaManager = {
 
     const tbody = document.getElementById('tbody-ferias');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando histórico de férias...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 2rem;">Carregando histórico de férias...</td></tr>';
 
     try {
       const resp = await fetch(`${API_BASE}/ferias`, { headers: getAuthHeaders(), credentials: 'include' });
@@ -5760,7 +5871,7 @@ const PlataformaManager = {
       const lista = json.dados || [];
 
       if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Nenhuma programação de férias encontrada. Clique em "Programar Férias".</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 2rem;">Nenhuma programação de férias encontrada. Clique em "Programar Férias".</td></tr>';
         return;
       }
 
@@ -5773,6 +5884,7 @@ const PlataformaManager = {
         const iniGozo = f.data_inicio || f.data_inicio_gozo || '-';
         const fimGozo = f.data_fim || f.data_fim_gozo || '-';
         const adianta = f.adiantar_decimo || f.adiantamento_decimo_terceiro;
+        const statusStr = String(f.status || 'solicitada').toLowerCase();
         tr.innerHTML = `
           <td><strong>${nomeColab}</strong></td>
           <td>${iniAq} a ${fimAq}</td>
@@ -5782,12 +5894,84 @@ const PlataformaManager = {
           <td>${f.dias_gozo || 0} dias</td>
           <td>${f.dias_abono ? `${f.dias_abono} dias` : 'Não'}</td>
           <td>${adianta ? 'Sim (50%)' : 'Não'}</td>
-          <td><span class="badge-status badge-fechada">${String(f.status || 'solicitada').toUpperCase()}</span></td>
+          <td><span class="badge-status badge-fechada">${statusStr.toUpperCase()}</span></td>
+          <td class="text-right">
+            <div style="display:flex; gap:0.25rem; justify-content:flex-end; flex-wrap:wrap;">
+              ${statusStr === 'solicitada' ? `<button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.aprovarFerias(${f.id}, true)">Aprovar</button>` : ''}
+              ${statusStr !== 'cancelada' ? `<button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarArquivoAutenticado('${API_BASE}/ferias/${f.id}/pdf?tipo=aviso', 'aviso_ferias_${f.id}.pdf')">Aviso PDF</button>` : ''}
+              ${statusStr !== 'cancelada' ? `<button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarArquivoAutenticado('${API_BASE}/ferias/${f.id}/pdf?tipo=recibo', 'recibo_ferias_${f.id}.pdf')">Recibo PDF</button>` : ''}
+              ${statusStr === 'aprovada' ? `<button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.integrarFeriasFolha(${f.id}, '${iniGozo}')">Integrar Folha</button>` : ''}
+              ${statusStr !== 'cancelada' && statusStr !== 'paga' ? `<button type="button" class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.cancelarFerias(${f.id})">Cancelar</button>` : ''}
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar férias.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar férias.</td></tr>';
+    }
+  },
+
+  async aprovarFerias(feriasId, aprovar = true) {
+    try {
+      const resp = await fetch(`${API_BASE}/ferias/${feriasId}/aprovar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ aprovar })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao aprovar férias.', 'error');
+        return;
+      }
+      exibirToast('Férias aprovadas com segregação RN-080!', 'success');
+      await this.carregarFerias();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao aprovar férias.', 'error');
+    }
+  },
+
+  async cancelarFerias(feriasId) {
+    const motivo = prompt('Informe o motivo do cancelamento das férias:');
+    if (motivo === null) return;
+    try {
+      const resp = await fetch(`${API_BASE}/ferias/${feriasId}/cancelar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ motivo: motivo || 'Cancelamento operacional' })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao cancelar férias.', 'error');
+        return;
+      }
+      exibirToast('Programação de férias cancelada e saldo restaurado.', 'success');
+      await this.carregarFerias();
+    } catch (e) {
+      exibirToast('Erro ao cancelar férias.', 'error');
+    }
+  },
+
+  async integrarFeriasFolha(feriasId, dataInicio) {
+    const competencia = (dataInicio && String(dataInicio).length >= 7) ? String(dataInicio).slice(0, 7) : '2026-10';
+    try {
+      const resp = await fetch(`${API_BASE}/ferias/${feriasId}/integrar-folha`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao integrar férias na folha.', 'error');
+        return;
+      }
+      exibirToast(`Férias integradas à folha da competência ${competencia}!`, 'success');
+      await this.carregarFerias();
+    } catch (e) {
+      exibirToast('Erro ao integrar férias à folha.', 'error');
     }
   },
 
@@ -5838,7 +6022,7 @@ const PlataformaManager = {
 
     const tbody = document.getElementById('tbody-afastamentos');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando afastamentos...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 2rem;">Carregando afastamentos...</td></tr>';
 
     try {
       const resp = await fetch(`${API_BASE}/afastamentos`, { headers: getAuthHeaders(), credentials: 'include' });
@@ -5847,7 +6031,7 @@ const PlataformaManager = {
       const lista = json.dados || [];
 
       if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Nenhum afastamento registrado.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 2rem;">Nenhum afastamento registrado.</td></tr>';
         return;
       }
 
@@ -5856,6 +6040,7 @@ const PlataformaManager = {
         const tr = document.createElement('tr');
         const nomeColab = a.nome_completo || a.nome_colaborador || `Colaborador #${a.colaborador_id}`;
         const estabFim = a.estabilidade_fim || a.data_fim_estabilidade;
+        const encerrado = Boolean(a.data_retorno_efetivo);
         tr.innerHTML = `
           <td><strong>${nomeColab}</strong></td>
           <td>${a.tipo || a.motivo || '-'}</td>
@@ -5865,12 +6050,94 @@ const PlataformaManager = {
           <td>${a.dias_empresa || 0}d</td>
           <td>${a.dias_inss || 0}d</td>
           <td>${estabFim || a.tem_estabilidade ? `<span class="badge-severidade-alta">Estabilidade até ${estabFim || '12 meses'}</span>` : 'Não'}</td>
-          <td><span class="badge-status badge-calculada">${String(a.status_esocial || a.status || 'ATIVO').toUpperCase()}</span></td>
+          <td><span class="badge-status badge-calculada">${encerrado ? 'ENCERRADO' : String(a.status_esocial || 'ATIVO').toUpperCase()}</span></td>
+          <td class="text-right">
+            <div style="display:flex; gap:0.25rem; justify-content:flex-end; flex-wrap:wrap;">
+              ${!encerrado ? `<button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.prorrogarAfastamento(${a.id}, '${a.data_fim_prevista || a.data_inicio}')">Prorrogar</button>` : ''}
+              ${!encerrado ? `<button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.registrarRetornoAfastamento(${a.id})">Retorno</button>` : ''}
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar afastamentos.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar afastamentos.</td></tr>';
+    }
+  },
+
+  async prorrogarAfastamento(afastId, dataFimAtual) {
+    const novaData = prompt('Informe a nova data de término previsto (AAAA-MM-DD):', dataFimAtual || '');
+    if (!novaData) return;
+    const motivo = prompt('Motivo da prorrogação (ex.: perícia INSS / atestado médico):') || 'Prorrogação médica';
+    try {
+      const resp = await fetch(`${API_BASE}/afastamentos/${afastId}/prorrogar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ nova_data_fim: novaData.trim(), motivo })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao prorrogar afastamento.', 'error');
+        return;
+      }
+      exibirToast('Afastamento prorrogado com recálculo Empresa/INSS!', 'success');
+      await this.carregarAfastamentos();
+    } catch (e) {
+      exibirToast('Erro de rede ao prorrogar afastamento.', 'error');
+    }
+  },
+
+  async registrarRetornoAfastamento(afastId) {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dataRet = prompt('Data efetiva do retorno (AAAA-MM-DD):', hoje);
+    if (!dataRet) return;
+    try {
+      const resp = await fetch(`${API_BASE}/afastamentos/${afastId}/retorno`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ data_retorno: dataRet.trim() })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao registrar retorno (verifique ASO de retorno se >= 30 dias).', 'error');
+        return;
+      }
+      exibirToast('Retorno registrado, colaborador reativado e S-2230 de término gerado!', 'success');
+      await this.carregarAfastamentos();
+    } catch (e) {
+      exibirToast('Erro ao registrar retorno de afastamento.', 'error');
+    }
+  },
+
+  async exportarRelatorioAfastamentosCSV() {
+    try {
+      const resp = await fetch(`${API_BASE}/afastamentos/relatorio`, { headers: getAuthHeaders(), credentials: 'include' });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao gerar relatório de afastamentos.', 'error');
+        return;
+      }
+      const dados = json.dados || {};
+      const lista = Array.isArray(dados) ? dados : (dados.registros || dados.afastamentos || []);
+      const linhas = lista.map(a => [
+        a.nome_completo || `#${a.colaborador_id}`,
+        a.tipo || '-',
+        a.cid || '-',
+        a.data_inicio || '-',
+        a.data_fim_prevista || '-',
+        a.dias_empresa || 0,
+        a.dias_inss || 0,
+        a.estabilidade_fim || 'Não'
+      ]);
+      this.exportarCSVGenerico(
+        ['Colaborador', 'Tipo', 'CID-10', 'Início', 'Término Previsto', 'Dias Empresa', 'Dias INSS', 'Estabilidade Até'],
+        linhas,
+        `afastamentos_${new Date().toISOString().slice(0, 10)}.csv`
+      );
+    } catch (e) {
+      exibirToast('Erro ao exportar relatório de afastamentos.', 'error');
     }
   },
 
@@ -5922,7 +6189,7 @@ const PlataformaManager = {
 
     const tbody = document.getElementById('tbody-rescisoes');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding: 2rem;">Carregando rescisões...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Carregando rescisões...</td></tr>';
 
     try {
       const resp = await fetch(`${API_BASE}/rescisoes`, { headers: getAuthHeaders(), credentials: 'include' });
@@ -5931,7 +6198,7 @@ const PlataformaManager = {
       const lista = json.dados || [];
 
       if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding: 2rem;">Nenhuma rescisão calculada. Clique em "Calcular Nova Rescisão".</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 2rem;">Nenhuma rescisão calculada. Clique em "Calcular Nova Rescisão".</td></tr>';
         return;
       }
 
@@ -5941,6 +6208,7 @@ const PlataformaManager = {
         const verbasFmt = Number(r.valor_liquido || r.total_rescisao_liquido || r.total_verbas || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const multaFmt = Number(r.multa_fgts_valor || r.multa_rescisoria_fgts || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const nomeColab = r.nome_completo || r.nome_colaborador || `Colaborador #${r.colaborador_id}`;
+        const statusStr = String(r.status || 'calculada').toLowerCase();
 
         tr.innerHTML = `
           <td><strong>${nomeColab}</strong></td>
@@ -5950,12 +6218,63 @@ const PlataformaManager = {
           <td><strong style="color: #2563eb;">${r.data_limite_pagamento || '-'}</strong></td>
           <td><strong>${verbasFmt}</strong></td>
           <td>${multaFmt}</td>
-          <td><span class="badge-status badge-fechada">${String(r.status || 'calculada').toUpperCase()}</span></td>
+          <td><span class="badge-status badge-fechada">${statusStr.toUpperCase()}</span></td>
+          <td class="text-right">
+            <div style="display:flex; gap:0.25rem; justify-content:flex-end; flex-wrap:wrap;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarArquivoAutenticado('${API_BASE}/rescisoes/${r.id}/pdf?tipo=trct', 'TRCT_${r.id}.pdf')">TRCT PDF</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarArquivoAutenticado('${API_BASE}/rescisoes/${r.id}/pdf?tipo=guias', 'Guias_FGTS_SD_${r.id}.pdf')">Guias PDF</button>
+              ${statusStr === 'calculada' ? `<button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.homologarRescisao(${r.id})">Homologar</button>` : ''}
+              ${statusStr === 'homologada' ? `<button type="button" class="btn btn-primary btn-sm" onclick="PlataformaManager.pagarRescisao(${r.id})">Quitar</button>` : ''}
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar rescisões.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger" style="padding: 2rem;">Erro ao carregar rescisões.</td></tr>';
+    }
+  },
+
+  async homologarRescisao(rescisaoId) {
+    try {
+      const resp = await fetch(`${API_BASE}/rescisoes/${rescisaoId}/homologar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ observacao: 'Homologado via interface DP' })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao homologar rescisão.', 'error');
+        return;
+      }
+      exibirToast('Rescisão homologada com evento S-2299 pronto na fila!', 'success');
+      await this.carregarRescisoes();
+    } catch (e) {
+      exibirToast('Erro ao homologar rescisão.', 'error');
+    }
+  },
+
+  async pagarRescisao(rescisaoId) {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dataPg = prompt('Data de quitação das verbas rescisórias (AAAA-MM-DD):', hoje);
+    if (!dataPg) return;
+    try {
+      const resp = await fetch(`${API_BASE}/rescisoes/${rescisaoId}/pagar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ data_pagamento: dataPg.trim() })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao registrar pagamento da rescisão.', 'error');
+        return;
+      }
+      exibirToast(json.mensagem || 'Quitação rescisória registrada com sucesso!', 'success');
+      await this.carregarRescisoes();
+    } catch (e) {
+      exibirToast('Erro ao registrar pagamento da rescisão.', 'error');
     }
   },
 
@@ -6319,38 +6638,30 @@ const PlataformaManager = {
     const pre = document.getElementById('xml-modal-conteudo');
     if (modal && titulo && pre) {
       titulo.textContent = `XML do Evento ${ev.tipo_evento} — ID #${ev.id}`;
-      pre.textContent = ev.xml_conteudo || ev.xml_gerado || `<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/${ev.tipo_evento}/v_S_01_02_00">
-  <evt${ev.tipo_evento} id="ID1${ev.id}00000000">
-    <ideEvento>
-      <tpAmb>2</tpAmb>
-      <procEmi>1</procEmi>
-      <verProc>RH2.0_2026</verProc>
-    </ideEvento>
-  </evt${ev.tipo_evento}>
-</eSocial>`;
+      pre.textContent = ev.xml_conteudo || ev.xml_gerado || 'XML ainda não gerado para este evento no servidor.';
       modal.classList.remove('hidden');
     }
   },
 
   async transmitirLoteESocial() {
-    if (!confirm('Deseja gerar e assinar digitalmente o lote de eventos do eSocial para transmissão ao ambiente nacional?')) return;
+    if (!confirm('Deseja validar o schema XML e enfileirar/simular a transmissão do lote eSocial? (Transmissão produtiva requer Certificado ICP-Brasil A1/A3.)')) return;
 
     try {
       const resp = await fetch(`${API_BASE}/esocial/transmitir`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        credentials: 'include'
+        credentials: 'include',
+        body: JSON.stringify({})
       });
       const json = await resp.json();
       if (!resp.ok) {
-        exibirToast(json.mensagem || 'Erro ao transmitir lote.', 'error');
+        exibirToast(json.mensagem || 'Erro ao validar/processar lote eSocial.', 'error');
         return;
       }
-      exibirToast(`Lote eSocial transmitido com sucesso! Protocolo: ${json.dados?.protocolo || 'BR-2026-OK'}`, 'success');
+      exibirToast(json.mensagem || 'Lote eSocial validado localmente em modo simulação.', json.erros_schema > 0 ? 'warning' : 'success');
       await this.carregarESocial();
     } catch (e) {
-      exibirToast('Erro de conexão ao transmitir eSocial.', 'error');
+      exibirToast('Erro de conexão ao processar lote eSocial.', 'error');
     }
   },
 
@@ -6361,6 +6672,7 @@ const PlataformaManager = {
     const banco = document.getElementById('cnab-banco-select')?.value || '001';
     const competencia = document.getElementById('cnab-competencia-input')?.value || '2026-03';
     const dataPagamento = document.getElementById('cnab-data-pagamento')?.value;
+    const tipoPagamento = document.getElementById('cnab-tipo-pagamento')?.value || 'folha_mensal';
 
     try {
       const resp = await fetch(`${API_BASE}/integracoes/cnab`, {
@@ -6370,7 +6682,8 @@ const PlataformaManager = {
         body: JSON.stringify({
           codigo_banco: banco,
           competencia: competencia,
-          data_pagamento: dataPagamento
+          data_pagamento: dataPagamento,
+          tipo_pagamento: tipoPagamento
         })
       });
       const json = await resp.json();
@@ -6390,7 +6703,7 @@ const PlataformaManager = {
 
       if (resumo) {
         resumo.innerHTML = `
-          <strong style="color: #16a34a;">Remessa gerada com sucesso!</strong><br>
+          <strong style="color: #16a34a;">Remessa gerada com sucesso (${tipoPagamento})!</strong><br>
           &bull; Banco: <strong>${d.banco_nome || banco}</strong> | Arquivo: <strong>${d.nome_arquivo || 'REMESSA.REM'}</strong><br>
           &bull; Total de Colaboradores Creditados: <strong>${totReg}</strong><br>
           &bull; Valor Total do Lote: <strong>R$ ${Number(valTot).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
@@ -6407,6 +6720,38 @@ const PlataformaManager = {
       exibirToast('Arquivo CNAB 240 gerado de acordo com o padrão FEBRABAN!', 'success');
     } catch (e) {
       exibirToast('Erro ao comunicar com gerador CNAB.', 'error');
+    }
+  },
+
+  async processarRetornoCNAB240() {
+    const conteudo = document.getElementById('cnab-retorno-conteudo')?.value || '';
+    const resumo = document.getElementById('cnab-retorno-resumo');
+    if (!conteudo.trim()) {
+      exibirToast('Cole o conteúdo do arquivo de retorno CNAB 240 antes de processar.', 'warning');
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/integracoes/cnab/retorno`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          nome_arquivo: `retorno_${new Date().toISOString().slice(0, 10)}.ret`,
+          conteudo_retorno: conteudo
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao processar retorno bancário.', 'error');
+        return;
+      }
+      const d = json.dados || json || {};
+      if (resumo) {
+        resumo.innerHTML = `<strong style="color:#16a34a;">Retorno processado:</strong> Liquidados: <strong>${d.liquidados ?? 0}</strong> | Rejeitados: <strong>${d.rejeitados ?? 0}</strong>`;
+      }
+      exibirToast('Retorno bancário CNAB 240 processado com sucesso!', 'success');
+    } catch (e) {
+      exibirToast('Erro de comunicação ao processar retorno CNAB.', 'error');
     }
   },
 
@@ -6501,25 +6846,254 @@ const PlataformaManager = {
   },
 
   // --------------------------------------------------------------------------
+  // ROTINAS ENTERPRISE DA FOLHA (RF-081 A RF-105: 13º, LOTE, RATEIO, FINANCEIRO)
+  // --------------------------------------------------------------------------
+  exibirPainelFolhaEnterprise(titulo, html) {
+    const sec = document.getElementById('folha-painel-resultado-enterprise');
+    const elT = document.getElementById('folha-resultado-enterprise-titulo');
+    const elC = document.getElementById('folha-resultado-enterprise-corpo');
+    if (elT) elT.textContent = titulo;
+    if (elC) elC.innerHTML = html;
+    if (sec) sec.classList.remove('hidden');
+  },
+
+  async executarDecimoTerceiroLote() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-11';
+    const anoBase = parseInt(comp.slice(0, 4), 10) || 2026;
+    const parcStr = prompt('Parcela do 13º salário a calcular em lote (1 ou 2):', comp.endsWith('-12') ? '2' : '1');
+    if (!parcStr) return;
+    const parcela = parseInt(parcStr, 10) === 2 ? 2 : 1;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/decimo-terceiro`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ ano_base: anoBase, parcela })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao calcular 13º em lote.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      const itens = d.itens || [];
+      this.exibirPainelFolhaEnterprise(
+        `13º Salário — ${parcela}ª Parcela / ${anoBase} (${itens.length} colaboradores)`,
+        `<p>Processados: <strong>${itens.length}</strong> | Erros: <strong>${(d.erros || []).length}</strong></p>
+         <table class="data-table"><thead><tr><th>Colaborador</th><th>Avos</th><th>Bruto</th><th>INSS</th><th>IRRF</th><th>Líquido</th></tr></thead><tbody>
+         ${itens.map(i => `<tr><td>${i.colaborador_nome || i.colaborador_id}</td><td>${i.avos}/12</td><td>R$ ${Number(i.valor_bruto || 0).toFixed(2)}</td><td>R$ ${Number(i.desconto_inss || 0).toFixed(2)}</td><td>R$ ${Number(i.desconto_irrf || 0).toFixed(2)}</td><td><strong>R$ ${Number(i.valor_liquido || 0).toFixed(2)}</strong></td></tr>`).join('')}
+         </tbody></table>`
+      );
+      exibirToast(json.mensagem || '13º salário calculado com sucesso!', 'success');
+    } catch (e) {
+      exibirToast('Erro de rede ao calcular 13º salário.', 'error');
+    }
+  },
+
+  async carregarConferenciaAnalitica() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-10';
+    try {
+      const resp = await fetch(`${API_BASE}/folha/conferencia-analitica?competencia=${encodeURIComponent(comp)}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro na conferência analítica.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      const divg = d.divergencias || [];
+      this.exibirPainelFolhaEnterprise(
+        `Conferência Analítica — Competência ${comp}`,
+        `<p>Folhas avaliadas: <strong>${d.total_folhas || 0}</strong> | Divergências detectadas: <strong>${divg.length}</strong> | Líquido total: <strong>R$ ${Number(d.total_liquido || 0).toFixed(2)}</strong></p>
+         ${divg.length ? `<ul>${divg.map(x => `<li>${x.colaborador || x.colaborador_id}: ${x.motivo || JSON.stringify(x)}</li>`).join('')}</ul>` : '<p class="text-success">Nenhuma inconsistência encontrada.</p>'}`
+      );
+    } catch (e) {
+      exibirToast('Erro ao consultar conferência analítica.', 'error');
+    }
+  },
+
+  async fecharCompetenciaFolhaLote() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-10';
+    if (!confirm(`Deseja fechar em lote todas as folhas calculadas/aprovadas de ${comp}?`)) return;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/fechar-lote`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia: comp })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao fechar competência em lote.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      exibirToast(`Lote ${comp}: ${d.fechadas ?? 0} folha(s) fechada(s)!`, 'success');
+      if (typeof FolhaManager !== 'undefined' && FolhaManager.carregarFolhas) await FolhaManager.carregarFolhas();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao fechar competência em lote.', 'error');
+    }
+  },
+
+  async gerarRateioCentroCusto() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-10';
+    try {
+      const resp = await fetch(`${API_BASE}/folha/rateio-centro-custo`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia: comp })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao gerar rateio.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      const linhas = d.centros_custo || d.itens || [];
+      this.exibirPainelFolhaEnterprise(
+        `Rateio por Centro de Custo — ${comp}`,
+        `<table class="data-table"><thead><tr><th>Centro de Custo / Setor</th><th>Colaboradores</th><th>Bruto</th><th>FGTS</th><th>Custo Total</th></tr></thead><tbody>
+        ${linhas.length ? linhas.map(c => `<tr><td>${c.centro_custo || c.setor || '-'}</td><td>${c.qtd_colaboradores ?? 0}</td><td>R$ ${Number(c.total_proventos || 0).toFixed(2)}</td><td>R$ ${Number(c.total_fgts || 0).toFixed(2)}</td><td><strong>R$ ${Number(c.custo_total_empresa || c.total_liquido || 0).toFixed(2)}</strong></td></tr>`).join('') : '<tr><td colspan="5" class="text-center text-muted">Nenhum rateio gerado para a competência.</td></tr>'}
+        </tbody></table>`
+      );
+      exibirToast(json.mensagem || 'Rateio consolidado!', 'success');
+    } catch (e) {
+      exibirToast('Erro ao gerar rateio por centro de custo.', 'error');
+    }
+  },
+
+  async gerarIntegracaoFinanceira() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-10';
+    try {
+      const resp = await fetch(`${API_BASE}/folha/integracao-financeira`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia: comp })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao gerar integração financeira.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      const lancs = d.lancamentos || [];
+      this.exibirPainelFolhaEnterprise(
+        `Integração Financeira e Contábil — ${comp}`,
+        `<table class="data-table"><thead><tr><th>Categoria / Guia</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>
+        ${lancs.length ? lancs.map(l => `<tr><td>${l.categoria || l.descricao || '-'}</td><td><strong>R$ ${Number(l.valor || 0).toFixed(2)}</strong></td><td>${l.data_vencimento || '-'}</td><td>${l.status || 'gerado'}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center text-muted">Nenhum lançamento gerado.</td></tr>'}
+        </tbody></table>`
+      );
+      exibirToast(json.mensagem || 'Lançamentos financeiros gerados!', 'success');
+    } catch (e) {
+      exibirToast('Erro ao gerar integração financeira.', 'error');
+    }
+  },
+
+  async gerarEsocialPeriodicosFolha() {
+    const comp = document.getElementById('filtro-folha-competencia')?.value || '2026-10';
+    try {
+      const resp = await fetch(`${API_BASE}/folha/esocial-periodicos`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ competencia: comp })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Erro ao gerar eventos periódicos eSocial.', 'error');
+        return;
+      }
+      const d = json.dados || {};
+      exibirToast(`Eventos periódicos S-1200/S-1210/S-1299 gerados para ${comp}: ${(d.eventos_gerados || []).length} evento(s).`, 'success');
+    } catch (e) {
+      exibirToast('Erro ao gerar eventos periódicos eSocial.', 'error');
+    }
+  },
+
+  // --------------------------------------------------------------------------
   // PORTAIS ENTERPRISE: PORTAL DO COLABORADOR E PORTAL DO GESTOR
   // --------------------------------------------------------------------------
   async carregarPortalColaborador() {
     await this.carregarColaboradoresCache();
-    const colab = (this.colaboradoresCache && this.colaboradoresCache.length > 0)
-      ? this.colaboradoresCache[0]
-      : { nome_completo: 'Carlos Eduardo Mendes', cargo: 'Operador de Moenda', matricula: 'MAT-00104', data_admissao: '2024-02-01', setor: 'Operações Industriais' };
+    const colab = (this.colaboradoresCache && this.colaboradoresCache.length > 0) ? this.colaboradoresCache[0] : null;
 
     const elNome = document.getElementById('colab-nome-display');
     const elCargo = document.getElementById('colab-cargo-display');
+    const elBadge = document.getElementById('colab-situacao-badge');
     const elAdmissao = document.getElementById('colab-admissao-display');
     const elDepto = document.getElementById('colab-departamento-display');
 
-    if (elNome) elNome.textContent = colab.nome_completo;
-    if (elCargo) elCargo.innerHTML = `${colab.cargo || 'Especialista'} &bull; Matrícula: <strong>${colab.matricula || 'MAT-2026-001'}</strong>`;
-    if (elAdmissao) elAdmissao.textContent = `Admissão: ${formatarDataBR(colab.data_admissao) || '01/02/2024'}`;
-    if (elDepto) elDepto.textContent = `Departamento: ${colab.setor || 'Operações Industriais'}`;
+    if (colab) {
+      if (elNome) elNome.textContent = colab.nome_completo || 'Colaborador';
+      if (elCargo) elCargo.innerHTML = `${colab.cargo || '-'} &bull; Matrícula: <strong id="colab-matricula-display">${colab.matricula || '-'}</strong>`;
+      if (elBadge) elBadge.textContent = `${String(colab.situacao || 'ativo').toUpperCase()} (${colab.tipo_contrato || 'CLT'})`;
+      if (elAdmissao) elAdmissao.textContent = `Admissão: ${formatarDataBR(colab.data_admissao) || '-'}`;
+      if (elDepto) elDepto.textContent = `Departamento: ${colab.setor || '-'}`;
 
-    // Configuração de alternância de abas do portal
+      // Carregar holerites reais
+      try {
+        const respF = await fetch(`${API_BASE}/folha?colaborador_id=${colab.id}`, { headers: getAuthHeaders(), credentials: 'include' });
+        const jsonF = await respF.json();
+        const folhas = jsonF.dados || [];
+        const tbH = document.getElementById('tbody-meus-holerites');
+        const elUlt = document.getElementById('colab-ultimo-holerite');
+        if (elUlt) elUlt.textContent = folhas.length ? `Competência ${folhas[0].competencia}` : 'Sem folhas';
+        if (tbH) {
+          tbH.innerHTML = folhas.length ? folhas.map(fl => `
+            <tr>
+              <td><strong>${fl.competencia}</strong></td>
+              <td>${fl.tipo_folha || 'mensal'}</td>
+              <td>R$ ${Number(fl.salario_base || 0).toFixed(2)}</td>
+              <td class="text-success">R$ ${Number(fl.total_proventos || 0).toFixed(2)}</td>
+              <td class="text-danger">R$ ${Number(fl.total_descontos || 0).toFixed(2)}</td>
+              <td><strong class="text-primary">R$ ${Number(fl.salario_liquido || 0).toFixed(2)}</strong></td>
+              <td><button class="btn btn-outline btn-sm" onclick="PlataformaManager.baixarArquivoAutenticado('${API_BASE}/folha/${fl.id}/pdf', 'holerite_${fl.competencia}.pdf')">Baixar PDF</button></td>
+            </tr>`).join('') : '<tr><td colspan="7" class="text-center text-muted" style="padding:1.5rem;">Nenhum holerite processado para este colaborador.</td></tr>';
+        }
+      } catch (_) {}
+
+      // Carregar espelho de ponto real
+      try {
+        const compAtual = new Date().toISOString().slice(0, 7);
+        const respP = await fetch(`${API_BASE}/ponto/espelho?colaborador_id=${colab.id}&competencia=${compAtual}`, { headers: getAuthHeaders(), credentials: 'include' });
+        const jsonP = await respP.json();
+        const esp = jsonP.dados || {};
+        const tbP = document.getElementById('tbody-meu-espelho-ponto');
+        const elBanco = document.getElementById('colab-saldo-banco');
+        const bancoMin = Number(esp.totais?.banco_horas_saldo_min ?? 0);
+        if (elBanco) elBanco.textContent = `${(bancoMin / 60).toFixed(1)}h`;
+        const grade = esp.grade_dias || [];
+        if (tbP) {
+          tbP.innerHTML = grade.length ? grade.slice(0, 15).map(g => {
+            const b = g.batidas || [];
+            return `<tr><td>${g.data}</td><td>${b[0] || '--:--'}</td><td>${b[1] || '--:--'}</td><td>${b[2] || '--:--'}</td><td>${b[3] || '--:--'}</td><td><strong>${Number(g.horas_trab || 0).toFixed(2)}h</strong></td><td>${Number((g.he_50 || 0) + (g.he_100 || 0)).toFixed(2)}h</td><td><span class="badge-status badge-calculada">${g.incons_msg ? 'Ajuste' : 'Regular'}</span></td></tr>`;
+          }).join('') : '<tr><td colspan="8" class="text-center text-muted" style="padding:1.5rem;">Sem registros de ponto nesta competência.</td></tr>';
+        }
+      } catch (_) {}
+
+      // Carregar períodos aquisitivos reais
+      try {
+        const respPA = await fetch(`${API_BASE}/ferias/periodos-aquisitivos?colaborador_id=${colab.id}`, { headers: getAuthHeaders(), credentials: 'include' });
+        const jsonPA = await respPA.json();
+        const pas = jsonPA.dados || [];
+        const saldoTot = pas.reduce((acc, p) => acc + Number(p.dias_saldo ?? 0), 0);
+        const elFerias = document.getElementById('colab-ferias-saldo');
+        if (elFerias) elFerias.textContent = `${saldoTot} dias`;
+        const tbFer = document.getElementById('tbody-minhas-ferias');
+        if (tbFer) {
+          tbFer.innerHTML = pas.length ? pas.map(p => `
+            <tr><td>${p.data_inicio} a ${p.data_fim}</td><td>${p.data_limite_concessivo || '-'}</td><td>${p.dias_direito ?? 30} dias</td><td>${p.dias_gozados ?? 0} dias</td><td><strong>${p.dias_saldo ?? 0} dias</strong></td><td><span class="badge-status badge-calculada">${p.status || 'ativo'}</span></td></tr>`).join('') : '<tr><td colspan="6" class="text-center text-muted" style="padding:1.5rem;">Nenhum período aquisitivo encontrado.</td></tr>';
+        }
+      } catch (_) {}
+    } else {
+      if (elNome) elNome.textContent = 'Nenhum colaborador ativo encontrado';
+    }
+
+    // Alternância de abas do portal
     const tabs = ['holerites', 'espelho', 'ferias', 'informes'];
     tabs.forEach(tabKey => {
       const btn = document.getElementById(`tab-btn-${tabKey}`);
@@ -6536,7 +7110,6 @@ const PlataformaManager = {
       }
     });
 
-    // Ações rápidas do colaborador
     const btnBater = document.getElementById('btn-colab-bater-ponto');
     if (btnBater && !btnBater.dataset.bound) {
       btnBater.dataset.bound = 'true';
@@ -6544,10 +7117,7 @@ const PlataformaManager = {
         const modalPonto = document.getElementById('modal-registrar-ponto');
         if (modalPonto) {
           const inputDataHora = document.getElementById('ponto-datahora-registro');
-          if (inputDataHora) {
-            const now = new Date();
-            inputDataHora.value = now.toISOString().slice(0, 16);
-          }
+          if (inputDataHora) inputDataHora.value = new Date().toISOString().slice(0, 16);
           modalPonto.classList.remove('hidden');
         }
       });
@@ -6576,57 +7146,132 @@ const PlataformaManager = {
 
     const totalEl = document.getElementById('kpi-gestor-equipe-total');
     const presentesEl = document.getElementById('kpi-gestor-presentes');
-    if (totalEl) totalEl.textContent = equipe.length > 0 ? equipe.length : 18;
-    if (presentesEl) presentesEl.textContent = equipe.length > 0 ? Math.max(1, equipe.length - 2) : 16;
+    const feriasEl = document.getElementById('kpi-gestor-ferias');
+    const pendEl = document.getElementById('kpi-gestor-aprovacoes-pendentes');
 
-    // Checkbox selecionar todos
+    const ativos = equipe.filter(c => String(c.situacao || '').toLowerCase() === 'ativo');
+    if (totalEl) totalEl.textContent = equipe.length;
+    if (presentesEl) presentesEl.textContent = ativos.length;
+
+    const tbEq = document.getElementById('tbody-equipe-gestor');
+    if (tbEq) {
+      tbEq.innerHTML = equipe.length ? equipe.slice(0, 20).map(c => `
+        <tr>
+          <td><strong>${c.nome_completo}</strong></td>
+          <td>${c.matricula || '-'}</td>
+          <td>${c.cargo || '-'}</td>
+          <td>${c.carga_horaria_mensal || 220}h</td>
+          <td><span class="badge-status badge-calculada">${String(c.situacao || 'ativo').toUpperCase()}</span></td>
+          <td>--</td>
+        </tr>`).join('') : '<tr><td colspan="6" class="text-center text-muted" style="padding:1.5rem;">Nenhum colaborador encontrado.</td></tr>';
+    }
+
+    try {
+      const [respPend, respFer] = await Promise.all([
+        fetch(`${API_BASE}/pendencias`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`${API_BASE}/ferias`, { headers: getAuthHeaders(), credentials: 'include' })
+      ]);
+      const pJson = respPend.ok ? await respPend.json() : { dados: [] };
+      const fJson = respFer.ok ? await respFer.json() : { dados: [] };
+      const pendencias = (pJson.dados || []).filter(p => String(p.status || 'aberta') === 'aberta');
+      const feriasPend = (fJson.dados || []).filter(f => String(f.status || '').toLowerCase() === 'solicitada');
+      const emFeriasHoje = (fJson.dados || []).filter(f => String(f.status || '').toLowerCase() === 'em_gozo');
+
+      if (feriasEl) feriasEl.textContent = emFeriasHoje.length;
+      if (pendEl) pendEl.textContent = pendencias.length + feriasPend.length;
+
+      const tbApr = document.getElementById('tbody-aprovacoes-gestor');
+      if (tbApr) {
+        const linhas = [
+          ...feriasPend.map(f => `
+            <tr data-kind="ferias" data-id="${f.id}">
+              <td><input type="checkbox" class="chk-gestor-item"></td>
+              <td><strong>${f.nome_completo || f.colaborador_id}</strong></td>
+              <td><span class="badge-status badge-calculada">Programação Férias</span></td>
+              <td>${f.data_inicio || '-'} a ${f.data_fim || '-'}</td>
+              <td>${f.dias_gozo || 0}d gozo</td>
+              <td><span class="badge-status badge-aberta">Pendente Gestor</span></td>
+              <td><div class="btn-group-actions">
+                <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'ferias', ${f.id}, true)">Aprovar</button>
+                <button class="btn btn-outline btn-sm text-danger" onclick="PlataformaManager.processarAcaoGestor(this, 'ferias', ${f.id}, false)">Rejeitar</button>
+              </div></td>
+            </tr>`),
+          ...pendencias.slice(0, 15).map(p => `
+            <tr data-kind="pendencia" data-id="${p.id}">
+              <td><input type="checkbox" class="chk-gestor-item"></td>
+              <td><strong>${p.colaborador_nome || p.modulo || 'Operação DP'}</strong></td>
+              <td><span class="badge-status badge-aberta">${p.modulo || 'Pendência'}</span></td>
+              <td>${p.prazo_limite || '-'}</td>
+              <td>${p.descricao || p.titulo || '-'}</td>
+              <td><span class="badge-status badge-aberta">${p.severidade || 'Aberta'}</span></td>
+              <td><div class="btn-group-actions">
+                <button class="btn btn-primary btn-sm" onclick="PlataformaManager.processarAcaoGestor(this, 'pendencia', ${p.id}, true)">Resolver</button>
+              </div></td>
+            </tr>`)
+        ];
+        tbApr.innerHTML = linhas.length ? linhas.join('') : '<tr><td colspan="7" class="text-center text-muted" style="padding:1.5rem;">Nenhuma aprovação pendente no momento.</td></tr>';
+      }
+    } catch (_) {}
+
     const chkAll = document.getElementById('chk-gestor-select-all');
     if (chkAll && !chkAll.dataset.bound) {
       chkAll.dataset.bound = 'true';
       chkAll.addEventListener('change', (e) => {
-        document.querySelectorAll('.chk-gestor-item').forEach(chk => {
-          chk.checked = e.target.checked;
-        });
+        document.querySelectorAll('.chk-gestor-item').forEach(chk => { chk.checked = e.target.checked; });
       });
     }
 
-    // Botão aprovação em lote
     const btnLote = document.getElementById('btn-gestor-aprovar-lote');
     if (btnLote && !btnLote.dataset.bound) {
       btnLote.dataset.bound = 'true';
-      btnLote.addEventListener('click', () => {
-        const selecionados = document.querySelectorAll('.chk-gestor-item:checked');
+      btnLote.addEventListener('click', async () => {
+        const selecionados = Array.from(document.querySelectorAll('.chk-gestor-item:checked'));
         if (selecionados.length === 0) {
           exibirToast('Selecione ao menos uma pendência para aprovar.', 'warning');
           return;
         }
-        selecionados.forEach(chk => {
+        for (const chk of selecionados) {
           const tr = chk.closest('tr');
-          if (tr) {
-            tr.style.opacity = '0.5';
-            const tdAcoes = tr.querySelector('.btn-group-actions');
-            if (tdAcoes) tdAcoes.innerHTML = '<span class="badge-status badge-calculada">Aprovado pelo Gestor</span>';
+          if (tr?.dataset.kind && tr?.dataset.id) {
+            await this.processarAcaoGestor(tr.querySelector('button'), tr.dataset.kind, parseInt(tr.dataset.id, 10), true);
           }
-        });
-        const badgePend = document.getElementById('kpi-gestor-aprovacoes-pendentes');
-        if (badgePend) badgePend.textContent = '0';
-        exibirToast(`${selecionados.length} pendência(s) aprovada(s) com sucesso em lote!`, 'success');
+        }
       });
     }
   },
 
-  processarAcaoGestor(btn, mensagem, aprovado) {
-    const tr = btn ? btn.closest('tr') : null;
-    if (tr) {
-      tr.style.opacity = '0.6';
-      const tdAcoes = tr.querySelector('.btn-group-actions');
-      if (tdAcoes) {
-        tdAcoes.innerHTML = aprovado
-          ? '<span class="badge-status badge-calculada">Aprovado pelo Gestor</span>'
-          : '<span class="badge-status badge-pendente">Rejeitado pelo Gestor</span>';
+  async processarAcaoGestor(btn, kind, itemId, aprovado) {
+    try {
+      if (kind === 'ferias') {
+        const resp = await fetch(`${API_BASE}/ferias/${itemId}/aprovar`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ aprovar: Boolean(aprovado) })
+        });
+        if (!resp.ok) {
+          const j = await resp.json();
+          exibirToast(j.mensagem || 'Erro ao processar férias.', 'error');
+          return;
+        }
+      } else if (kind === 'pendencia') {
+        const resp = await fetch(`${API_BASE}/pendencias/${itemId}/resolver`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({})
+        });
+        if (!resp.ok) {
+          const j = await resp.json();
+          exibirToast(j.mensagem || 'Erro ao resolver pendência.', 'error');
+          return;
+        }
       }
+      exibirToast(aprovado ? 'Item homologado no servidor!' : 'Item rejeitado.', aprovado ? 'success' : 'warning');
+      await this.carregarPortalGestor();
+    } catch (e) {
+      exibirToast('Erro de comunicação ao processar ação do gestor.', 'error');
     }
-    exibirToast(mensagem, aprovado ? 'success' : 'warning');
   },
 
   async carregarBeneficiosCatalogo() {
@@ -6836,6 +7481,22 @@ const PlataformaManager = {
 
     // Ponto
     document.getElementById('btn-carregar-espelho-ponto')?.addEventListener('click', () => this.carregarEspelhoPonto());
+    document.getElementById('btn-ponto-fechar-competencia')?.addEventListener('click', () => this.fecharCompetenciaPonto());
+    document.getElementById('btn-ponto-relatorio-ausencias')?.addEventListener('click', () => this.exportarRelatorioAusenciasPonto());
+
+    // Afastamentos
+    document.getElementById('btn-afast-relatorio-csv')?.addEventListener('click', () => this.exportarRelatorioAfastamentosCSV());
+
+    // Rotinas Enterprise Folha (13º, Conferência, Lote, Rateio, Financeiro, eSocial)
+    document.getElementById('btn-folha-decimo-lote')?.addEventListener('click', () => this.executarDecimoTerceiroLote());
+    document.getElementById('btn-folha-conferencia')?.addEventListener('click', () => this.carregarConferenciaAnalitica());
+    document.getElementById('btn-folha-fechar-lote')?.addEventListener('click', () => this.fecharCompetenciaFolhaLote());
+    document.getElementById('btn-folha-rateio-cc')?.addEventListener('click', () => this.gerarRateioCentroCusto());
+    document.getElementById('btn-folha-integracao-fin')?.addEventListener('click', () => this.gerarIntegracaoFinanceira());
+    document.getElementById('btn-folha-esocial-periodicos')?.addEventListener('click', () => this.gerarEsocialPeriodicosFolha());
+    document.getElementById('btn-fechar-resultado-enterprise')?.addEventListener('click', () => {
+      document.getElementById('folha-painel-resultado-enterprise')?.classList.add('hidden');
+    });
 
     // eSocial
     document.getElementById('btn-esocial-transmitir')?.addEventListener('click', () => this.transmitirLoteESocial());
@@ -6843,6 +7504,7 @@ const PlataformaManager = {
     // CNAB 240
     document.getElementById('btn-gerar-cnab240')?.addEventListener('click', () => this.gerarCNAB240());
     document.getElementById('btn-download-cnab')?.addEventListener('click', () => this.downloadCNAB());
+    document.getElementById('btn-processar-retorno-cnab')?.addEventListener('click', () => this.processarRetornoCNAB240());
 
     // Auditoria
     document.getElementById('btn-atualizar-auditoria')?.addEventListener('click', () => this.carregarAuditoria());

@@ -111,7 +111,7 @@
 - [x] **RF-057**: Opção de adiantamento da 1ª parcela do 13º salário nas férias. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-058**: Emissão do Aviso de Férias com antecedência mínima de 30 dias (CLT art. 135). *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-059**: Pagamento de férias até 2 dias antes do início do gozo (CLT art. 145). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-060**: Geração do evento eSocial S-2230 correspondente ao gozo de férias. *(Status: Implementado / Testado e aprovado)*
+- [x] **RF-060**: Geração do evento eSocial S-2230 correspondente ao gozo de férias. *(Status: Parcial — XML v_S_01_02_00, fila e validação ElementTree testados; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
 
 ### Módulo 07 — Afastamentos & Estabilidade (RF-061 a RF-070)
 - [x] **RF-061**: Registro de afastamentos por auxílio-doença comum (B31). *(Status: Implementado / Testado e aprovado)*
@@ -122,7 +122,7 @@
 - [x] **RF-066**: Controle automático de estabilidade provisória (12 meses pós-B91 Lei 8.213/91 art. 118; gestante ADCT art. 10). *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-067**: Bloqueio de demissão sem justa causa de colaboradores com estabilidade legal ativa (RN-032 / RN-079). *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-068**: Exigência de ASO de Retorno ao Trabalho antes da reativação das atividades (NR-07). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-069**: Geração de evento eSocial S-2230 de início e término de afastamento. *(Status: Implementado / Testado e aprovado)*
+- [x] **RF-069**: Geração de evento eSocial S-2230 de início e término de afastamento. *(Status: Parcial — XMLs início/término v_S_01_02_00 e validação ElementTree testados; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
 - [x] **RF-070**: Suspensão e interrupção do contrato de trabalho e seus efeitos no FGTS e 13º. *(Status: Implementado / Testado e aprovado)*
 
 ### Módulo 08 — Benefícios (RF-071 a RF-080)
@@ -149,8 +149,8 @@
 - [x] **RF-089**: Fechamento formal da competência com trava de integridade (lock). *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-090**: Reabertura justificada de competência com trilha de auditoria (RT-01). *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-091**: Apuração de encargos patronais (INSS Empresa 20%, RAT ajustado pelo FAP, Terceiros/Outras Entidades). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-092**: Geração dos eventos periódicos eSocial S-1200 (Remuneração) e S-1210 (Pagamentos). *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-093**: Fechamento dos eventos periódicos eSocial S-1299. *(Status: Implementado / Testado e aprovado)*
+- [x] **RF-092**: Geração dos eventos periódicos eSocial S-1200 (Remuneração) e S-1210 (Pagamentos). *(Status: Parcial — XML v_S_01_02_00 e fila persistida testados; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
+- [x] **RF-093**: Fechamento dos eventos periódicos eSocial S-1299. *(Status: Parcial — XML v_S_01_02_00 e fila persistida testados; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
 - [x] **RF-094**: Relatório financeiro e contábil consolidado da folha por centro de custo. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-095**: Bloqueio de duplo pagamento ou duplicidade de rubricas na mesma folha. *(Status: Implementado / Testado e aprovado)*
 
@@ -162,7 +162,7 @@
 - [x] **RF-100**: Incidência exclusiva na fonte de IRRF sobre a 2ª parcela do 13º salário. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-101**: Integração de médias de horas extras, adicionais e comissões no cálculo do 13º. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-102**: Emissão de recibos de pagamento de 13º separados por parcela. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-103**: Geração do evento anual eSocial S-1200 competência 13. *(Status: Implementado / Testado e aprovado)*
+- [x] **RF-103**: Geração do evento anual eSocial S-1200 competência 13. *(Status: Parcial — XML v_S_01_02_00 suportado pelo motor; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
 - [x] **RF-104**: Controle de compensação de adiantamento de 13º pago nas férias. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-105**: Provisão contábil mensal de 1/12 de 13º salário e respectivos encargos. *(Status: Implementado / Testado e aprovado)*
 
@@ -180,7 +180,7 @@
 - [x] **RF-116**: Geração e impressão do TRCT (Termo de Rescisão do Contrato de Trabalho) oficial. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-117**: Emissão de guias de saque do FGTS e requerimento do Seguro-Desemprego. *(Status: Implementado / Testado e aprovado)*
 - [x] **RF-118**: Exigência e validação do ASO Demissional conforme prazos da NR-07. *(Status: Implementado / Testado e aprovado)*
-- [x] **RF-119**: Geração e transmissão do evento eSocial S-2299 (Desligamento). *(Status: Implementado / Testado e aprovado)*
+- [x] **RF-119**: Geração e transmissão do evento eSocial S-2299 (Desligamento). *(Status: Parcial — XML S-2299 v_S_01_02_00 gerado na homologação e validado por ElementTree; transmissão produtiva requer Certificado ICP-Brasil A1/A3)*
 - [x] **RF-120**: Homologação formal da rescisão e baixa automática no cadastro de colaboradores. *(Status: Implementado / Testado e aprovado)*
 
 ### Módulo 12 — Obrigações Legais & eSocial (RF-131 a RF-140)
@@ -340,7 +340,8 @@
 
 ## 6. Conclusão da Homologação
 
-- **112 testes automatizados** executados com **0 falhas** e **0 erros** (`tests/executar_todos_testes.py`).
-- **9 testes de referência legal 2026** oficiais aprovados com precisão ao centavo (`tests/test_rn_oficiais_2026.py`).
-- **9 testes de integração de ponta a ponta** cobrindo todos os serviços da plataforma (`tests/test_plataforma_ciclo_trabalhista.py`).
-- Interface responsiva com navegação lateral, 14 visões funcionais, 12 modais e suporte completo a desktops e dispositivos móveis.
+- **196 testes automatizados** executados com **0 falhas** e **0 erros** em `tests/executar_todos_testes.py` (duração observada: 1476,55s), cobrindo também os novos cenários RF-021 a RF-120 (`test_ponto_ausencias_adicionais_rf021_rf050`, `test_ferias_rf051_rf060`, `test_afastamentos_rf061_rf070`, `test_folha_decimo_terceiro_rf081_rf105`, `test_rescisao_rf106_rf120`) e `test_frontend_integridade`.
+- **9 testes de referência legal 2026** oficiais aprovados (`tests/test_rn_oficiais_2026.py`).
+- **9 testes de integração de ponta a ponta** aprovados (`tests/test_plataforma_ciclo_trabalhista.py`).
+- Interface consolidada por módulo em `frontend/index.html` + `frontend/app.js`, sem cartões independentes por RF individual, validada com `node --check frontend/app.js`, `test_frontend_integridade`, `test_responsividade_desktop_mobile` e `test_rbac_enterprise`.
+- Pendências externas documentadas em `PENDENCIAS_TECNICAS.md` (assinatura XMLDSig/transmissão eSocial com certificado ICP-Brasil A1/A3, execução DDL/DML da migration `012_homologacao_modulos_rf021_rf120.sql` em instância PostgreSQL ativa e bateria E2E visual em navegador Chrome real).
