@@ -1703,6 +1703,18 @@ def init_db(db_path: str = None, auto_provision: bool = True):
 
     cursor.execute(_DDL_COLABORADORES_PG if pg else _DDL_COLABORADORES_SQLITE)
     cursor.execute(_DDL_DEPENDENTES.format(serial=serial))
+
+    # Migração crítica: bancos PostgreSQL existentes podem ter sido criados
+    # antes da coluna situacao em dependentes. Aplicar isoladamente e confirmar
+    # antes das demais migrações para evitar que uma falha posterior em outra
+    # alteração de schema impeça esta coluna de existir em produção.
+    if pg:
+        cursor.execute(
+            "ALTER TABLE dependentes "
+            "ADD COLUMN IF NOT EXISTS situacao TEXT NOT NULL DEFAULT 'ativo';"
+        )
+        conn.commit()
+
     cursor.execute(_DDL_HISTORICO.format(serial=serial))
     cursor.execute(_DDL_USUARIOS_PG if pg else _DDL_USUARIOS_SQLITE)
     cursor.execute(_DDL_SESSOES)
