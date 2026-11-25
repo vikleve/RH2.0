@@ -42,6 +42,9 @@ from .esocial_eventos_trabalhistas import validar_xml_esocial_trabalhista
 from .ferias_service import FeriasService
 from .ponto_service import PontoService
 from .rescisao_service import RescisaoService
+from .sst_service import SSTService
+from .esocial_service import ESocialService
+from .relatorios_service import RelatoriosService
 from .plataforma_exceptions import (
     PlataformaAcessoNegadoException,
     PlataformaRecursoNaoEncontradoException,
@@ -73,6 +76,9 @@ class PlataformaService:
             db_path=self.db_path,
             auditoria_cb=self.registrar_auditoria,
         )
+        self.sst_service = SSTService(db_path=self.db_path)
+        self.esocial_service = ESocialService(db_path=self.db_path)
+        self.relatorios_service = RelatoriosService(db_path=self.db_path)
 
     def _conn(self):
         return get_connection(self.db_path)
@@ -548,6 +554,22 @@ class PlataformaService:
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 12: SST — SAÚDE E SEGURANÇA DO TRABALHO (RF-121 a RF-130)
     # ─────────────────────────────────────────────────────────────────────────
+    def cadastrar_exame(self, codigo: str, descricao: str, tipo: str, periodicidade_meses: int = 12, empresa_id: str = "a0000000-0000-0000-0000-000000000001", usuario: str = "Médico SST") -> Dict[str, Any]:
+        """RF-121: Cadastro de exame ocupacional."""
+        return self.sst_service.cadastrar_exame(codigo=codigo, descricao=descricao, tipo=tipo, periodicidade_meses=periodicidade_meses, empresa_id=empresa_id, usuario=usuario)
+
+    def listar_exames(self, empresa_id: str = "a0000000-0000-0000-0000-000000000001", apenas_ativos: bool = True) -> List[Dict[str, Any]]:
+        """RF-121: Listar exames ocupacionais."""
+        return self.sst_service.listar_exames(empresa_id=empresa_id, apenas_ativos=apenas_ativos)
+
+    def atualizar_exame(self, exame_id: int, dados: Dict[str, Any], empresa_id: str = "a0000000-0000-0000-0000-000000000001", usuario: str = "Médico SST") -> Dict[str, Any]:
+        """RF-121: Atualizar exame ocupacional."""
+        return self.sst_service.atualizar_exame(exame_id=exame_id, dados=dados, empresa_id=empresa_id, usuario=usuario)
+
+    def inativar_exame(self, exame_id: int, usuario: str = "Médico SST") -> Dict[str, Any]:
+        """RF-121: Inativar exame ocupacional."""
+        return self.sst_service.inativar_exame(exame_id=exame_id, usuario=usuario)
+
     def registrar_aso(
         self,
         colaborador_id: int,
@@ -558,106 +580,157 @@ class PlataformaService:
         medico_nome: str,
         medico_crm: str,
         medico_uf: str,
+        admissao_id: Optional[int] = None,
+        data_realizacao: Optional[str] = None,
+        observacoes: str = "",
+        conteudo_base64: Optional[str] = None,
+        nome_arquivo: Optional[str] = None,
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
         usuario: str = "SST",
     ) -> Dict[str, Any]:
-        """RF-122 a RF-125: Registra ASO ocupacional e gera eSocial S-2220."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """RF-122 a RF-125, RF-130: Registra ASO ocupacional e gera eSocial S-2220."""
+        return self.sst_service.registrar_aso(
+            colaborador_id=colaborador_id,
+            tipo_aso=tipo_aso,
+            data_emissao=data_emissao,
+            data_validade=data_validade,
+            resultado=resultado,
+            medico_nome=medico_nome,
+            medico_crm=medico_crm,
+            medico_uf=medico_uf,
+            admissao_id=admissao_id,
+            data_realizacao=data_realizacao,
+            observacoes=observacoes,
+            conteudo_base64=conteudo_base64,
+            nome_arquivo=nome_arquivo,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
-            sql_pg = f"""
-                INSERT INTO sst_asos (
-                    colaborador_id, tipo_aso, data_emissao, data_validade, resultado,
-                    medico_nome, medico_crm, medico_uf, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}) RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO sst_asos (
-                    colaborador_id, tipo_aso, data_emissao, data_validade, resultado,
-                    medico_nome, medico_crm, medico_uf, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p});
-            """
-            params = (
-                colaborador_id,
-                tipo_aso,
-                data_emissao,
-                data_validade,
-                resultado,
-                medico_nome,
-                medico_crm,
-                medico_uf,
-                usuario,
-                agora,
-            )
-            aso_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
+    def consultar_aso(self, aso_id: int, perfil_usuario: str = "medico_sst") -> Dict[str, Any]:
+        """RF-125: Consulta ASO com controle de RBAC/sigilo médico."""
+        return self.sst_service.consultar_aso(aso_id=aso_id, perfil_usuario=perfil_usuario)
 
-            # Gera evento eSocial S-2220
-            xml_s2220 = f"""<eSocial><evtMonit><ideEmpregador><nrInsc>12345678000190</nrInsc></ideEmpregador><aso><dtAso>{data_emissao}</dtAso><resAso>{resultado}</resAso><medico><crm>{medico_crm}</crm><uf>{medico_uf}</uf></medico></aso></evtMonit></eSocial>"""
-            cur.execute(
-                f"""
-                INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em)
-                VALUES ('a0000000-0000-0000-0000-000000000001', 'S-2220', {p}, 'homologacao', 'validado', {p}, {p}, {p});
-            """,
-                (str(aso_id), xml_s2220, usuario, agora),
-            )
+    def agendar_exame_periodico(
+        self,
+        colaborador_id: int,
+        exame_id: Optional[int],
+        data_prevista: str,
+        clinica_nome: str = "Clínica de Medicina Ocupacional",
+        observacoes: str = "",
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        usuario: str = "DP / SST",
+    ) -> Dict[str, Any]:
+        """RF-123: Agenda exame periódico preventivo conforme NR-07."""
+        return self.sst_service.agendar_exame_periodico(
+            colaborador_id=colaborador_id,
+            exame_id=exame_id,
+            data_prevista=data_prevista,
+            clinica_nome=clinica_nome,
+            observacoes=observacoes,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
-            conn.commit()
+    def verificar_dispensa_exame_demissional(self, colaborador_id: int, data_demissao: str, grau_risco: int = 2) -> Dict[str, Any]:
+        """RF-124: Verifica se o exame demissional é dispensável com base no último ASO e grau de risco (NR-07)."""
+        return self.sst_service.verificar_dispensa_exame_demissional(colaborador_id=colaborador_id, data_demissao=data_demissao, grau_risco=grau_risco)
 
-            self.registrar_auditoria(
-                modulo="SST",
-                operacao="inclusao",
-                registro_tipo="sst_asos",
-                registro_id=aso_id,
-                usuario=usuario,
-                detalhes=f"ASO {tipo_aso} ({resultado}) emitido para Colab {colaborador_id} por Dr(a). {medico_nome} CRM {medico_crm}/{medico_uf}",
-            )
+    def agendar_exame_demissional(
+        self,
+        colaborador_id: int,
+        data_demissao: str,
+        data_prevista: str,
+        clinica_nome: str = "Clínica de Medicina Ocupacional",
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        """RF-124: Agenda exame demissional e valida prazo legal de 10 dias (NR-07)."""
+        return self.sst_service.agendar_exame_demissional(
+            colaborador_id=colaborador_id,
+            data_demissao=data_demissao,
+            data_prevista=data_prevista,
+            clinica_nome=clinica_nome,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
-            return {"sucesso": True, "aso_id": aso_id, "resultado": resultado, "validade": data_validade}
-        finally:
-            conn.close()
+    def cadastrar_epi(
+        self,
+        codigo: str,
+        descricao: str,
+        ca_numero: str,
+        ca_validade: str,
+        vida_util_dias: int = 180,
+        fabricante: str = "Fabricante Homologado",
+        tipo_protecao: str = "Individual",
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        usuario: str = "Técnico SST",
+    ) -> Dict[str, Any]:
+        """RF-126: Cadastra EPI no catálogo."""
+        return self.sst_service.cadastrar_epi(
+            codigo=codigo,
+            descricao=descricao,
+            ca_numero=ca_numero,
+            ca_validade=ca_validade,
+            vida_util_dias=vida_util_dias,
+            fabricante=fabricante,
+            tipo_protecao=tipo_protecao,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
-    def registrar_entrega_epi(self, colaborador_id: int, epi_id: int, quantidade: int = 1, usuario: str = "SST") -> Dict[str, Any]:
+    def registrar_entrega_epi(self, colaborador_id: int, epi_id: int, quantidade: int = 1, data_entrega: Optional[str] = None, usuario: str = "SST") -> Dict[str, Any]:
         """RF-126, RN-062: Registra entrega de EPI com validação de CA ativo."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return self.sst_service.registrar_entrega_epi(colaborador_id=colaborador_id, epi_id=epi_id, quantidade=quantidade, data_entrega=data_entrega, usuario=usuario)
 
-            cur.execute(f"SELECT * FROM sst_epis WHERE id = {p};", (epi_id,))
-            epi = fetchone_dict(cur, self.db_path)
-            if not epi:
-                raise PlataformaRecursoNaoEncontradoException("EPI não cadastrado no catálogo.")
+    def registrar_devolucao_epi(self, entrega_id: int, data_devolucao: Optional[str] = None, motivo: str = "devolucao_normal", usuario: str = "Técnico SST") -> Dict[str, Any]:
+        """RF-126: Registra devolução de EPI."""
+        return self.sst_service.registrar_devolucao_epi(entrega_id=entrega_id, data_devolucao=data_devolucao, motivo=motivo, usuario=usuario)
 
-            # Verifica validade do CA (RN-062)
-            hoje = agora[:10]
-            if epi["ca_validade"] < hoje:
-                raise PlataformaValidacaoException(f"Bloqueio de Segurança (RN-062): O Certificado de Aprovação (CA {epi['ca_numero']}) está VENCIDO desde {epi['ca_validade']}. Entrega proibida.")
+    def registrar_substituicao_epi(self, entrega_anterior_id: int, novo_epi_id: int, motivo_troca: str = "desgaste", quantidade: int = 1, usuario: str = "Técnico SST") -> Dict[str, Any]:
+        """RF-126: Registra substituição de EPI."""
+        return self.sst_service.registrar_substituicao_epi(entrega_anterior_id=entrega_anterior_id, novo_epi_id=novo_epi_id, motivo_troca=motivo_troca, quantidade=quantidade, usuario=usuario)
 
-            dias_vida = int(epi["vida_util_dias"] or 180)
-            dt_prev_troca = (datetime.now() + timedelta(days=dias_vida)).strftime("%Y-%m-%d")
+    def cadastrar_treinamento(
+        self,
+        codigo: str,
+        nome: str,
+        nr_norma: str,
+        carga_horaria: int,
+        validade_meses: int = 24,
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        usuario: str = "Instrutor SST",
+    ) -> Dict[str, Any]:
+        """RF-127: Cadastra treinamento regulamentar (NRs MTE)."""
+        return self.sst_service.cadastrar_treinamento(codigo=codigo, nome=nome, nr_norma=nr_norma, carga_horaria=carga_horaria, validade_meses=validade_meses, empresa_id=empresa_id, usuario=usuario)
 
-            sql_pg = f"""
-                INSERT INTO sst_entregas_epi (
-                    colaborador_id, epi_id, data_entrega, quantidade, data_prevista_troca,
-                    ciencia_colaborador, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, 1, 'ativo', {p}, {p}) RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO sst_entregas_epi (
-                    colaborador_id, epi_id, data_entrega, quantidade, data_prevista_troca,
-                    ciencia_colaborador, status, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, 1, 'ativo', {p}, {p});
-            """
-            params = (colaborador_id, epi_id, hoje, quantidade, dt_prev_troca, usuario, agora)
-            entrega_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-            conn.commit()
+    def registrar_conclusao_treinamento(
+        self,
+        colaborador_id: int,
+        treinamento_id: int,
+        data_conclusao: str,
+        instrutor_nome: str,
+        certificado_url: Optional[str] = None,
+        carga_horaria_realizada: Optional[int] = None,
+        nota_aproveitamento: float = 10.0,
+        usuario: str = "Instrutor SST",
+    ) -> Dict[str, Any]:
+        """RF-127: Registra conclusão e reciclagem de treinamento."""
+        return self.sst_service.registrar_conclusao_treinamento(
+            colaborador_id=colaborador_id,
+            treinamento_id=treinamento_id,
+            data_conclusao=data_conclusao,
+            instrutor_nome=instrutor_nome,
+            certificado_url=certificado_url,
+            carga_horaria_realizada=carga_horaria_realizada,
+            nota_aproveitamento=nota_aproveitamento,
+            usuario=usuario,
+        )
 
-            return {"sucesso": True, "entrega_id": entrega_id, "ca_numero": epi["ca_numero"], "proxima_troca": dt_prev_troca}
-        finally:
-            conn.close()
+    def obter_alertas_vencimento_sst(self, empresa_id: str = "a0000000-0000-0000-0000-000000000001", dias_horizonte: int = 60) -> Dict[str, Any]:
+        """RF-128: Alertas proativos de vencimento de ASO, EPI e Treinamentos."""
+        return self.sst_service.obter_alertas_vencimento_sst(empresa_id=empresa_id, dias_horizonte=dias_horizonte)
 
     def registrar_cat(
         self,
@@ -666,59 +739,79 @@ class PlataformaService:
         data_hora: str,
         local_acidente: str,
         descricao: str,
+        houve_afastamento: bool = True,
         houve_obito: bool = False,
+        cid_codigo: Optional[str] = None,
+        medico_nome: Optional[str] = None,
+        medico_crm: Optional[str] = None,
+        medico_uf: Optional[str] = None,
+        duracao_provavel_dias: int = 0,
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
         usuario: str = "SST",
     ) -> Dict[str, Any]:
-        """RF-129, RN-064: Emissão de CAT com geração de evento eSocial S-2210."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            numero_cat = f"CAT-{int(datetime.now().timestamp())}"
+        """RF-129, RF-130, RN-064: Emissão de CAT com geração de evento eSocial S-2210."""
+        return self.sst_service.registrar_cat(
+            colaborador_id=colaborador_id,
+            tipo_acidente=tipo_acidente,
+            data_hora=data_hora,
+            local_acidente=local_acidente,
+            descricao=descricao,
+            houve_afastamento=houve_afastamento,
+            houve_obito=houve_obito,
+            cid_codigo=cid_codigo,
+            medico_nome=medico_nome,
+            medico_crm=medico_crm,
+            medico_uf=medico_uf,
+            duracao_provavel_dias=duracao_provavel_dias,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
-            sql_pg = f"""
-                INSERT INTO sst_cats (
-                    colaborador_id, tipo_acidente, data_hora_acidente, houve_obito,
-                    local_acidente, descricao_detalhada, numero_cat, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}) RETURNING id;
-            """
-            sql_sqlite = f"""
-                INSERT INTO sst_cats (
-                    colaborador_id, tipo_acidente, data_hora_acidente, houve_obito,
-                    local_acidente, descricao_detalhada, numero_cat, criado_por, criado_em
-                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p});
-            """
-            params = (colaborador_id, tipo_acidente, data_hora, 1 if houve_obito else 0, local_acidente, descricao, numero_cat, usuario, agora)
-            cat_id = insert_returning_id(cur, conn, sql_pg, sql_sqlite, params, self.db_path)
-
-            # Gera evento eSocial S-2210
-            xml_s2210 = f"""<eSocial><evtCAT><ideEmpregador><nrInsc>12345678000190</nrInsc></ideEmpregador><cat><nrCat>{numero_cat}</nrCat><dtAcid>{data_hora[:10]}</dtAcid><tpAcid>{tipo_acidente}</tpAcid></cat></evtCAT></eSocial>"""
-            cur.execute(
-                f"""
-                INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em)
-                VALUES ('a0000000-0000-0000-0000-000000000001', 'S-2210', {p}, 'homologacao', 'validado', {p}, {p}, {p});
-            """,
-                (str(cat_id), xml_s2210, usuario, agora),
-            )
-
-            conn.commit()
-
-            self.registrar_auditoria(
-                modulo="SST",
-                operacao="inclusao",
-                registro_tipo="sst_cats",
-                registro_id=cat_id,
-                usuario=usuario,
-                detalhes=f"CAT {numero_cat} emitida para Colaborador {colaborador_id} ({tipo_acidente})",
-            )
-
-            return {"sucesso": True, "cat_id": cat_id, "numero_cat": numero_cat}
-        finally:
-            conn.close()
+    def registrar_condicao_ambiental_s2240(
+        self,
+        colaborador_id: int,
+        ambiente_nome: str,
+        fator_risco_codigo: str,
+        fator_risco_descricao: str,
+        data_inicio: str,
+        tipo_avaliacao: str = "qualitativa",
+        intensidade_concentracao: float = 0.0,
+        limite_tolerancia: float = 0.0,
+        tecnica_utilizada: str = "Medição Direta / Dosimetria",
+        epc_eficaz: bool = False,
+        epi_eficaz: bool = True,
+        ca_epi_utilizado: Optional[str] = None,
+        responsavel_nome: str = "Engenheiro de Segurança",
+        responsavel_cpf: str = "12345678909",
+        descricao_atividades: str = "Atividades operacionais em ambiente corporativo",
+        data_fim: Optional[str] = None,
+        empresa_id: str = "a0000000-0000-0000-0000-000000000001",
+        usuario: str = "Engenheiro SST",
+    ) -> Dict[str, Any]:
+        """RF-130: Condições Ambientais do Trabalho (Agentes Nocivos) eSocial S-2240."""
+        return self.sst_service.registrar_condicao_ambiental_s2240(
+            colaborador_id=colaborador_id,
+            ambiente_nome=ambiente_nome,
+            fator_risco_codigo=fator_risco_codigo,
+            fator_risco_descricao=fator_risco_descricao,
+            data_inicio=data_inicio,
+            tipo_avaliacao=tipo_avaliacao,
+            intensidade_concentracao=intensidade_concentracao,
+            limite_tolerancia=limite_tolerancia,
+            tecnica_utilizada=tecnica_utilizada,
+            epc_eficaz=epc_eficaz,
+            epi_eficaz=epi_eficaz,
+            ca_epi_utilizado=ca_epi_utilizado,
+            responsavel_nome=responsavel_nome,
+            responsavel_cpf=responsavel_cpf,
+            descricao_atividades=descricao_atividades,
+            data_fim=data_fim,
+            empresa_id=empresa_id,
+            usuario=usuario,
+        )
 
     def listar_sst_resumo(self) -> Dict[str, Any]:
-        """RF-128, RF-147: Resumo integrado de exames, ASOs, EPIs, treinamentos e CATs."""
+        """RF-128, RF-147: Resumo integrado de exames, ASOs, EPIs, treinamentos, CATs e alertas."""
         conn = self._conn()
         try:
             cur = conn.cursor()
@@ -759,18 +852,23 @@ class PlataformaService:
             cur.execute("SELECT * FROM sst_treinamentos ORDER BY id ASC;")
             treinamentos = fetchall_dict(cur, self.db_path)
 
+            alertas = self.sst_service.obter_alertas_vencimento_sst()
+
             return {
                 "metricas": {
                     "total_asos": tot_asos,
                     "epis_em_uso": tot_epis,
                     "treinamentos_realizados": tot_treinamentos,
                     "total_cats": tot_cats,
+                    "alertas_vencimento": alertas.get("total_alertas", 0),
+                    "alertas_criticos": alertas.get("total_criticos_vencidos", 0),
                 },
                 "asos": ultimos_asos,
                 "entregas_epi": ultimas_entregas_epi,
                 "epis_entregas": ultimas_entregas_epi,
                 "treinamentos": treinamentos,
                 "cats": ultimas_cats,
+                "alertas": alertas,
             }
         finally:
             conn.close()
@@ -778,117 +876,45 @@ class PlataformaService:
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 13: ESOCIAL (RF-131 a RF-140)
     # ─────────────────────────────────────────────────────────────────────────
+    def cadastrar_evento_esocial(self, tipo_evento: str, identificador_origem: str, xml_conteudo: str, ambiente: str = "homologacao", empresa_id: str = "a0000000-0000-0000-0000-000000000001", usuario: str = "Sistema") -> Dict[str, Any]:
+        """RF-131, RF-132: Cadastro de evento eSocial com validação de schema."""
+        return self.esocial_service.cadastrar_evento(tipo_evento=tipo_evento, identificador_origem=identificador_origem, xml_conteudo=xml_conteudo, ambiente=ambiente, empresa_id=empresa_id, usuario=usuario)
+
+    def assinar_evento_esocial(self, evento_id: int, certificado_base64: Optional[str] = None, chave_privada_pem: Optional[str] = None, usuario: str = "DP") -> Dict[str, Any]:
+        """RF-133: Assinatura digital XMLDSig com tratamento honesto na ausência de certificado."""
+        return self.esocial_service.assinar_evento(evento_id=evento_id, certificado_base64=certificado_base64, chave_privada_pem=chave_privada_pem, usuario=usuario)
+
     def listar_esocial_eventos(self, status: Optional[str] = None, tipo: Optional[str] = None) -> List[Dict[str, Any]]:
         """RF-135, RF-139: Monitoramento de eventos eSocial."""
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            query = "SELECT * FROM esocial_eventos WHERE 1=1"
-            params = []
-            if status:
-                query += f" AND status = {self._p()}"
-                params.append(status)
-            if tipo:
-                query += f" AND tipo_evento = {self._p()}"
-                params.append(tipo)
-            query += " ORDER BY id DESC"
-            cur.execute(query, tuple(params))
-            return fetchall_dict(cur, self.db_path)
-        finally:
-            conn.close()
+        return self.esocial_service.listar_eventos(status=status, tipo=tipo)
 
-    def transmitir_lote_esocial(self, evento_ids: List[int], usuario: str) -> Dict[str, Any]:
+    def obter_evento_esocial(self, evento_id: int) -> Dict[str, Any]:
+        """RF-135: Obter detalhes de evento eSocial."""
+        return self.esocial_service.obter_evento(evento_id=evento_id)
+
+    def transmitir_lote_esocial(self, evento_ids: Optional[List[int]] = None, usuario: str = "DP") -> Dict[str, Any]:
         """RF-134, RN-065: Validação real de schema XML e simulação transparente (sem recibos fictícios)."""
-        import xml.etree.ElementTree as ET
+        return self.esocial_service.transmitir_lote(evento_ids=evento_ids, usuario=usuario)
 
-        conn = self._conn()
-        try:
-            cur = conn.cursor()
-            p = self._p()
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    def registrar_rejeicao_esocial(self, evento_id: int, codigo_resposta: str, mensagem_resposta: str, erros_detalhados: Optional[List[Dict[str, Any]]] = None, usuario: str = "Auditor eSocial") -> Dict[str, Any]:
+        """RF-136: Tratamento e registro detalhado de rejeições do eSocial."""
+        return self.esocial_service.registrar_rejeicao(evento_id=evento_id, codigo_resposta=codigo_resposta, mensagem_resposta=mensagem_resposta, erros_detalhados=erros_detalhados, usuario=usuario)
 
-            if not evento_ids:
-                cur.execute("SELECT id, tipo_evento, xml_conteudo FROM esocial_eventos WHERE status != 'aceito';")
-                evs = fetchall_dict(cur, self.db_path)
-            else:
-                ph_list = ",".join([p] * len(evento_ids))
-                cur.execute(
-                    f"SELECT id, tipo_evento, xml_conteudo FROM esocial_eventos WHERE id IN ({ph_list});",
-                    tuple(int(x) for x in evento_ids),
-                )
-                evs = fetchall_dict(cur, self.db_path)
+    def retificar_evento_esocial(self, evento_id_original: int, novo_xml_conteudo: str, numero_recibo_anterior: str, justificativa: str, usuario: str = "DP") -> Dict[str, Any]:
+        """RF-137: Retificação formal de eventos aceitos anteriormente vinculados por evento_retificador_de."""
+        return self.esocial_service.retificar_evento(evento_id_original=evento_id_original, novo_xml_conteudo=novo_xml_conteudo, numero_recibo_anterior=numero_recibo_anterior, justificativa=justificativa, usuario=usuario)
 
-            validos = 0
-            invalidos = 0
-            erros_detalhes = []
-            ultimo_prot = f"LOCAL-VAL-{int(datetime.now().timestamp())}"
-            for ev in evs:
-                eid = int(ev["id"])
-                tipo_ev = str(ev.get("tipo_evento") or "").upper().strip()
-                xml_str = ev.get("xml_conteudo") or ""
-                if tipo_ev in ("S-2190", "S-2200", "S-2230", "S-1200", "S-1210", "S-1299", "S-2299"):
-                    ok_xml, errs = validar_xml_esocial_trabalhista(tipo_ev, xml_str)
-                else:
-                    try:
-                        ET.fromstring(xml_str.strip())
-                        ok_xml, errs = True, []
-                    except Exception as exc_xml:
-                        ok_xml, errs = False, [f"XML malformado: {exc_xml}"]
+    def solicitar_exclusao_evento_esocial(self, evento_id_alvo: int, numero_recibo_alvo: str, cnpj_empregador: str = "12345678000190", cpf_trabalhador: Optional[str] = None, justificativa: str = "Exclusão solicitada pelo DP", usuario: str = "DP") -> Dict[str, Any]:
+        """RF-138: Exclusão de evento eSocial via geração oficial do evento S-3000."""
+        return self.esocial_service.solicitar_exclusao_evento(evento_id_alvo=evento_id_alvo, numero_recibo_alvo=numero_recibo_alvo, cnpj_empregador=cnpj_empregador, cpf_trabalhador=cpf_trabalhador, justificativa=justificativa, usuario=usuario)
 
-                ultimo_prot = f"LOCAL-VAL-{int(datetime.now().timestamp())}-{eid}"
-                if ok_xml:
-                    cur.execute(
-                        f"""
-                        UPDATE esocial_eventos
-                        SET status = 'validado', protocolo_envio = {p}, numero_recibo = NULL,
-                            codigo_resposta = 'XML-OK-LOCAL',
-                            mensagem_resposta = '[SIMULAÇÃO/HOMOLOGAÇÃO LOCAL] Schema XML v_S_01_02_00 validado com sucesso. Aguardando transmissão oficial via Certificado Digital A1/A3 ICP-Brasil.',
-                            enviado_em = NULL, processado_em = {p}
-                        WHERE id = {p};
-                    """,
-                        (ultimo_prot, agora, eid),
-                    )
-                    validos += 1
-                else:
-                    msg_err = "; ".join(errs)[:400]
-                    cur.execute(
-                        f"""
-                        UPDATE esocial_eventos
-                        SET status = 'erro_schema', protocolo_envio = NULL, numero_recibo = NULL,
-                            codigo_resposta = 'XSD-ERR',
-                            mensagem_resposta = {p},
-                            enviado_em = NULL, processado_em = {p}
-                        WHERE id = {p};
-                    """,
-                        (msg_err, agora, eid),
-                    )
-                    invalidos += 1
-                    erros_detalhes.append({"evento_id": eid, "tipo_evento": tipo_ev, "erros": errs})
+    def obter_historico_evento_esocial(self, evento_id: int) -> List[Dict[str, Any]]:
+        """RF-139, RF-140: Histórico e rastreabilidade genealógica do evento eSocial."""
+        return self.esocial_service.obter_historico_evento(evento_id=evento_id)
 
-            conn.commit()
-
-            self.registrar_auditoria(
-                modulo="eSocial",
-                operacao="simulacao_validacao",
-                registro_tipo="esocial_eventos",
-                registro_id="lote",
-                usuario=usuario,
-                detalhes=f"Validação estrutural XML concluída: {validos} validado(s), {invalidos} erro(s) de schema (aguardando certificado ICP-Brasil).",
-            )
-
-            return {
-                "sucesso": True,
-                "simulacao": True,
-                "transmissao_real_disponivel": False,
-                "eventos_processados": validos,
-                "eventos_erro_schema": invalidos,
-                "erros_schema": erros_detalhes,
-                "status_atribuido": "validado",
-                "dados": {"protocolo_simulado": ultimo_prot, "eventos_processados": validos, "eventos_erro_schema": invalidos},
-                "mensagem": f"[SIMULAÇÃO] {validos} evento(s) validado(s) no schema XML v_S_01_02_00 ({invalidos} erro(s)). Nenhum recibo oficial fictício gerado (requer Certificado Digital ICP-Brasil).",
-            }
-        finally:
-            conn.close()
+    def exportar_relatorio_pdf(self, tipo_relatorio: str, empresa_id: str = "a0000000-0000-0000-0000-000000000001", filtros: Optional[Dict[str, Any]] = None) -> bytes:
+        """RF-150: Exportação de relatórios gerenciais em PDF A4 oficial."""
+        return self.relatorios_service.exportar_relatorio_pdf(tipo_relatorio=tipo_relatorio, empresa_id=empresa_id, filtros=filtros)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MÓDULO 15: CENTRAL DE PENDÊNCIAS OPERACIONAIS (RF-151 a RF-160)

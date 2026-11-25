@@ -266,3 +266,86 @@ def gerar_pdf_guias_fgts_sd(
 
     _rodape_doc(c, f"FGTS-SD-{rescisao.get('id')}")
     return montar_pdf_paginas([c.to_bytes()])
+
+
+def gerar_pdf_relatorio_a4(
+    titulo_relatorio: str,
+    subtitulo: str,
+    colunas: List[Tuple[str, float]],
+    linhas: List[List[str]],
+    totalizadores: Optional[List[Tuple[str, str]]] = None,
+    empresa: Optional[Dict[str, Any]] = None,
+    filtros: Optional[Dict[str, Any]] = None,
+) -> bytes:
+    """
+    RF-150: Gerador Oficial de Relatórios Gerenciais e Fiscais em PDF A4.
+    - Layout profissional e padronizado
+    - Cabeçalho institucional com empresa e CNPJ
+    - Filtros aplicados e data/hora de emissão
+    - Tabela zebrada com larguras proporcionais
+    - Paginação automática ('Página X de Y')
+    - Bloco de totalizadores e assinatura do responsável técnico
+    """
+    ml = 34.0
+    mr = A4_WIDTH - 34.0
+    cw = mr - ml
+
+    linhas_por_pagina = 22
+    chunks = [linhas[i : i + linhas_por_pagina] for i in range(0, max(len(linhas), 1), linhas_por_pagina)]
+    total_pags = len(chunks)
+
+    paginas_bytes = []
+    ref_hash = hashlib.sha256(f"{titulo_relatorio}|{len(linhas)}|{datetime.now().strftime('%Y%m%d%H%M')}".encode("utf-8")).hexdigest()[:12].upper()
+
+    for idx_pag, chunk in enumerate(chunks, 1):
+        c = _PDFCanvas()
+        y = _desenhar_cabecalho_doc(c, titulo_relatorio, subtitulo, empresa)
+
+        # Bloco de Filtros Aplicados na 1ª página
+        if idx_pag == 1 and filtros:
+            c.rect(ml, y - 26, cw, 26, fill_rgb=(0.97, 0.98, 0.99), stroke_rgb=(0.82, 0.86, 0.90), line_w=0.6)
+            filtros_txt = "  |  ".join(f"{k.capitalize()}: {v}" for k, v in filtros.items() if v)
+            c.text(ml + 8, y - 16, f"Filtros: {_trunc(filtros_txt or 'Nenhum filtro restritivo aplicado', 95)}", font="F1", size=7.8, rgb=(0.20, 0.28, 0.38))
+            y -= 34
+
+        # Cabeçalho da Tabela
+        c.rect(ml, y - 18, cw, 18, fill_rgb=(0.10, 0.22, 0.38), stroke_rgb=None)
+        x_col = ml + 6
+        for col_nome, col_largura in colunas:
+            c.text(x_col, y - 13, col_nome.upper(), font="F2", size=7.5, rgb=(1, 1, 1))
+            x_col += col_largura
+        y -= 19
+
+        # Linhas de Dados
+        for row_idx, row in enumerate(chunk):
+            bg_color = (0.97, 0.98, 0.99) if row_idx % 2 == 1 else (1, 1, 1)
+            c.rect(ml, y - 16, cw, 16, fill_rgb=bg_color, stroke_rgb=(0.88, 0.90, 0.93), line_w=0.4)
+            x_col = ml + 6
+            for col_idx, val_str in enumerate(row):
+                if col_idx < len(colunas):
+                    col_larg = colunas[col_idx][1]
+                    c.text(x_col, y - 12, _trunc(str(val_str or "--"), int(col_larg / 5.2)), font="F1", size=7.2, rgb=(0.12, 0.16, 0.22))
+                    x_col += col_larg
+            y -= 16
+
+        # Totalizadores na última página
+        if idx_pag == total_pags and totalizadores:
+            y -= 12
+            tot_h = 24.0
+            c.rect(ml, y - tot_h, cw, tot_h, fill_rgb=(0.92, 0.95, 0.98), stroke_rgb=(0.10, 0.22, 0.38), line_w=0.8)
+            x_tot = ml + 8
+            for label, valor in totalizadores:
+                c.text(x_tot, y - 15, f"{label}: ", font="F2", size=8.0, rgb=(0.10, 0.22, 0.38))
+                x_tot += len(label) * 4.5 + 24
+                c.text(x_tot, y - 15, str(valor), font="F1", size=8.0, rgb=(0.05, 0.10, 0.18))
+                x_tot += len(str(valor)) * 4.8 + 28
+            y -= tot_h + 16
+
+        # Rodapé com Numeração de Páginas e Assinatura
+        c.line(ml, 50, mr, 50, rgb=(0.80, 0.84, 0.88), line_w=0.6)
+        c.text(ml + 4, 38, f"RH2.0 Enterprise  |  Ref: {ref_hash}  |  Emissão: {datetime.now().strftime('%d/%m/%Y %H:%M')}", font="F1", size=7.0, rgb=(0.40, 0.45, 0.52))
+        c.text(mr - 4, 38, f"Página {idx_pag} de {total_pags}", font="F2", size=7.2, rgb=(0.20, 0.28, 0.38), align="right")
+
+        paginas_bytes.append(c.to_bytes())
+
+    return montar_pdf_paginas(paginas_bytes)

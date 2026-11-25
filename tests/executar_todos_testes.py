@@ -39,6 +39,10 @@ from tests.test_ferias_rf051_rf060 import TestFeriasRF051RF060
 from tests.test_afastamentos_rf061_rf070 import TestAfastamentosRF061RF070
 from tests.test_folha_decimo_terceiro_rf081_rf105 import TestFolhaDecimoTerceiroRF081RF105
 from tests.test_rescisao_rf106_rf120 import TestRescisaoRF106RF120
+from tests.test_sst_rf121_rf130 import TestSSTRF121RF130
+from tests.test_esocial_rf131_rf140 import TestESocialRF131RF140
+from tests.test_relatorios_rf141_rf150 import TestRelatoriosRF141RF150
+from tests.test_regras_negocio_rn001_rn035 import TestRegrasNegocioRN001aRN035
 
 
 def executar():
@@ -112,6 +116,18 @@ def executar():
 
     # 17. Testes de Rescisão Contratual, TRCT PDF, Guias e S-2299 (RF-106 a RF-120)
     suite.addTests(carregador.loadTestsFromTestCase(TestRescisaoRF106RF120))
+
+    # 18. Testes de Saúde e Segurança do Trabalho — SST, ASO, EPI, CAT S-2210/2220/2240 (RF-121 a RF-130)
+    suite.addTests(carregador.loadTestsFromTestCase(TestSSTRF121RF130))
+
+    # 19. Testes Oficiais de eSocial — Ciclo Completo, XML, Retificação e Exclusão S-3000 (RF-131 a RF-140)
+    suite.addTests(carregador.loadTestsFromTestCase(TestESocialRF131RF140))
+
+    # 20. Testes de Relatórios Gerenciais, Encargos e Exportação PDF A4 Oficial (RF-141 a RF-150)
+    suite.addTests(carregador.loadTestsFromTestCase(TestRelatoriosRF141RF150))
+
+    # 21. Testes de Homologação das Regras de Negócio Oficiais Trabalhistas e Previdenciárias (RN-001 a RN-035)
+    suite.addTests(carregador.loadTestsFromTestCase(TestRegrasNegocioRN001aRN035))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"

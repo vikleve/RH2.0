@@ -1302,6 +1302,51 @@ _DDL_SST_CATS = """
     );
 """
 
+_DDL_SST_CONDICOES_AMBIENTAIS = """
+    CREATE TABLE IF NOT EXISTS sst_condicoes_ambientais (
+        id                          {pk},
+        empresa_id                  TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        colaborador_id              INTEGER NOT NULL,
+        ambiente_nome               TEXT NOT NULL,
+        descricao_atividades        TEXT,
+        fator_risco_codigo          TEXT NOT NULL,
+        fator_risco_descricao       TEXT NOT NULL,
+        tipo_avaliacao              TEXT NOT NULL DEFAULT 'qualitativa',
+        intensidade_concentracao    REAL DEFAULT 0.00,
+        limite_tolerancia           REAL DEFAULT 0.00,
+        tecnica_utilizada           TEXT,
+        epc_eficaz                  INTEGER NOT NULL DEFAULT 0,
+        epi_eficaz                  INTEGER NOT NULL DEFAULT 1,
+        ca_epi_utilizado            TEXT,
+        responsavel_registros_nome  TEXT,
+        responsavel_registros_cpf   TEXT,
+        data_inicio_condicao        TEXT NOT NULL,
+        data_fim_condicao           TEXT,
+        esocial_evento_id           INTEGER,
+        criado_por                  TEXT NOT NULL,
+        criado_em                   TEXT NOT NULL
+    );
+"""
+
+_DDL_SST_EXAMES_AGENDAMENTOS = """
+    CREATE TABLE IF NOT EXISTS sst_exames_agendamentos (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        colaborador_id      INTEGER NOT NULL,
+        exame_id            INTEGER,
+        tipo_exame          TEXT NOT NULL,
+        data_prevista       TEXT NOT NULL,
+        data_realizacao     TEXT,
+        status              TEXT NOT NULL DEFAULT 'agendado',
+        clinica_nome        TEXT,
+        medico_examinador   TEXT,
+        observacoes         TEXT,
+        aso_gerado_id       INTEGER,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
 _DDL_ESOCIAL_EVENTOS = """
     CREATE TABLE IF NOT EXISTS esocial_eventos (
         id                  {pk},
@@ -1682,6 +1727,8 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_FOLHA_INTEGRACAO_FINANCEIRA.format(pk=pk),
         _DDL_CNAB_RETORNOS.format(pk=pk),
         _DDL_RESCISOES_HISTORICO.format(pk=pk),
+        _DDL_SST_CONDICOES_AMBIENTAIS.format(pk=pk),
+        _DDL_SST_EXAMES_AGENDAMENTOS.format(pk=pk),
     ]
     for ddl_sql in tabelas_plataforma:
         try:
@@ -1743,6 +1790,10 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_bh_colab_comp     ON ponto_banco_horas(colaborador_id, competencia);",
         "CREATE INDEX IF NOT EXISTS idx_rateio_comp       ON folha_rateio_centro_custo(empresa_id, competencia);",
         "CREATE INDEX IF NOT EXISTS idx_fin_comp          ON folha_integracao_financeira(empresa_id, competencia);",
+        "CREATE INDEX IF NOT EXISTS idx_sst_condamb_colab ON sst_condicoes_ambientais(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_sst_condamb_risco ON sst_condicoes_ambientais(fator_risco_codigo);",
+        "CREATE INDEX IF NOT EXISTS idx_sst_agend_colab   ON sst_exames_agendamentos(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_sst_agend_status  ON sst_exames_agendamentos(status, data_prevista);",
     ]
     for idx_sql in indices:
         try:
@@ -1950,6 +2001,23 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS banco_conta TEXT DEFAULT '000012345678';",
             "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS adicional_periculosidade INTEGER DEFAULT 0;",
             "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS adicional_insalubridade_grau TEXT DEFAULT 'nenhum';",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN IF NOT EXISTS data_devolucao TEXT;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN IF NOT EXISTS motivo_troca TEXT;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN IF NOT EXISTS epi_substituido_id INTEGER;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS cid_codigo TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS atestado_medico_nome TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS atestado_medico_crm TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS atestado_medico_uf TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN IF NOT EXISTS duracao_provavel_dias INTEGER DEFAULT 0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN IF NOT EXISTS carga_horaria_realizada INTEGER DEFAULT 0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN IF NOT EXISTS nota_aproveitamento NUMERIC(5,2) DEFAULT 10.0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'concluido';",
+            "ALTER TABLE esocial_eventos ADD COLUMN IF NOT EXISTS tentativas_envio INTEGER DEFAULT 1;",
+            "ALTER TABLE esocial_eventos ADD COLUMN IF NOT EXISTS erro_detalhes_json TEXT;",
+            "ALTER TABLE esocial_eventos ADD COLUMN IF NOT EXISTS xml_retificador TEXT;",
         ]
         for col_sql in colunas_extras:
             try:
@@ -2154,6 +2222,23 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE empresas ADD COLUMN banco_conta TEXT DEFAULT '000012345678';",
             "ALTER TABLE colaboradores ADD COLUMN adicional_periculosidade INTEGER DEFAULT 0;",
             "ALTER TABLE colaboradores ADD COLUMN adicional_insalubridade_grau TEXT DEFAULT 'nenhum';",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN data_devolucao TEXT;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN motivo_troca TEXT;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN epi_substituido_id INTEGER;",
+            "ALTER TABLE sst_entregas_epi ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_cats ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_cats ADD COLUMN cid_codigo TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN atestado_medico_nome TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN atestado_medico_crm TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN atestado_medico_uf TEXT;",
+            "ALTER TABLE sst_cats ADD COLUMN duracao_provavel_dias INTEGER DEFAULT 0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN carga_horaria_realizada INTEGER DEFAULT 0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN nota_aproveitamento REAL DEFAULT 10.0;",
+            "ALTER TABLE sst_treinamentos_participacoes ADD COLUMN status TEXT DEFAULT 'concluido';",
+            "ALTER TABLE esocial_eventos ADD COLUMN tentativas_envio INTEGER DEFAULT 1;",
+            "ALTER TABLE esocial_eventos ADD COLUMN erro_detalhes_json TEXT;",
+            "ALTER TABLE esocial_eventos ADD COLUMN xml_retificador TEXT;",
         ]
         for col_sql in colunas_extras_sqlite:
             try:

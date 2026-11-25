@@ -23,6 +23,10 @@ NS_S1200 = "http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_02_00"
 NS_S1210 = "http://www.esocial.gov.br/schema/evt/evtPgtos/v_S_01_02_00"
 NS_S1299 = "http://www.esocial.gov.br/schema/evt/evtFechaEvPer/v_S_01_02_00"
 NS_S2299 = "http://www.esocial.gov.br/schema/evt/evtDeslig/v_S_01_02_00"
+NS_S2210 = "http://www.esocial.gov.br/schema/evt/evtCAT/v_S_01_02_00"
+NS_S2220 = "http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00"
+NS_S2240 = "http://www.esocial.gov.br/schema/evt/evtExpRisco/v_S_01_02_00"
+NS_S3000 = "http://www.esocial.gov.br/schema/evt/evtExclusao/v_S_01_02_00"
 
 MAPA_MOTIVO_AFAST_ESOCIAL: Dict[str, str] = {
     "acidente_trabalho": "01",
@@ -334,6 +338,58 @@ def gerar_xml_s2299(
     return xml, []
 
 
+def gerar_xml_s3000(
+    cnpj_empregador: str,
+    tp_evento: str,
+    nr_rec_evt: str,
+    cpf_trabalhador: Optional[str] = None,
+    per_apur: Optional[str] = None,
+    ambiente: str = "homologacao",
+) -> Tuple[str, List[str]]:
+    """Gera o evento S-3000 (Exclusão de Eventos) conforme leiaute oficial v_S_01_02_00."""
+    erros = []
+    cnpj = _dig(cnpj_empregador)
+    rec = str(nr_rec_evt or "").strip()
+    if not rec:
+        erros.append("Número do recibo do evento a ser excluído (nrRecEvt) é obrigatório.")
+    tipo = str(tp_evento or "").strip().upper()
+    if not tipo:
+        erros.append("Tipo do evento a ser excluído (tpEvento) é obrigatório.")
+    if erros:
+        return "", erros
+
+    id_evt = _gerar_id(cnpj)
+    tp_amb = _tp_amb(ambiente)
+    cpf_node = ""
+    if cpf_trabalhador:
+        cpf_dig = _dig(cpf_trabalhador).zfill(11)
+        cpf_node = f"      <ideTrabalhador><cpfTrab>{cpf_dig}</cpfTrab></ideTrabalhador>\n"
+    per_node = ""
+    if per_apur:
+        per_node = f"      <idePeriodo><perApur>{per_apur}</perApur></idePeriodo>\n"
+
+    xml = (
+        f'<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<eSocial xmlns="{NS_S3000}">\n'
+        f'  <evtExclusao Id="{id_evt}">\n'
+        f'    <ideEvento>\n'
+        f'      <tpAmb>{tp_amb}</tpAmb>\n'
+        f'      <procEmi>1</procEmi>\n'
+        f'      <verProc>RH2.0-Enterprise-2026</verProc>\n'
+        f'    </ideEvento>\n'
+        f'    {_ide_empregador(cnpj)}\n'
+        f'    <infoExclusao>\n'
+        f'      <tpEvento>{tipo}</tpEvento>\n'
+        f'      <nrRecEvt>{escape(rec)}</nrRecEvt>\n'
+        f'{cpf_node}'
+        f'{per_node}'
+        f'    </infoExclusao>\n'
+        f'  </evtExclusao>\n'
+        f'</eSocial>'
+    )
+    return xml, []
+
+
 def validar_xml_esocial_trabalhista(tipo_evento: str, xml_str: str) -> Tuple[bool, List[str]]:
     """Valida estrutura XML, namespace v_S_01_02_00 e elementos obrigatórios dos eventos trabalhistas."""
     tipo = str(tipo_evento or "").upper().strip()
@@ -354,6 +410,10 @@ def validar_xml_esocial_trabalhista(tipo_evento: str, xml_str: str) -> Tuple[boo
         "S-1210": (NS_S1210, "evtPgtos", [["ideEvento", "perApur"], ["ideEmpregador", "nrInsc"], ["ideBenef", "cpfBenef"], ["ideBenef", "infoPgto", "dtPgto"], ["ideBenef", "infoPgto", "vrLiq"]]),
         "S-1299": (NS_S1299, "evtFechaEvPer", [["ideEvento", "perApur"], ["ideEmpregador", "nrInsc"], ["infoFech", "evtRemun"], ["infoFech", "evtPgtos"]]),
         "S-2299": (NS_S2299, "evtDeslig", [["ideEvento", "tpAmb"], ["ideEmpregador", "nrInsc"], ["ideVinculo", "cpfTrab"], ["infoDeslig", "mtvDeslig"], ["infoDeslig", "dtDeslig"]]),
+        "S-2210": (NS_S2210, "evtCAT", [["ideEmpregador", "nrInsc"], ["cat", "dtAcid"], ["cat", "tpAcid"]]),
+        "S-2220": (NS_S2220, "evtMonit", [["ideEmpregador", "nrInsc"], ["aso", "dtAso"], ["aso", "resAso"], ["aso", "medico", "nrCRM"]]),
+        "S-2240": (NS_S2240, "evtExpRisco", [["ideEmpregador", "nrInsc"], ["infoExpRisco", "dtIniCondicao"], ["infoExpRisco", "agNoc", "codAgNoc"]]),
+        "S-3000": (NS_S3000, "evtExclusao", [["ideEmpregador", "nrInsc"], ["infoExclusao", "tpEvento"], ["infoExclusao", "nrRecEvt"]]),
     }
     if tipo not in mapa_ns:
         return False, [f"Tipo de evento não suportado na validação v_S_01_02_00: {tipo_evento}"]

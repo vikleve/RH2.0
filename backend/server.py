@@ -1025,6 +1025,56 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             eventos = self.plataforma_service.listar_esocial_eventos(status=status, tipo=tipo)
             return self._enviar_json(200, {"sucesso": True, "total": len(eventos), "dados": eventos})
 
+        if path == "/api/relatorios/exportar-pdf":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            tipo = query.get("tipo", ["colaboradores"])[0]
+            filtros = {k: v[0] for k, v in query.items() if k != "tipo"}
+            try:
+                from backend.relatorios_service import RelatoriosService
+                rel_srv = RelatoriosService()
+                pdf_bytes = rel_srv.exportar_relatorio_pdf(tipo_relatorio=tipo, filtros=filtros)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Disposition", f'inline; filename="relatorio_{tipo}.pdf"')
+                self.send_header("Content-Length", str(len(pdf_bytes)))
+                self._adicionar_cors_headers()
+                self.end_headers()
+                self.wfile.write(pdf_bytes)
+                return
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/relatorios"):
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            tipo = query.get("tipo", ["colaboradores"])[0]
+            filtros = {k: v[0] for k, v in query.items() if k != "tipo"}
+            try:
+                from backend.relatorios_service import RelatoriosService
+                import inspect
+                rel_srv = RelatoriosService()
+                fn_map = {
+                    "colaboradores": rel_srv.relatorio_colaboradores,
+                    "jornadas_ponto": rel_srv.relatorio_jornadas_ponto,
+                    "ferias": rel_srv.relatorio_ferias,
+                    "afastamentos": rel_srv.relatorio_afastamentos,
+                    "beneficios": rel_srv.relatorio_beneficios,
+                    "encargos": rel_srv.relatorio_encargos_folha,
+                    "sst": rel_srv.relatorio_sst,
+                    "rescisoes": rel_srv.relatorio_rescisoes,
+                    "financeiro": rel_srv.relatorio_financeiro_folha,
+                }
+                fn = fn_map.get(tipo, rel_srv.relatorio_colaboradores)
+                sig = inspect.signature(fn)
+                valid_params = {k: v for k, v in filtros.items() if k in sig.parameters}
+                rel = fn(**valid_params)
+                return self._enviar_json(200, {"sucesso": True, "relatorio": rel})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
         if path == "/api/pendencias":
             usuario = self._exigir_autenticacao()
             if not usuario:
@@ -2420,6 +2470,40 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 dados = self._ler_json_body()
                 evento_ids = dados.get("evento_ids", [])
                 resp = self.plataforma_service.transmitir_lote_esocial(evento_ids, usuario=usuario_auth["nome_completo"])
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/esocial/retificar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "esocial:transmitir"):
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.retificar_evento_esocial(
+                    evento_id_original=int(dados["evento_id"]),
+                    novo_xml_conteudo=dados.get("novo_xml", "<retificacao/>"),
+                    numero_recibo_anterior=dados.get("numero_recibo_anterior", "REC-PREV-01"),
+                    justificativa=dados.get("justificativa", "Retificação administrativa"),
+                    usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/esocial/excluir":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "esocial:transmitir"):
+                return
+            try:
+                dados = self._ler_json_body()
+                from backend.esocial_service import ESocialService
+                esoc = ESocialService()
+                resp = esoc.gerar_evento_exclusao_s3000(
+                    evento_excluir_id=int(dados["evento_id"]),
+                    justificativa=dados.get("justificativa", "Cancelamento administrativo"),
+                    usuario=usuario_auth["nome_completo"]
+                )
                 return self._enviar_json(200, resp)
             except Exception as e:
                 return self._enviar_json(*erro_http(e))

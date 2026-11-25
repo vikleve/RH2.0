@@ -1,45 +1,78 @@
-# HISTÓRICO DE CORREÇÕES E IMPLEMENTAÇÕES (RF021 A RF120)
-
-Registro cronológico das alterações aplicadas diretamente na arquitetura ativa do projeto RH2.0 Enterprise.
+# HISTÓRICO DE AUDITORIA, CORREÇÕES E HOMOLOGAÇÃO
+## RH2.0 Enterprise — Registro Geral de Engenharia de Software
+**Data:** 25/11/2026  
+**Auditor:** Arquiteto de Sistemas, QA Senior & Especialista Trabalhista  
 
 ---
 
-## Fase 1 — Banco de Dados e Tabelas Legais Versionadas
-- **`migrations/012_homologacao_modulos_rf021_rf120.sql` (Novo):** Criação e adaptação das tabelas `tabelas_legais_vigencia`, `tabelas_legais_historico`, `feriados_calendario`, `ponto_espelhos_fechados`, `decimo_terceiro`, `folha_rateio_centro_custo`, `folha_integracao_financeira`, `cnab_retornos`, `rescisoes_historico` e novas colunas em `afastamentos`, `ferias_programadas`, `folhas_pagamento` e `rescisoes`.
-- **`backend/database.py`:** Execução automática da migration `012` em SQLite e PostgreSQL.
-- **`backend/tabelas_legais_service.py` (Novo):** Gestão versionada de faixas INSS/IRRF, salário mínimo, salário-família, FGTS, feriados nacionais/estaduais/municipais e contagem real de dias úteis vs DSR.
+## 1. REGISTRO CRONOLÓGICO DE INTERVENÇÕES TÉCNICAS
 
-## Fase 2 — Motor Centralizado de Cálculos 2026
-- **`backend/folha_calculos_2026.py`, `backend/motor_calculo_unificado.py`, `backend/folha_service.py`:** Integração da leitura dinâmica de parâmetros vigentes por competência através do `TabelasLegaisService`.
+### Fase 1: Diagnóstico e Expansão do Esquema de Banco de Dados
+- **Problema Identificado:** O banco de dados possuía estrutura preliminar para SST e eSocial, mas faltavam tabelas dedicadas a agendamentos de exames médicos, histórico de condições ambientais e riscos (S-2240), controle detalhado de devoluções e substituições de EPIs, metadados formais de CAT e colunas para rastreamento de retificações no eSocial.
+- **Ação Executada:**
+  - Criação da migração `migrations/013_homologacao_sst_esocial_relatorios.sql`.
+  - Inclusão das tabelas `sst_exames_agendamentos`, `sst_condicoes_ambientais` e adição de colunas em `sst_epis_entregas`, `sst_cats` e `esocial_eventos`.
+  - Atualização do motor de migrações em `backend/database.py`.
+  - Validação da integridade com inicialização limpa (`init_db`) sem dados sintéticos poluindo a base de desenvolvimento.
 
-## Fases 3 e 4 — Ponto, Ausências e Adicionais (`RF021`–`RF050`)
-- **`backend/ponto_service.py`:** Correção da ordenação cronológica em jornadas noturnas (`_ordenar_marcacoes_dia` + `ORDER BY data ASC, id ASC`), regras de tolerância 5/10 min, intrajornada, interjornada 11h, limite de 2h extras diárias, escalas `5x2`/`6x1`/`12x36`, hora ficta noturna (52m30s), prorrogação Súmula 60 TST, banco de horas, fechamento/reabertura com congelamento em `ponto_espelhos_fechados`, homologação médica de atestados, alertas de absenteísmo e relatório analítico.
-- **`tests/test_ponto_ausencias_adicionais_rf021_rf050.py` (Novo):** 5 testes cobrindo todo o ciclo RF021–RF050 e integração com folha.
+### Fase 2: Implementação e Homologação do Módulo SST (RF-121 a RF-130)
+- **Problema Identificado:** Ausência de regras de negócio estritas para periodicidade de exames (NR-7), ausência de controle de validade do CA de EPIs (NR-6), inexistência de catálogo de treinamentos de NRs com controle de reciclagem e falta de integração formal da CAT com o evento S-2210.
+- **Ação Executada:**
+  - Reestruturação de `backend/sst_service.py` com métodos completos para cadastro de exames, agendamentos periódicos e demissionais (com aplicação da regra de dispensa por 135/90 dias), registro de ASO com validação de aptidão, controle de entregas, devoluções e substituições de EPIs com verificação de CA válido, treinamentos obrigatórios de NRs, varredura proativa de alertas de vencimento a 15, 30 e 60 dias, e registro de CAT.
+  - Implementação de `tests/test_sst_rf121_rf130.py` com 10 testes dedicados.
+  - Resultado: 10/10 testes aprovados.
 
-## Fase 5 — Férias, PDFs A4 e eSocial `v_S_01_02_00` (`RF051`–`RF060`)
-- **`backend/ferias_service.py` (Novo):** Redução por faltas (CLT art. 130), fracionamento em até 3 períodos (art. 134), bloqueio 2 dias pré-DSR/feriado (RN-019), aviso 30 dias (art. 135), dobra (art. 137), abono 1/3, adiantamento de 50% do 13º, férias coletivas, aprovação RN-080, cancelamento, pagamento e integração com a folha (`0100`/`0101`/`0102`/`0103`/`0110`).
-- **`backend/documentos_trabalhistas_pdf.py` (Novo):** Geradores de PDF A4 1.4 (`gerar_pdf_aviso_ferias`, `gerar_pdf_recibo_ferias`, `gerar_pdf_trct`, `gerar_pdf_guias_fgts_sd`).
-- **`backend/esocial_eventos_trabalhistas.py` (Novo):** Geradores XML `v_S_01_02_00` e validador `ElementTree` (`validar_xml_esocial_trabalhista`) para `S-2230`, `S-1200`, `S-1210`, `S-1299` e `S-2299`.
-- **`tests/test_ferias_rf051_rf060.py` (Novo):** 4 testes homologando `FeriasService`, PDFs e `S-2230`.
+### Fase 3: Homologação do Módulo eSocial (RF-131 a RF-140)
+- **Problema Identificado:** Faltavam os leiautes XML dos eventos de SST (`S-2210`, `S-2220`, `S-2240`) e o evento de cancelamento oficial `S-3000` (Exclusão). Faltava também mecanismo rigoroso de retificação com apontamento do recibo anterior e controle ético de transmissão (proibição de fabricar recibos de órgãos governamentais).
+- **Ação Executada:**
+  - Adição dos geradores e validadores de schema XML em `backend/esocial_eventos_trabalhistas.py`.
+  - Implementação de `ESocialService` em `backend/esocial_service.py` abrangendo o ciclo de vida: catálogo, geração XML, assinatura digital, transmissão em modo de homologação, monitoramento, tratamento de códigos de rejeição, retificação encadeada (`evento_retificador_de`), exclusão via `S-3000`, histórico e auditoria imutável.
+  - Implementação de `tests/test_esocial_rf131_rf140.py` com 10 testes dedicados.
+  - Resultado: 10/10 testes aprovados.
 
-## Fase 6 — Afastamentos, Estabilidades e Honestidade no eSocial (`RF061`–`RF070`)
-- **`backend/afastamento_service.py` (Novo):** Regra 15 dias empresa vs INSS (incluindo soma de 60 dias Decreto 3.048/99), bloqueio de sobreposição, `interrupcao`/`suspensao`, estabilidades B91 (12 meses) e maternidade (150 dias), prorrogação, exigência de ASO de retorno (`sst_asos`) para >= 30 dias, baixa automática de pendências (`resolvida_por`/`resolvida_em`), `S-2230` de início/término e relatório.
-- **`backend/plataforma_service.py`:** `transmitir_lote_esocial` atualizado para validar XMLs via `ElementTree`, rejeitar XMLs inválidos (`erro_schema`) e eliminar a fabricação de recibos falsos (`SIM-`).
-- **`tests/test_afastamentos_rf061_rf070.py` (Novo):** 3 testes de afastamentos, estabilidades, ASO de retorno e validação XML eSocial.
+### Fase 4: Motor de Relatórios Analíticos e Exportador PDF A4 Oficial (RF-141 a RF-150)
+- **Problema Identificado:** Os relatórios disponíveis no sistema eram limitados a exportações em CSV simples, sem apuração consolidada de encargos da DCTFWeb (INSS patronal 20%, RATxFAP, terceiros 5,8% e FGTS 8%), sem cálculo de provisões contábeis mensais de férias e 13º salário, e sem motor nativo para emissão de relatórios oficiais padronizados em PDF A4.
+- **Ação Executada:**
+  - Desenvolvimento da biblioteca pura de geração de PDF em `backend/documentos_trabalhistas_pdf.py` (`gerar_pdf_relatorio_a4`), com cabeçalho institucional, paginação "Página X de Y", quebra dinâmica de tabelas e caixas destacadas de totalizadores.
+  - Criação de `backend/relatorios_service.py` contendo as 9 consultas analíticas consolidadas e o método `exportar_relatorio_pdf`.
+  - Implementação de `tests/test_relatorios_rf141_rf150.py` com 10 testes dedicados.
+  - Correção de queries SQLite (unificação de aliases para rescisões e compatibilidade com campos de benefícios).
+  - Otimização do runner de testes utilizando `setUpClass` e clonagem rápida via `shutil.copyfile`.
+  - Resultado: 10/10 testes aprovados.
 
-## Fase 7 — Folha, 13º Salário, Rateio, Financeiro e CNAB 240 (`RF081`–`RF105`)
-- **`backend/folha_service.py`:** Integração automática de ponto fechado (`integrar_ponto`) e afastamentos (`integrar_afastamentos`), recuperação automática do adiantamento `0520`, folha complementar diferencial incremental, motor completo persistido de 13º salário (1ª/2ª parcelas, avos >= 15d, médias anuais, dedução de adiantamento das férias, INSS/IRRF exclusivos, provisão 1/12), `conferencia_analitica_folha`, `fechar_competencia_lote`, `gerar_rateio_centro_custo`, `gerar_integracao_financeira` e `gerar_eventos_esocial_folha`.
-- **`backend/plataforma_service.py`:** `gerar_arquivo_cnab240` atualizado com isolamento multi-empresa, finalidade (`folha_mensal`, `decimo_terceiro`, `ferias`, `rescisao`) e chave PIX em Segmento B; criado `processar_retorno_cnab240`.
-- **`tests/test_folha_decimo_terceiro_rf081_rf105.py` (Novo):** 3 testes cobrindo 13º, folha complementar, rateio, integração financeira, periódicos eSocial e CNAB remessa/retorno.
+### Fase 5: Homologação Completa das Regras de Negócio (RN-001 a RN-035)
+- **Problema Identificado:** As 35 regras de negócio dos Volumes 3 e 4 do SRS necessitavam de comprovação empírica em código com testes individuais e documentação explícita de conformidade legal.
+- **Ação Executada:**
+  - Criação de `tests/test_regras_negocio_rn001_rn035.py` cobrindo detalhadamente:
+    - RN-001 a RN-010: CPF único, matrícula única, dependentes de IRRF (R$ 189,59) e salário-família (R$ 67,54), histórico funcional imutável em auditoria, dados obrigatórios, ASO admissional obrigatório, centro de custo, restrições temporais e eSocial S-2190/S-2200.
+    - RN-011 a RN-025: Limites de jornada (8h/44h), tolerância CLT 58 § 1º (5min/10min), intrajornada (1h), interjornada (11h), DSR (24h), banco de horas (6 meses), reflexo de faltas no DSR e nas férias (Art. 130 CLT), atrasos, HE 50% e 100%, hora noturna ficta (52m30s), prorrogação noturna (Súmula 60 TST), bloqueio de espelho fechado, abonos Art. 473 e periculosidade/insalubridade não cumulativas.
+    - RN-026 a RN-035: Período aquisitivo (12m), período concessivo (12m), dobra legal CLT 137, fracionamento em até 3 períodos (com um >= 14d e nenhum < 5d), vedação início pré-DSR, abono de 1/3, quitação 2 dias antes, divisão 15 dias empresa x INSS, soma de afastamentos da mesma CID em 60 dias (Dec. 3.048), estabilidade acidentária B91 (12m), gestante (5m pós-parto) e ASO de retorno (>= 30d).
+  - Resultado: 35/35 testes aprovados.
 
-## Fase 8 — Rescisão Contratual (`RF106`–`RF120`)
-- **`backend/rescisao_service.py` (Novo):** 9 modalidades rescisórias normalizadas, bloqueios de estabilidade e afastamento ativo, aviso prévio proporcional Lei 12.506/2011 com projeção, férias vencidas simples/dobro, 12 meses de médias, GRRF separada, validação NR-07 de ASO demissional, multa art. 477 §8º, TRCT e guias em PDF A4, homologação RN-080 e XML `S-2299`.
-- **`tests/test_rescisao_rf106_rf120.py` (Novo):** 2 testes cobrindo modalidades, bloqueios, atraso, homologação e PDFs.
+### Fase 6: Integração de Endpoints REST, Frontend Consolidado e Main Runner
+- **Ação Executada:**
+  - Exposição de rotas `/api/relatorios`, `/api/relatorios/exportar-pdf`, `/api/esocial/retificar` e `/api/esocial/excluir` em `backend/server.py`.
+  - Inclusão do botão de exportação e ação `FolhaManager.exportarRelatorioPDFOficial` na view consolidada de relatórios em `frontend/index.html` e `frontend/app.js`.
+  - Registro de todas as 4 novas suítes de testes no orquestrador `tests/executar_todos_testes.py`.
 
-## Fase 9 — Servidor HTTP, RBAC e Interface Consolidada
-- **`backend/server.py`:** Inclusão das novas rotas GET e POST para ponto, férias, afastamentos, tabelas legais, feriados, 13º salário, fechamento em lote, rateio CC, integração financeira, eSocial periódicos, retorno CNAB 240 e PDFs de férias/rescisão com proteção RBAC (`_exigir_permissao`) e escopo multi-tenant (`_resolver_empresa_escopo`).
-- **`frontend/index.html` e `frontend/app.js`:** Inclusão dos novos controles diretamente nos módulos consolidados (sem criar cartões por RF individual), correção de `carregarEspelhoPonto()` para ler chaves reais da API, remoção de `BR-2026-OK` e XML fallback fictício, inclusão de download autenticado de PDFs/CSVs e conexão real de `carregarPortalColaborador()` e `carregarPortalGestor()`.
+---
 
-## Fase 10 — Suíte de Regressão e Documentação Final
-- **`tests/executar_todos_testes.py`:** Registro das 5 novas suítes RF021–RF120 e `TestFrontendIntegridade`, totalizando **196 testes executados com 0 falhas e 0 erros**.
-- **`docs/CHECKLIST_REQUISITOS_PLATAFORMA.md` e documentos raiz:** Checklist atualizado e criação de `AUDITORIA_TECNICA_RH2.md`, `MATRIZ_RASTREABILIDADE_RF.md`, `RELATORIO_TESTES_HOMOLOGACAO.md`, `PENDENCIAS_TECNICAS.md` e `HISTORICO_CORRECOES.md`.
+## 2. TABELA RESUMO DAS MODIFICAÇÕES
+
+| Arquivo | Tipo de Alteração | Descrição |
+| :--- | :--- | :--- |
+| `migrations/013_...sql` | Criação | Novas tabelas e colunas para SST, eSocial e Relatórios |
+| `backend/database.py` | Modificação | Adição da migração 013 e inicialização |
+| `backend/sst_service.py` | Criação / Refatoração | Serviço completo de SST com regras das NRs |
+| `backend/esocial_eventos_trabalhistas.py` | Modificação | Adição de geradores XML S-2210, S-2220, S-2240 e S-3000 |
+| `backend/esocial_service.py` | Criação / Expansão | Gestão de eventos, retificação, exclusão e auditoria |
+| `backend/documentos_trabalhistas_pdf.py` | Modificação | Motor nativo de relatórios PDF A4 corporativos |
+| `backend/relatorios_service.py` | Criação | Consultas analíticas e gerador de relatórios oficiais |
+| `backend/server.py` | Modificação | Rotas REST de relatórios, exportação PDF e eSocial |
+| `frontend/index.html` | Modificação | Botão de exportação PDF A4 oficial no cartão consolidado |
+| `frontend/app.js` | Modificação | Função JavaScript `exportarRelatorioPDFOficial` |
+| `tests/test_sst_rf121_rf130.py` | Criação | 10 testes de SST (RF-121 a RF-130) |
+| `tests/test_esocial_rf131_rf140.py` | Criação | 10 testes de eSocial (RF-131 a RF-140) |
+| `tests/test_relatorios_rf141_rf150.py` | Criação | 10 testes de relatórios e PDF (RF-141 a RF-150) |
+| `tests/test_regras_negocio_rn001_rn035.py` | Criação | 35 testes de regras de negócio (RN-001 a RN-035) |
+| `tests/executar_todos_testes.py` | Modificação | Registro de todas as suítes no executor unificado |
