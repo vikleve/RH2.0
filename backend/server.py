@@ -2766,7 +2766,9 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:calcular"):
                 return
             try:
-                from .folha_exceptions import FolhaValidacaoException
+                # FolhaValidacaoException já é importada no escopo do módulo.
+                # Importá-la localmente dentro de do_POST torna o nome local
+                # em todo o método e quebra os outros except quando uma validação falha.
                 dados = self._ler_json_body()
                 ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
                 if not ok_escopo:
