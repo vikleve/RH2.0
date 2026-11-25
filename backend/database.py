@@ -256,9 +256,6 @@ def _normalizar_pg_dsn(url: str) -> str:
     if "connect_timeout=" not in dsn:
         dsn += ("&" if "?" in dsn else "?") + "connect_timeout=" + os.environ.get("DB_CONNECT_TIMEOUT", "10")
 
-    if "application_name=" not in dsn:
-        dsn += ("&" if "?" in dsn else "?") + "application_name=rh20_backend"
-
     return dsn
 
 
