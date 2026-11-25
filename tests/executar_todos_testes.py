@@ -33,6 +33,12 @@ from tests.test_holerite_pdf import TestHoleritePDF
 from tests.test_beneficios_rf071_rf080 import TestBeneficiosRF071RF080
 from tests.test_colaborador_rf005_rf010 import TestColaboradorRF005RF010
 from tests.test_admissao_rf011_rf020 import TestAdmissaoRF011RF020
+from tests.test_frontend_integridade import TestFrontendIntegridade
+from tests.test_ponto_ausencias_adicionais_rf021_rf050 import TestPontoAusenciasAdicionaisRF021RF050
+from tests.test_ferias_rf051_rf060 import TestFeriasRF051RF060
+from tests.test_afastamentos_rf061_rf070 import TestAfastamentosRF061RF070
+from tests.test_folha_decimo_terceiro_rf081_rf105 import TestFolhaDecimoTerceiroRF081RF105
+from tests.test_rescisao_rf106_rf120 import TestRescisaoRF106RF120
 
 
 def executar():
@@ -88,6 +94,24 @@ def executar():
 
     # 11. Testes Completos do Processo Admissional Enterprise (RF-011 a RF-020)
     suite.addTests(carregador.loadTestsFromTestCase(TestAdmissaoRF011RF020))
+
+    # 12. Testes de Integridade do Frontend Consolidado (HTML/JS/IDs)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFrontendIntegridade))
+
+    # 13. Testes de Jornada, Ponto, Ausências e Adicionais (RF-021 a RF-050)
+    suite.addTests(carregador.loadTestsFromTestCase(TestPontoAusenciasAdicionaisRF021RF050))
+
+    # 14. Testes de Férias, Abono, PDFs e eSocial S-2230 (RF-051 a RF-060)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFeriasRF051RF060))
+
+    # 15. Testes de Afastamentos, Estabilidade e eSocial Schema (RF-061 a RF-070)
+    suite.addTests(carregador.loadTestsFromTestCase(TestAfastamentosRF061RF070))
+
+    # 16. Testes de Folha, 13º Salário, Rateio, Integração Financeira e CNAB 240 (RF-081 a RF-105)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFolhaDecimoTerceiroRF081RF105))
+
+    # 17. Testes de Rescisão Contratual, TRCT PDF, Guias e S-2299 (RF-106 a RF-120)
+    suite.addTests(carregador.loadTestsFromTestCase(TestRescisaoRF106RF120))
 
     # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
     executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"

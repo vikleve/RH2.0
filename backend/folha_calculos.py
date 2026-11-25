@@ -290,6 +290,70 @@ def calcular_dsr_sobre_variaveis(
     return valor_dsr, memoria
 
 
+def calcular_trabalho_feriado(
+    valor_hora_normal: Any,
+    quantidade_horas: Any,
+    percentual_adicional: Any = 100.0,
+    valor_manual: Any = None,
+) -> Tuple[Decimal, Decimal, str]:
+    """Calcula trabalho em feriado não compensado com 100% de adicional (Lei 605/1949 art. 9º / Súmula 146 TST)."""
+    vh = _to_decimal(valor_hora_normal)
+    qtd = _to_decimal(quantidade_horas)
+    perc = _to_decimal(percentual_adicional) if _to_decimal(percentual_adicional) > Decimal("0.00") else Decimal("100.0")
+    val_m = _to_decimal(valor_manual)
+    if val_m > Decimal("0.00"):
+        vh_unit = arredondar_moeda(val_m / qtd) if qtd > 0 else Decimal("0.00")
+        return arredondar_moeda(val_m), vh_unit, f"Trabalho em feriado informado: R$ {val_m:,.2f}".replace(".", ",")
+    if vh <= Decimal("0.00") or qtd <= Decimal("0.00"):
+        return Decimal("0.00"), Decimal("0.00"), "0 hora(s) em feriado lançada(s)"
+    vh_fer = (vh * (Decimal("1.00") + perc / Decimal("100.00"))).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    total = arredondar_moeda(vh_fer * qtd)
+    memoria = f"Feriado {qtd}h x R$ {vh_fer:,.2f} ({perc}% s/ R$ {vh:,.2f}) = R$ {total:,.2f}".replace(".", ",")
+    return total, arredondar_moeda(vh_fer), memoria
+
+
+def calcular_prorrogacao_noturna(
+    valor_hora_normal: Any,
+    quantidade_horas: Any,
+    percentual_adicional: Any = 20.0,
+    aplicar_reducao_ficta: bool = True,
+    fator_reducao: Any = 1.142857,
+    valor_manual: Any = None,
+) -> Tuple[Decimal, Decimal, str]:
+    """Calcula adicional noturno sobre horas prorrogadas após 05h (CLT art. 73 §5º / Súmula 60 II TST)."""
+    val_m = _to_decimal(valor_manual)
+    qtd = _to_decimal(quantidade_horas)
+    if val_m > Decimal("0.00"):
+        vh_unit = arredondar_moeda(val_m / qtd) if qtd > 0 else Decimal("0.00")
+        return arredondar_moeda(val_m), vh_unit, f"Prorrogação noturna informada: R$ {val_m:,.2f}".replace(".", ",")
+    total, vh_not, mem = calcular_adicional_noturno(
+        valor_hora_normal, qtd, percentual_adicional, aplicar_reducao_ficta, fator_reducao
+    )
+    return total, vh_not, mem.replace("Adicional", "Prorrogação Noturna (Súmula 60 TST) — Adicional")
+
+
+def calcular_sobreaviso(
+    valor_hora_normal: Any,
+    quantidade_horas: Any,
+    percentual: Any = 33.333333,
+    valor_manual: Any = None,
+) -> Tuple[Decimal, Decimal, str]:
+    """Calcula regime de sobreaviso em 1/3 da hora normal (CLT art. 244 §2º / Súmula 428 TST)."""
+    vh = _to_decimal(valor_hora_normal)
+    qtd = _to_decimal(quantidade_horas)
+    val_m = _to_decimal(valor_manual)
+    if val_m > Decimal("0.00"):
+        vh_unit = arredondar_moeda(val_m / qtd) if qtd > 0 else Decimal("0.00")
+        return arredondar_moeda(val_m), vh_unit, f"Sobreaviso informado: R$ {val_m:,.2f}".replace(".", ",")
+    if vh <= Decimal("0.00") or qtd <= Decimal("0.00"):
+        return Decimal("0.00"), Decimal("0.00"), "0 hora(s) de sobreaviso"
+    fator = (_to_decimal(percentual) / Decimal("100.00")) if percentual is not None else (Decimal("1") / Decimal("3"))
+    vh_sob = (vh * fator).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    total = arredondar_moeda(vh_sob * qtd)
+    memoria = f"Sobreaviso (CLT art. 244 §2º): {qtd}h x R$ {vh_sob:,.2f} (1/3 de R$ {vh:,.2f}) = R$ {total:,.2f}".replace(".", ",")
+    return total, arredondar_moeda(vh_sob), memoria
+
+
 def calcular_insalubridade(
     grau_ou_percentual: Any = 20.0,
     salario_minimo: Any = SALARIO_MINIMO_PADRAO_2026,
@@ -727,7 +791,8 @@ def calcular_desconto_adiantamento_salarial(
 def calcular_inss_progressivo(
     base_inss: Any,
     tabela_faixas: Optional[List[Tuple[Decimal, Decimal, Decimal]]] = None,
-    teto_maximo: Optional[Decimal] = None
+    teto_maximo: Optional[Decimal] = None,
+    teto_contribuicao: Optional[Decimal] = None,
 ) -> Tuple[Decimal, Decimal, str, List[Dict[str, Any]]]:
     """
     Calcula o INSS progressivo por competência.
@@ -773,8 +838,11 @@ def calcular_inss_progressivo(
             break
 
     total_inss = arredondar_moeda(total_inss)
-    if base_tributavel >= teto and teto == TETO_INSS_PADRAO_2026:
-        total_inss = min(total_inss, TETO_CONTRIBUICAO_INSS_2026)
+    if base_tributavel >= teto:
+        if teto_contribuicao is not None:
+            total_inss = min(total_inss, _to_decimal(teto_contribuicao))
+        elif teto == TETO_INSS_PADRAO_2026 or teto >= Decimal("8475.55"):
+            total_inss = min(total_inss, TETO_CONTRIBUICAO_INSS_2026)
     aliquota_efetiva = (
         (total_inss / base * Decimal("100.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         if base > 0 else Decimal("0.00")
@@ -831,16 +899,14 @@ def calcular_irrf_progressivo(
     faixas = tabela_faixas if tabela_faixas is not None else TABELA_IRRF_PADRAO_2026
     aliquota = Decimal("0.00")
     parcela = Decimal("0.00")
-    if faixas is TABELA_IRRF_PADRAO_2026 or (
-        tabela_faixas is None and faixas == TABELA_IRRF_PADRAO_2026
-    ):
-        # Padrão oficial 2026 representado por limites superiores inclusivos.
+    if faixas and len(faixas[0]) == 3:
+        # Limites superiores inclusivos (3 colunas: limite_superior, aliq, deduc).
         for limite_superior, aliq, deduc in faixas:
             if limite_superior is None or base_tributavel <= limite_superior:
                 aliquota, parcela = aliq, deduc
                 break
     else:
-        # Compatibilidade com tabelas personalizadas no formato legado de quatro colunas.
+        # Compatibilidade com tabelas personalizadas no formato de quatro colunas.
         for f_min, f_max, aliq, deduc in faixas:
             if base_tributavel >= f_min and (f_max is None or base_tributavel <= f_max):
                 aliquota, parcela = aliq, deduc
@@ -1004,6 +1070,35 @@ def processar_calculo_folha(
 
     # Verificar se o usuário informou explicitamente o Salário Mensal (0001 / 001)
     eventos = list(eventos_informados or [])
+
+    # Bloqueio legal CLT art. 193 §2º: vedada acumulação de insalubridade (0030) e periculosidade (0031)
+    cods_norm_pre = {
+        MAPA_ALIAS_LEGADO.get(str(e.get("codigo", "") or e.get("codigo_evento", "")).strip().upper(),
+                              str(e.get("codigo", "") or e.get("codigo_evento", "")).strip().upper())
+        for e in eventos
+    }
+    if "0030" in cods_norm_pre and "0031" in cods_norm_pre:
+        raise ValueError(
+            "Acúmulo indevido de Insalubridade (0030) e Periculosidade (0031) na mesma folha — CLT art. 193 §2º."
+        )
+
+    # Súmula 132 TST: se houver periculosidade (0031), compõe a base de cálculo das horas extras e adicionais horários
+    vh_para_he = vh_normal
+    for ev_p in eventos:
+        cp = MAPA_ALIAS_LEGADO.get(str(ev_p.get("codigo", "") or ev_p.get("codigo_evento", "")).strip().upper(),
+                                   str(ev_p.get("codigo", "") or ev_p.get("codigo_evento", "")).strip().upper())
+        if cp == "0031":
+            val_p_man = _to_decimal(ev_p.get("valor_total") if ev_p.get("valor_total") not in (None, "") else (ev_p.get("valor_informado") or 0))
+            if val_p_man > Decimal("0.00"):
+                tot_per = val_p_man
+            else:
+                p_per = _to_decimal(ev_p.get("percentual") or ev_p.get("quantidade") or ev_p.get("referencia") or 30.0)
+                if p_per <= Decimal("0.00"):
+                    p_per = Decimal("30.0")
+                tot_per, _, _ = calcular_periculosidade(sb, p_per)
+            vh_para_he = ((sb + tot_per) / div_h).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+            break
+
     tem_salario_base_informado = False
     for ev in eventos:
         raw_cod = str(ev.get("codigo", "") or ev.get("codigo_evento", "")).strip().upper()
@@ -1107,7 +1202,7 @@ def processar_calculo_folha(
                 vh_extra = arredondar_moeda(val_manual / qtd) if qtd > 0 else Decimal("0.00")
                 mem_he = f"Horas extras 50% informadas: R$ {val_manual:,.2f}".replace(".", ",")
             else:
-                tot_he, vh_extra, mem_he = calcular_horas_extras(vh_normal, qtd, p)
+                tot_he, vh_extra, mem_he = calcular_horas_extras(vh_para_he, qtd, p)
             adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_extra, tot_he, mem_he, "calculado", "0010", incidencias)
             total_he_para_dsr += tot_he
 
@@ -1119,31 +1214,39 @@ def processar_calculo_folha(
                 vh_extra = arredondar_moeda(val_manual / qtd) if qtd > 0 else Decimal("0.00")
                 mem_he = f"Horas extras 100% informadas: R$ {val_manual:,.2f}".replace(".", ",")
             else:
-                tot_he, vh_extra, mem_he = calcular_horas_extras(vh_normal, qtd, p)
+                tot_he, vh_extra, mem_he = calcular_horas_extras(vh_para_he, qtd, p)
             adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_extra, tot_he, mem_he, "calculado", "0011", incidencias)
             total_he_para_dsr += tot_he
 
-        # 0012: DSR sobre horas extras
-        elif cod_oficial == "0012":
+        # 0012 / 0016: DSR sobre horas extras e variáveis
+        elif cod_oficial in ("0012", "0016"):
             d_uteis = int(params.get("dias_uteis", 25))
             d_dom = int(params.get("domingos_feriados", 5))
             if val_manual > Decimal("0.00"):
                 tot_dsr = val_manual
-                mem_dsr = f"DSR sobre HE informado: R$ {val_manual:,.2f}".replace(".", ",")
+                mem_dsr = f"DSR sobre variáveis informado: R$ {val_manual:,.2f}".replace(".", ",")
             else:
-                base_calc = qtd if qtd > Decimal("0.00") else total_he_para_dsr
+                base_calc = qtd if qtd > Decimal("0.00") else (total_he_para_dsr + total_noturno_para_dsr)
                 tot_dsr, mem_dsr = calcular_dsr_sobre_variaveis(base_calc, d_uteis, d_dom)
-            adicionar_item(codigo_saida, desc, "provento", d_dom, "dias", tot_dsr / Decimal(str(d_dom if d_dom > 0 else 1)), tot_dsr, mem_dsr, "calculado", "0012", incidencias)
+            adicionar_item(codigo_saida, desc, "provento", d_dom, "dias", tot_dsr / Decimal(str(d_dom if d_dom > 0 else 1)), tot_dsr, mem_dsr, "calculado", cod_oficial, incidencias)
+
+        # 0013: Trabalho em feriado (100%)
+        elif cod_oficial == "0013":
+            p = perc if perc > Decimal("0.00") else Decimal("100.0")
+            tot_fer, vh_fer, mem_fer = calcular_trabalho_feriado(vh_para_he, qtd, p, val_manual)
+            adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_fer, tot_fer, mem_fer, "calculado", "0013", incidencias)
+            total_he_para_dsr += tot_fer
 
         # 0015: Banco de horas pago
         elif cod_oficial == "0015":
             p = perc if perc > Decimal("0.00") else Decimal("50.0")
             if val_manual > Decimal("0.00"):
                 tot = val_manual
+                vh_extra = arredondar_moeda(val_manual / qtd) if qtd > 0 else Decimal("0.00")
                 mem = f"Banco de horas pago informado: R$ {val_manual:,.2f}".replace(".", ",")
             else:
-                tot, vh_extra, mem = calcular_horas_extras(vh_normal, qtd, p)
-            adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_normal, tot, mem, "calculado", "0015", incidencias)
+                tot, vh_extra, mem = calcular_horas_extras(vh_para_he, qtd, p)
+            adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_extra, tot, mem, "calculado", "0015", incidencias)
 
         # 0020: Adicional noturno
         elif cod_oficial == "0020":
@@ -1170,6 +1273,21 @@ def processar_calculo_folha(
                 base_calc = qtd if qtd > Decimal("0.00") else total_noturno_para_dsr
                 tot_dsr, mem_dsr = calcular_dsr_sobre_variaveis(base_calc, d_uteis, d_dom)
             adicionar_item(codigo_saida, desc, "provento", d_dom, "dias", tot_dsr / Decimal(str(d_dom if d_dom > 0 else 1)), tot_dsr, mem_dsr, "calculado", "0021", incidencias)
+
+        # 0022: Prorrogação da jornada noturna (Súmula 60 TST)
+        elif cod_oficial == "0022":
+            p = perc if perc > Decimal("0.00") else Decimal(str(params.get("percentual_noturno", 20.0)))
+            reducao = bool(params.get("aplicar_reducao_noturna", True))
+            fator_red = params.get("fator_reducao_noturna", 1.142857)
+            tot_pror, vh_pror, mem_pror = calcular_prorrogacao_noturna(vh_normal, qtd, p, reducao, fator_red, val_manual)
+            adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_pror, tot_pror, mem_pror, "calculado", "0022", incidencias)
+            total_noturno_para_dsr += tot_pror
+
+        # 0025: Sobreaviso (1/3 da hora normal — CLT art. 244 §2º)
+        elif cod_oficial == "0025":
+            p_sob = perc if perc > Decimal("0.00") else None
+            tot_sob, vh_sob, mem_sob = calcular_sobreaviso(vh_normal, qtd, p_sob, val_manual)
+            adicionar_item(codigo_saida, desc, "provento", qtd, "horas", vh_sob, tot_sob, mem_sob, "calculado", "0025", incidencias)
 
         # 0030: Adicional de insalubridade
         elif cod_oficial == "0030":
@@ -1342,8 +1460,14 @@ def processar_calculo_folha(
         # 0202: Salário-família
         elif cod_oficial == "0202":
             n_filhos = int(qtd) if qtd > Decimal("0.00") else numero_dependentes
-            tot, mem = calcular_salario_familia(sb, n_filhos)
-            adicionar_item(codigo_saida, desc, "provento", n_filhos, "cotas", VALOR_COTA_SALARIO_FAMILIA_2026, tot, mem, "calculado", "0202", incidencias)
+            lim_sf = _to_decimal(params.get("limite_salario_familia", LIMITE_SALARIO_FAMILIA_2026))
+            cota_sf = _to_decimal(params.get("valor_cota_salario_familia", VALOR_COTA_SALARIO_FAMILIA_2026))
+            if val_manual > Decimal("0.00"):
+                tot = val_manual
+                mem = f"Salário-família informado: R$ {val_manual:,.2f}".replace(".", ",")
+            else:
+                tot, mem = calcular_salario_familia(sb, n_filhos, limite_teto=lim_sf, valor_cota=cota_sf)
+            adicionar_item(codigo_saida, desc, "provento", n_filhos, "cotas", cota_sf, tot, mem, "calculado", "0202", incidencias)
 
         # 0203: Licença remunerada
         elif cod_oficial == "0203":
@@ -1569,7 +1693,8 @@ def processar_calculo_folha(
     if not tem_inss_cadastrado and params.get("aplicar_inss", True):
         tabela_inss = params.get("tabela_inss")
         teto_inss = _to_decimal(params.get("teto_inss")) if params.get("teto_inss") else None
-        val_inss, aliq_inss, mem_inss, _ = calcular_inss_progressivo(base_inss, tabela_inss, teto_inss)
+        teto_contrib = _to_decimal(params.get("teto_contribuicao_inss")) if params.get("teto_contribuicao_inss") else None
+        val_inss, aliq_inss, mem_inss, _ = calcular_inss_progressivo(base_inss, tabela_inss, teto_inss, teto_contrib)
 
         if val_inss > Decimal("0.00"):
             adicionar_item(
@@ -1623,7 +1748,7 @@ def processar_calculo_folha(
                 params.get("desconto_simplificado_irrf", DESCONTO_SIMPLIFICADO_IRRF_PADRAO)
             ),
             rendimento_tributavel=base_bruta_irrf,
-            aplicar_reducao_lei_15270=True
+            aplicar_reducao_lei_15270=bool(params.get("aplicar_reducao_lei_15270", True))
         )
 
         if val_irrf > Decimal("0.00"):

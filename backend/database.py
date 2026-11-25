@@ -1393,6 +1393,212 @@ _DDL_ARQUIVOS_BANCARIOS_CNAB = """
     );
 """
 
+_DDL_TABELAS_LEGAIS_VIGENCIA = """
+    CREATE TABLE IF NOT EXISTS tabelas_legais_vigencia (
+        id                          {pk},
+        identificador               TEXT UNIQUE NOT NULL,
+        descricao                   TEXT NOT NULL,
+        competencia_inicio          TEXT NOT NULL,
+        competencia_fim             TEXT,
+        vigencia_inicio             TEXT NOT NULL,
+        fonte_normativa             TEXT NOT NULL,
+        salario_minimo              REAL NOT NULL DEFAULT 1621.00,
+        teto_inss                   REAL NOT NULL DEFAULT 8475.55,
+        teto_contribuicao_inss      REAL NOT NULL DEFAULT 988.09,
+        faixas_inss_json            TEXT NOT NULL,
+        faixas_irrf_json            TEXT NOT NULL,
+        deducao_dependente_irrf     REAL NOT NULL DEFAULT 189.59,
+        desconto_simplificado_irrf  REAL NOT NULL DEFAULT 607.20,
+        lei_15270_ativa             INTEGER NOT NULL DEFAULT 1,
+        limite_salario_familia      REAL NOT NULL DEFAULT 1980.38,
+        valor_cota_salario_familia  REAL NOT NULL DEFAULT 67.54,
+        aliquota_fgts_padrao        REAL NOT NULL DEFAULT 8.00,
+        aliquota_fgts_aprendiz      REAL NOT NULL DEFAULT 2.00,
+        ativo                       INTEGER NOT NULL DEFAULT 1,
+        criado_por                  TEXT NOT NULL,
+        criado_em                   TEXT NOT NULL,
+        atualizado_em               TEXT NOT NULL
+    );
+"""
+
+_DDL_TABELAS_LEGAIS_HISTORICO = """
+    CREATE TABLE IF NOT EXISTS tabelas_legais_historico (
+        id                  {pk},
+        tabela_id           INTEGER NOT NULL,
+        identificador       TEXT NOT NULL,
+        acao                TEXT NOT NULL,
+        snapshot_json       TEXT NOT NULL,
+        motivo              TEXT,
+        usuario             TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FERIADOS_CALENDARIO = """
+    CREATE TABLE IF NOT EXISTS feriados_calendario (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL DEFAULT 'a0000000-0000-0000-0000-000000000001',
+        filial_id           TEXT,
+        data_feriado        TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        abrangencia         TEXT NOT NULL DEFAULT 'nacional',
+        ativo               INTEGER NOT NULL DEFAULT 1,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_PONTO_LOTES_IMPORTACAO = """
+    CREATE TABLE IF NOT EXISTS ponto_lotes_importacao (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        origem              TEXT NOT NULL,
+        nome_arquivo        TEXT,
+        sha256_hash         TEXT,
+        idempotency_key     TEXT,
+        total_registros     INTEGER NOT NULL DEFAULT 0,
+        total_importados    INTEGER NOT NULL DEFAULT 0,
+        total_duplicados    INTEGER NOT NULL DEFAULT 0,
+        total_erros         INTEGER NOT NULL DEFAULT 0,
+        erros_json          TEXT,
+        status              TEXT NOT NULL DEFAULT 'processado',
+        importado_por       TEXT NOT NULL,
+        importado_em        TEXT NOT NULL
+    );
+"""
+
+_DDL_PONTO_JUSTIFICATIVAS = """
+    CREATE TABLE IF NOT EXISTS ponto_justificativas (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        colaborador_id      INTEGER NOT NULL,
+        data_referencia     TEXT NOT NULL,
+        tipo                TEXT NOT NULL,
+        motivo              TEXT NOT NULL,
+        cid                 TEXT,
+        dias_abono          INTEGER DEFAULT 1,
+        artigo_clt          TEXT,
+        nome_arquivo        TEXT,
+        caminho_privado     TEXT,
+        status              TEXT NOT NULL DEFAULT 'pendente',
+        solicitado_por      TEXT NOT NULL,
+        aprovado_por        TEXT,
+        motivo_decisao      TEXT,
+        criado_em           TEXT NOT NULL,
+        atualizado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_PONTO_BANCO_HORAS = """
+    CREATE TABLE IF NOT EXISTS ponto_banco_horas (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        colaborador_id      INTEGER NOT NULL,
+        competencia         TEXT NOT NULL,
+        data_referencia     TEXT NOT NULL,
+        tipo_movimento      TEXT NOT NULL,
+        minutos             INTEGER NOT NULL,
+        saldo_acumulado_min INTEGER NOT NULL DEFAULT 0,
+        prazo_compensacao   TEXT,
+        observacao          TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_PONTO_HISTORICO_JORNADA = """
+    CREATE TABLE IF NOT EXISTS ponto_historico_jornada (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        colaborador_id      INTEGER NOT NULL,
+        competencia         TEXT NOT NULL,
+        evento              TEXT NOT NULL,
+        valor_anterior      TEXT,
+        valor_novo          TEXT,
+        justificativa       TEXT,
+        usuario             TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_AFASTAMENTOS_PRORROGACOES = """
+    CREATE TABLE IF NOT EXISTS afastamentos_prorrogacoes (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        afastamento_id      INTEGER NOT NULL,
+        data_fim_anterior   TEXT NOT NULL,
+        data_fim_nova       TEXT NOT NULL,
+        motivo              TEXT NOT NULL,
+        cid                 TEXT,
+        documento_ref       TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHA_RATEIO_CC = """
+    CREATE TABLE IF NOT EXISTS folha_rateio_centro_custo (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        folha_id            INTEGER NOT NULL,
+        colaborador_id      INTEGER NOT NULL,
+        competencia         TEXT NOT NULL,
+        centro_custo_id     TEXT,
+        centro_custo_codigo TEXT NOT NULL,
+        percentual          REAL NOT NULL DEFAULT 100.00,
+        valor_bruto         REAL NOT NULL DEFAULT 0.00,
+        valor_encargos      REAL NOT NULL DEFAULT 0.00,
+        valor_fgts          REAL NOT NULL DEFAULT 0.00,
+        custo_total         REAL NOT NULL DEFAULT 0.00,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHA_INTEGRACAO_FINANCEIRA = """
+    CREATE TABLE IF NOT EXISTS folha_integracao_financeira (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        competencia         TEXT NOT NULL,
+        tipo_titulo         TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        centro_custo        TEXT,
+        valor_total         REAL NOT NULL DEFAULT 0.00,
+        data_vencimento     TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'aberto',
+        folha_ids_json      TEXT,
+        criado_por          TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_CNAB_RETORNOS = """
+    CREATE TABLE IF NOT EXISTS cnab_retornos (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        arquivo_cnab_id     INTEGER,
+        nome_arquivo        TEXT NOT NULL,
+        total_registros     INTEGER NOT NULL DEFAULT 0,
+        total_liquidados    INTEGER NOT NULL DEFAULT 0,
+        total_rejeitados    INTEGER NOT NULL DEFAULT 0,
+        ocorrencias_json    TEXT NOT NULL,
+        processado_por      TEXT NOT NULL,
+        processado_em       TEXT NOT NULL
+    );
+"""
+
+_DDL_RESCISOES_HISTORICO = """
+    CREATE TABLE IF NOT EXISTS rescisoes_historico (
+        id                  {pk},
+        empresa_id          TEXT NOT NULL,
+        rescisao_id         INTEGER NOT NULL,
+        acao                TEXT NOT NULL,
+        status_anterior     TEXT,
+        status_novo         TEXT,
+        detalhes            TEXT,
+        usuario             TEXT NOT NULL,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Inicializacao
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1464,6 +1670,18 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         _DDL_ADMISSAO_JORNADAS_HIST.format(pk=pk),
         _DDL_ADMISSAO_CC_HIST.format(pk=pk),
         _DDL_ADMISSAO_BENEFICIOS.format(pk=pk),
+        _DDL_TABELAS_LEGAIS_VIGENCIA.format(pk=pk),
+        _DDL_TABELAS_LEGAIS_HISTORICO.format(pk=pk),
+        _DDL_FERIADOS_CALENDARIO.format(pk=pk),
+        _DDL_PONTO_LOTES_IMPORTACAO.format(pk=pk),
+        _DDL_PONTO_JUSTIFICATIVAS.format(pk=pk),
+        _DDL_PONTO_BANCO_HORAS.format(pk=pk),
+        _DDL_PONTO_HISTORICO_JORNADA.format(pk=pk),
+        _DDL_AFASTAMENTOS_PRORROGACOES.format(pk=pk),
+        _DDL_FOLHA_RATEIO_CC.format(pk=pk),
+        _DDL_FOLHA_INTEGRACAO_FINANCEIRA.format(pk=pk),
+        _DDL_CNAB_RETORNOS.format(pk=pk),
+        _DDL_RESCISOES_HISTORICO.format(pk=pk),
     ]
     for ddl_sql in tabelas_plataforma:
         try:
@@ -1517,6 +1735,14 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_adm_cc_adm        ON admissao_centros_custo_historico(admissao_id);",
         "CREATE INDEX IF NOT EXISTS idx_adm_ben_adm       ON admissao_beneficios(admissao_id);",
         "CREATE INDEX IF NOT EXISTS idx_sst_asos_adm      ON sst_asos(admissao_id);",
+        "CREATE INDEX IF NOT EXISTS idx_tab_legais_comp   ON tabelas_legais_vigencia(competencia_inicio, ativo);",
+        "CREATE INDEX IF NOT EXISTS idx_feriados_data     ON feriados_calendario(empresa_id, data_feriado);",
+        "CREATE INDEX IF NOT EXISTS idx_ponto_hash        ON marcacoes_ponto(colaborador_id, hash_marcacao);",
+        "CREATE INDEX IF NOT EXISTS idx_ponto_idemp       ON marcacoes_ponto(idempotency_key);",
+        "CREATE INDEX IF NOT EXISTS idx_justif_colab      ON ponto_justificativas(colaborador_id, status);",
+        "CREATE INDEX IF NOT EXISTS idx_bh_colab_comp     ON ponto_banco_horas(colaborador_id, competencia);",
+        "CREATE INDEX IF NOT EXISTS idx_rateio_comp       ON folha_rateio_centro_custo(empresa_id, competencia);",
+        "CREATE INDEX IF NOT EXISTS idx_fin_comp          ON folha_integracao_financeira(empresa_id, competencia);",
     ]
     for idx_sql in indices:
         try:
@@ -1657,6 +1883,73 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS mime_type TEXT;",
             "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS sha256_hash TEXT;",
             "ALTER TABLE sst_asos ADD COLUMN IF NOT EXISTS observacoes_medicas TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS tipo_marcacao TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS lote_importacao_id INTEGER;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS origem_detalhe TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS idempotency_key TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS hash_marcacao TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN IF NOT EXISTS editada_por_ajuste_id INTEGER;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS minutos INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS cid TEXT;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS justificativa_id INTEGER;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS impacta_dsr INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS impacta_ferias INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS impacta_decimo INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN IF NOT EXISTS memoria_calculo TEXT;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ajustes_ponto ADD COLUMN IF NOT EXISTS solicitante_usuario_id INTEGER;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN IF NOT EXISTS aprovador_usuario_id INTEGER;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE fechamentos_ponto ADD COLUMN IF NOT EXISTS resumo_json TEXT;",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN IF NOT EXISTS dias_perdidos_faltas INTEGER DEFAULT 0;",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN IF NOT EXISTS memoria_calculo TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS numero_fracao INTEGER DEFAULT 1;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS media_variaveis NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS valor_adiantamento_13 NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS folha_id INTEGER;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS esocial_evento_id INTEGER;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS motivo_cancelamento TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS memoria_calculo TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN IF NOT EXISTS pago_em TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS subtipo_licenca TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS regime_efeito TEXT DEFAULT 'interrupcao';",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS cat_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS aso_retorno_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS esocial_inicio_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS esocial_termino_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS responsavel_registro TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS observacoes TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN IF NOT EXISTS atualizado_em TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS tipo_aviso TEXT DEFAULT 'indenizado';",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS dias_aviso INTEGER DEFAULT 30;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS projecao_aviso_fim TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS saldo_fgts_informado NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS ferias_vencidas_dobro NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS terco_ferias_vencidas NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS terco_ferias_prop NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS media_variaveis NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS desconto_aviso_previo NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS desconto_faltas NUMERIC(12,2) DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS aso_demissional_id INTEGER;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS homologado_por TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS homologado_em TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS esocial_evento_id INTEGER;",
+            "ALTER TABLE rescisoes ADD COLUMN IF NOT EXISTS memoria_calculo_json TEXT;",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS aliquota_inss_patronal NUMERIC(6,2) DEFAULT 20.00;",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS aliquota_rat NUMERIC(6,2) DEFAULT 2.00;",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS fap NUMERIC(6,4) DEFAULT 1.0000;",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS aliquota_terceiros NUMERIC(6,2) DEFAULT 5.80;",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS banco_codigo TEXT DEFAULT '001';",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS banco_agencia TEXT DEFAULT '01234';",
+            "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS banco_conta TEXT DEFAULT '000012345678';",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS adicional_periculosidade INTEGER DEFAULT 0;",
+            "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS adicional_insalubridade_grau TEXT DEFAULT 'nenhum';",
         ]
         for col_sql in colunas_extras:
             try:
@@ -1794,6 +2087,73 @@ def init_db(db_path: str = None, auto_provision: bool = True):
             "ALTER TABLE sst_asos ADD COLUMN mime_type TEXT;",
             "ALTER TABLE sst_asos ADD COLUMN sha256_hash TEXT;",
             "ALTER TABLE sst_asos ADD COLUMN observacoes_medicas TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN tipo_marcacao TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN lote_importacao_id INTEGER;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN origem_detalhe TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN idempotency_key TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN hash_marcacao TEXT;",
+            "ALTER TABLE marcacoes_ponto ADD COLUMN editada_por_ajuste_id INTEGER;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN minutos INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN cid TEXT;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN justificativa_id INTEGER;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN impacta_dsr INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN impacta_ferias INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN impacta_decimo INTEGER DEFAULT 0;",
+            "ALTER TABLE ocorrencias_ponto ADD COLUMN memoria_calculo TEXT;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ajustes_ponto ADD COLUMN solicitante_usuario_id INTEGER;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN aprovador_usuario_id INTEGER;",
+            "ALTER TABLE ajustes_ponto ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE fechamentos_ponto ADD COLUMN resumo_json TEXT;",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN dias_perdidos_faltas INTEGER DEFAULT 0;",
+            "ALTER TABLE periodos_aquisitivos ADD COLUMN memoria_calculo TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE ferias_programadas ADD COLUMN numero_fracao INTEGER DEFAULT 1;",
+            "ALTER TABLE ferias_programadas ADD COLUMN media_variaveis REAL DEFAULT 0.00;",
+            "ALTER TABLE ferias_programadas ADD COLUMN valor_adiantamento_13 REAL DEFAULT 0.00;",
+            "ALTER TABLE ferias_programadas ADD COLUMN folha_id INTEGER;",
+            "ALTER TABLE ferias_programadas ADD COLUMN esocial_evento_id INTEGER;",
+            "ALTER TABLE ferias_programadas ADD COLUMN motivo_cancelamento TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN memoria_calculo TEXT;",
+            "ALTER TABLE ferias_programadas ADD COLUMN pago_em TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE afastamentos ADD COLUMN subtipo_licenca TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN regime_efeito TEXT DEFAULT 'interrupcao';",
+            "ALTER TABLE afastamentos ADD COLUMN cat_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN aso_retorno_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN esocial_inicio_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN esocial_termino_id INTEGER;",
+            "ALTER TABLE afastamentos ADD COLUMN responsavel_registro TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN observacoes TEXT;",
+            "ALTER TABLE afastamentos ADD COLUMN atualizado_em TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN empresa_id TEXT DEFAULT 'a0000000-0000-0000-0000-000000000001';",
+            "ALTER TABLE rescisoes ADD COLUMN tipo_aviso TEXT DEFAULT 'indenizado';",
+            "ALTER TABLE rescisoes ADD COLUMN dias_aviso INTEGER DEFAULT 30;",
+            "ALTER TABLE rescisoes ADD COLUMN projecao_aviso_fim TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN saldo_fgts_informado REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN ferias_vencidas_dobro REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN terco_ferias_vencidas REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN terco_ferias_prop REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN media_variaveis REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN desconto_aviso_previo REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN desconto_faltas REAL DEFAULT 0.00;",
+            "ALTER TABLE rescisoes ADD COLUMN aso_demissional_id INTEGER;",
+            "ALTER TABLE rescisoes ADD COLUMN homologado_por TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN homologado_em TEXT;",
+            "ALTER TABLE rescisoes ADD COLUMN esocial_evento_id INTEGER;",
+            "ALTER TABLE rescisoes ADD COLUMN memoria_calculo_json TEXT;",
+            "ALTER TABLE empresas ADD COLUMN aliquota_inss_patronal REAL DEFAULT 20.00;",
+            "ALTER TABLE empresas ADD COLUMN aliquota_rat REAL DEFAULT 2.00;",
+            "ALTER TABLE empresas ADD COLUMN fap REAL DEFAULT 1.0000;",
+            "ALTER TABLE empresas ADD COLUMN aliquota_terceiros REAL DEFAULT 5.80;",
+            "ALTER TABLE empresas ADD COLUMN banco_codigo TEXT DEFAULT '001';",
+            "ALTER TABLE empresas ADD COLUMN banco_agencia TEXT DEFAULT '01234';",
+            "ALTER TABLE empresas ADD COLUMN banco_conta TEXT DEFAULT '000012345678';",
+            "ALTER TABLE colaboradores ADD COLUMN adicional_periculosidade INTEGER DEFAULT 0;",
+            "ALTER TABLE colaboradores ADD COLUMN adicional_insalubridade_grau TEXT DEFAULT 'nenhum';",
         ]
         for col_sql in colunas_extras_sqlite:
             try:
@@ -2138,6 +2498,119 @@ def init_db(db_path: str = None, auto_provision: bool = True):
                     ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, 1, 'Sistema', {p_mark}, {p_mark});
                 """,
                     ("a0000000-0000-0000-0000-000000000001", cod_m, nome_m, tipo_m, tit_m, _json_ctr.dumps(claus_m, ensure_ascii=False), agora_ctr, agora_ctr),
+                )
+    except Exception:
+        pass
+
+    # Garante novas rubricas RF041-RF050 e tabelas legais/feriados versionados (Fase 2)
+    try:
+        import json as _json_leg
+        p_mark = "%s" if pg else "?"
+        agora_leg = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Sincroniza rubricas ausentes em bancos já provisionados (0013, 0016, 0022, 0025)
+        try:
+            from .catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+        except ImportError:
+            from backend.catalogo_eventos import CATALOGO_EVENTOS_FOLHA
+        for ev_r in CATALOGO_EVENTOS_FOLHA:
+            cod_r = str(ev_r["codigo"]).strip()
+            cursor.execute(f"SELECT 1 FROM folha_rubricas WHERE codigo = {p_mark};", (cod_r,))
+            if not cursor.fetchone():
+                tipo_r = ev_r.get("tipo", "provento")
+                nat_r = "informativa" if tipo_r == "informativo" else ("indenizatoria" if ev_r.get("inss", 0) == 0 and tipo_r == "provento" else "salarial")
+                ref_fer = 1 if tipo_r == "provento" and ev_r.get("inss", 0) == 1 and cod_r not in ("0100", "0101", "0111", "0112") else 0
+                cursor.execute(
+                    f"""
+                    INSERT INTO folha_rubricas (
+                        empresa_id, codigo, descricao, tipo, categoria, natureza, forma_calculo,
+                        valor_padrao, referencia_padrao, incide_inss, incide_irrf, incide_fgts,
+                        incide_outras_bases, reflexo_ferias, reflexo_13, vigencia_inicio, vigencia_fim,
+                        ativo, sistema_legal, observacao, criado_em, atualizado_em
+                    ) VALUES (
+                        {p_mark},{p_mark},{p_mark},{p_mark},{p_mark},{p_mark},'valor_fixo',
+                        0.0,0.0,{p_mark},{p_mark},{p_mark},{p_mark},{p_mark},{p_mark},'2026-01-01',NULL,
+                        1,0,{p_mark},{p_mark},{p_mark}
+                    );
+                """,
+                    (
+                        "a0000000-0000-0000-0000-000000000001", cod_r, ev_r["evento"], tipo_r,
+                        ev_r.get("categoria", "Proventos"), nat_r,
+                        int(ev_r.get("inss", 0)), int(ev_r.get("irrf", 0)), int(ev_r.get("fgts", 0)),
+                        int(ev_r.get("fgts", 0)), ref_fer, ref_fer,
+                        ev_r.get("observacao", ""), agora_leg, agora_leg,
+                    ),
+                )
+
+        # Tabelas legais com vigência e fonte normativa
+        tabelas_seed = [
+            (
+                "VIGENCIA_2026_OFICIAL",
+                "Tabela Oficial 2026 — Portaria MPS/MF nº 13/2026 e Lei nº 15.270/2025",
+                "2026-01",
+                None,
+                "2026-01-01",
+                "Portaria Interministerial MPS/MF nº 13/2026; Lei nº 15.270/2025; CLT",
+                1621.00, 8475.55, 988.09,
+                [[0.0, 1518.00, 7.5], [1518.00, 2793.88, 9.0], [2793.88, 4190.83, 12.0], [4190.83, 8475.55, 14.0]],
+                [[2428.80, 0.0, 0.00], [2826.65, 7.5, 182.16], [3751.05, 15.0, 394.16], [4664.68, 22.5, 675.49], [None, 27.5, 908.73]],
+                189.59, 607.20, 1, 1980.38, 67.54, 8.00, 2.00, 1,
+            ),
+            (
+                "VIGENCIA_2025_HISTORICO",
+                "Tabela Histórica 2025 — Portaria MPS/MF nº 6/2025",
+                "2025-01",
+                "2025-12",
+                "2025-01-01",
+                "Portaria Interministerial MPS/MF nº 6/2025 (histórico)",
+                1518.00, 8157.41, 951.63,
+                [[0.0, 1518.00, 7.5], [1518.00, 2793.88, 9.0], [2793.88, 4190.83, 12.0], [4190.83, 8157.41, 14.0]],
+                [[2259.20, 0.0, 0.00], [2826.65, 7.5, 169.44], [3751.05, 15.0, 381.44], [4664.68, 22.5, 662.77], [None, 27.5, 896.00]],
+                189.59, 564.80, 0, 1906.04, 65.00, 8.00, 2.00, 1,
+            ),
+        ]
+        for (ident, desc_t, c_ini, c_fim, v_ini, fonte_n, sm_t, teto_i, teto_c, fx_i, fx_r, dep_t, simp_t, lei15, sf_lim, sf_cot, fgts_p, fgts_a, atv_t) in tabelas_seed:
+            cursor.execute(f"SELECT id FROM tabelas_legais_vigencia WHERE identificador = {p_mark};", (ident,))
+            if not cursor.fetchone():
+                cursor.execute(
+                    f"""
+                    INSERT INTO tabelas_legais_vigencia (
+                        identificador, descricao, competencia_inicio, competencia_fim, vigencia_inicio,
+                        fonte_normativa, salario_minimo, teto_inss, teto_contribuicao_inss,
+                        faixas_inss_json, faixas_irrf_json, deducao_dependente_irrf, desconto_simplificado_irrf,
+                        lei_15270_ativa, limite_salario_familia, valor_cota_salario_familia,
+                        aliquota_fgts_padrao, aliquota_fgts_aprendiz, ativo, criado_por, criado_em, atualizado_em
+                    ) VALUES ({','.join([p_mark]*22)});
+                """,
+                    (
+                        ident, desc_t, c_ini, c_fim, v_ini, fonte_n, sm_t, teto_i, teto_c,
+                        _json_leg.dumps(fx_i), _json_leg.dumps(fx_r), dep_t, simp_t, lei15,
+                        sf_lim, sf_cot, fgts_p, fgts_a, atv_t, "Sistema", agora_leg, agora_leg,
+                    ),
+                )
+
+        # Feriados nacionais oficiais 2026
+        cursor.execute("SELECT COUNT(*) FROM feriados_calendario;")
+        if cursor.fetchone()[0] == 0:
+            feriados_2026 = [
+                ("2026-01-01", "Confraternização Universal", "nacional"),
+                ("2026-04-03", "Sexta-Feira da Paixão", "nacional"),
+                ("2026-04-21", "Tiradentes", "nacional"),
+                ("2026-05-01", "Dia Mundial do Trabalho", "nacional"),
+                ("2026-09-07", "Independência do Brasil", "nacional"),
+                ("2026-10-12", "Nossa Senhora Aparecida", "nacional"),
+                ("2026-11-02", "Finados", "nacional"),
+                ("2026-11-15", "Proclamação da República", "nacional"),
+                ("2026-11-20", "Dia Nacional de Zumbi e da Consciência Negra", "nacional"),
+                ("2026-12-25", "Natal", "nacional"),
+            ]
+            for dt_f, desc_f, abr_f in feriados_2026:
+                cursor.execute(
+                    f"""
+                    INSERT INTO feriados_calendario (empresa_id, filial_id, data_feriado, descricao, abrangencia, ativo, criado_em)
+                    VALUES ({p_mark}, NULL, {p_mark}, {p_mark}, {p_mark}, 1, {p_mark});
+                """,
+                    ("a0000000-0000-0000-0000-000000000001", dt_f, desc_f, abr_f, agora_leg),
                 )
     except Exception:
         pass

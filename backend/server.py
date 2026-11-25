@@ -879,6 +879,13 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            from .auth import checar_permissao
+            perfil_u = usuario.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ponto:visualizar") or checar_permissao(perfil_u, "ponto:meu")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso negado ao espelho de ponto."})
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
             colab_id = query.get("colaborador_id", [None])[0]
             periodo = (query.get("periodo") or query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
             if not colab_id or not colab_id.isdigit():
@@ -886,27 +893,120 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             espelho = self.plataforma_service.obter_espelho_ponto(int(colab_id), periodo)
             return self._enviar_json(200, {"sucesso": True, "dados": espelho})
 
+        if path == "/api/ponto/relatorio-ausencias":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "ponto:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            comp_q = (query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
+            setor_q = (query.get("setor") or [None])[0]
+            rel = self.plataforma_service.ponto_service.relatorio_ausencias(competencia=comp_q, setor=setor_q, empresa_id=empresa_valida)
+            return self._enviar_json(200, {"sucesso": True, "dados": rel})
+
+        if path == "/api/ferias/periodos-aquisitivos":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            from .auth import checar_permissao
+            perfil_u = usuario.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ferias:visualizar") or checar_permissao(perfil_u, "ferias:minhas")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso negado aos períodos aquisitivos."})
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            colab_id = query.get("colaborador_id", [None])[0]
+            pas = self.plataforma_service.listar_periodos_aquisitivos(
+                colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                empresa_id=empresa_valida,
+            )
+            return self._enviar_json(200, {"sucesso": True, "total": len(pas), "dados": pas})
+
+        if path.startswith("/api/ferias/") and path.endswith("/pdf"):
+            partes_f = path.strip("/").split("/")
+            if len(partes_f) == 4 and partes_f[2].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                from .auth import checar_permissao
+                perfil_u = usuario.get("perfil", "")
+                if not (checar_permissao(perfil_u, "ferias:visualizar") or checar_permissao(perfil_u, "ferias:minhas")):
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso negado aos documentos de férias."})
+                tipo_doc = (query.get("tipo") or ["aviso"])[0]
+                try:
+                    res = self.plataforma_service.gerar_documentos_ferias_pdf(int(partes_f[2]), tipo_documento=tipo_doc)
+                    return self._enviar_binario(res["pdf_bytes"], "application/pdf", res["filename"])
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
         if path == "/api/ferias":
             usuario = self._exigir_autenticacao()
             if not usuario:
                 return
+            from .auth import checar_permissao
+            perfil_u = usuario.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ferias:visualizar") or checar_permissao(perfil_u, "ferias:minhas")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Acesso negado ao módulo de férias."})
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
             colab_id = query.get("colaborador_id", [None])[0]
-            ferias = self.plataforma_service.listar_ferias(int(colab_id) if colab_id and colab_id.isdigit() else None)
+            ferias = self.plataforma_service.listar_ferias(
+                colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                empresa_id=empresa_valida,
+            )
             return self._enviar_json(200, {"sucesso": True, "total": len(ferias), "dados": ferias})
+
+        if path == "/api/afastamentos/relatorio":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "afastamentos:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            rel = self.plataforma_service.relatorio_afastamentos(
+                empresa_id=empresa_valida,
+                tipo=(query.get("tipo") or [None])[0],
+                setor=(query.get("setor") or [None])[0],
+            )
+            return self._enviar_json(200, {"sucesso": True, "dados": rel})
 
         if path == "/api/afastamentos":
             usuario = self._exigir_autenticacao()
-            if not usuario:
+            if not usuario or not self._exigir_permissao(usuario, "afastamentos:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
                 return
             colab_id = query.get("colaborador_id", [None])[0]
-            afast = self.plataforma_service.listar_afastamentos(int(colab_id) if colab_id and colab_id.isdigit() else None)
+            afast = self.plataforma_service.listar_afastamentos(
+                colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                empresa_id=empresa_valida,
+            )
             return self._enviar_json(200, {"sucesso": True, "total": len(afast), "dados": afast})
+
+        if path.startswith("/api/rescisoes/") and path.endswith("/pdf"):
+            partes_r = path.strip("/").split("/")
+            if len(partes_r) == 4 and partes_r[2].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario or not self._exigir_permissao(usuario, "rescisoes:visualizar"):
+                    return
+                tipo_doc = (query.get("tipo") or ["trct"])[0]
+                try:
+                    res = self.plataforma_service.gerar_documentos_rescisao_pdf(int(partes_r[2]), tipo_documento=tipo_doc)
+                    return self._enviar_binario(res["pdf_bytes"], "application/pdf", res["filename"])
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
 
         if path == "/api/rescisoes":
             usuario = self._exigir_autenticacao()
-            if not usuario:
+            if not usuario or not self._exigir_permissao(usuario, "rescisoes:visualizar"):
                 return
-            resc = self.plataforma_service.listar_rescisoes()
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            resc = self.plataforma_service.listar_rescisoes(empresa_id=empresa_valida)
             return self._enviar_json(200, {"sucesso": True, "total": len(resc), "dados": resc})
 
         if path == "/api/sst/resumo":
@@ -918,7 +1018,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/esocial/eventos":
             usuario = self._exigir_autenticacao()
-            if not usuario:
+            if not usuario or not self._exigir_permissao(usuario, "esocial:visualizar"):
                 return
             status = query.get("status", [None])[0]
             tipo = query.get("tipo", [None])[0]
@@ -1091,6 +1191,88 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             cfg = self.service.obter_config_alertas_documentos(empresa_id=empresa_valida)
             return self._enviar_json(200, {"sucesso": True, "dados": cfg})
 
+        # Rotas GET Tabelas Legais, Feriados, 13º Salário, Rateio & Financeiro (RF-081..RF-105)
+        if path == "/api/tabelas-legais":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            from .tabelas_legais_service import TabelasLegaisService
+            tab_srv = TabelasLegaisService(db_path=getattr(self.service, "db_path", None))
+            comp_q = (query.get("competencia") or [None])[0]
+            if comp_q:
+                return self._enviar_json(200, {"sucesso": True, "dados": tab_srv.obter_tabela_vigente(comp_q)})
+            return self._enviar_json(200, {"sucesso": True, "dados": tab_srv.listar_tabelas_legais()})
+
+        if path == "/api/feriados":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            from .tabelas_legais_service import TabelasLegaisService
+            ano_q = query.get("ano", [None])[0]
+            fer = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).listar_feriados(
+                empresa_id=empresa_valida, ano=int(ano_q) if ano_q and ano_q.isdigit() else None
+            )
+            return self._enviar_json(200, {"sucesso": True, "total": len(fer), "dados": fer})
+
+        if path == "/api/folha/decimo-terceiro":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            ano_q = query.get("ano_base", [None])[0]
+            cid_q = query.get("colaborador_id", [None])[0]
+            lista = self.folha_service.listar_decimo_terceiro(
+                ano_base=int(ano_q) if ano_q and ano_q.isdigit() else None,
+                colaborador_id=int(cid_q) if cid_q and cid_q.isdigit() else None,
+                empresa_id=empresa_valida,
+            )
+            return self._enviar_json(200, {"sucesso": True, "total": len(lista), "dados": lista})
+
+        if path == "/api/folha/provisao-decimo-terceiro":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            comp_q = (query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
+            return self._enviar_json(200, {"sucesso": True, "dados": self.folha_service.calcular_provisao_decimo_terceiro(comp_q, empresa_id=empresa_valida)})
+
+        if path == "/api/folha/conferencia-analitica":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            comp_q = (query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
+            return self._enviar_json(200, {"sucesso": True, "dados": self.folha_service.conferencia_analitica_folha(comp_q, empresa_id=empresa_valida)})
+
+        if path == "/api/folha/rateio-centro-custo":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            comp_q = (query.get("competencia") or [datetime.now().strftime("%Y-%m")])[0]
+            return self._enviar_json(200, {"sucesso": True, "dados": self.folha_service.listar_rateio_centro_custo(comp_q, empresa_id=empresa_valida)})
+
+        if path == "/api/folha/integracao-financeira":
+            usuario = self._exigir_autenticacao()
+            if not usuario or not self._exigir_permissao(usuario, "folha:visualizar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario, (query.get("empresa_id") or [None])[0])
+            if not ok_escopo:
+                return
+            comp_q = (query.get("competencia") or [None])[0]
+            return self._enviar_json(200, {"sucesso": True, "dados": self.folha_service.listar_integracao_financeira(competencia=comp_q, empresa_id=empresa_valida)})
+
         # Servir Frontend estático (index.html, styles.css, app.js) se arquivo existir
         return super().do_GET()
 
@@ -1225,13 +1407,17 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 colab = self.folha_service.obter_dados_colaborador(int(colab_id))
                 param = self.folha_service.obter_parametro_vigente()
                 tipo_contrato = (colab.get("tipo_contrato") or "CLT").strip().lower()
-                aliquota_fgts = 2.0 if tipo_contrato == "aprendiz" else param.get("aliquota_fgts", 8.0)
+                comp_sim = (dados.get("competencia") or datetime.now().strftime("%Y-%m")).strip()[:7]
+                from .tabelas_legais_service import TabelasLegaisService
+                tab_srv_sim = TabelasLegaisService(db_path=self.folha_service.db_path)
+                tab_sim = tab_srv_sim.obter_tabela_vigente(comp_sim)
+                cal_sim = tab_srv_sim.contar_dias_uteis_dsr_competencia(comp_sim, colab.get("empresa_id") or "a0000000-0000-0000-0000-000000000001")
+                aliquota_fgts = float(tab_sim.get("aliquota_fgts_aprendiz", 2.0)) if tipo_contrato == "aprendiz" else float(param.get("aliquota_fgts", tab_sim.get("aliquota_fgts_padrao", 8.0)))
                 num_dep_irrf = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
                 dias_mes_sim = int(dados.get("dias_mes", 30))
                 divisor_sim = float(dados.get("horas_divisor", colab.get("carga_horaria_mensal") or 220.0))
                 eventos_brutos = list(dados.get("eventos", []))
                 if dados.get("incluir_beneficios_ativos"):
-                    comp_sim = (dados.get("competencia") or datetime.now().strftime("%Y-%m")).strip()
                     res_ben = self.plataforma_service.obter_descontos_beneficios_folha(int(colab_id), comp_sim)
                     cods_ex = {str(e.get("codigo") or e.get("codigo_evento") or "").strip() for e in eventos_brutos}
                     for ev_b in res_ben.get("eventos_folha", []):
@@ -1241,28 +1427,37 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     eventos_brutos, horas_divisor=divisor_sim, dias_mes=dias_mes_sim
                 )
                 from .folha_calculos import processar_calculo_folha
-                calc = processar_calculo_folha(
-                    salario_base=float(colab.get("salario_base", 0.0)),
-                    dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
-                    dias_mes=dias_mes_sim,
-                    divisor_horas=divisor_sim,
-                    eventos_informados=eventos_validados,
-                    numero_dependentes=num_dep_irrf,
-                    parametros_config={
-                        "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
-                        "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
-                        "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
-                        "aplicar_inss": bool(param.get("aplicar_inss", 1)),
-                        "aplicar_irrf": bool(param.get("aplicar_irrf", 1)),
-                        "aliquota_fgts": aliquota_fgts,
-                        "teto_inss": param.get("teto_inss", "8475.55"),
-                        "deducao_dependente_irrf": param.get("deducao_dependente_irrf", "189.59"),
-                        "desconto_simplificado_irrf": param.get("desconto_simplificado_irrf", "607.20"),
-                        "salario_minimo": param.get("salario_minimo", "1621.00"),
-                        "limite_salario_familia": param.get("limite_salario_familia", "1980.38"),
-                        "valor_cota_salario_familia": param.get("valor_cota_salario_familia", "67.54"),
-                    },
-                )
+                try:
+                    calc = processar_calculo_folha(
+                        salario_base=float(colab.get("salario_base", 0.0)),
+                        dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
+                        dias_mes=dias_mes_sim,
+                        divisor_horas=divisor_sim,
+                        eventos_informados=eventos_validados,
+                        numero_dependentes=num_dep_irrf,
+                        parametros_config={
+                            "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
+                            "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
+                            "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
+                            "aplicar_inss": bool(param.get("aplicar_inss", 1)),
+                            "aplicar_irrf": bool(param.get("aplicar_irrf", 1)),
+                            "aliquota_fgts": aliquota_fgts,
+                            "tabela_inss": tab_sim["tabela_inss_tuples"],
+                            "teto_inss": tab_sim["teto_inss"],
+                            "teto_contribuicao_inss": tab_sim["teto_contribuicao_inss"],
+                            "tabela_irrf": tab_sim["tabela_irrf_tuples"],
+                            "deducao_dependente_irrf": tab_sim["deducao_dependente_irrf"],
+                            "desconto_simplificado_irrf": tab_sim["desconto_simplificado_irrf"],
+                            "aplicar_reducao_lei_15270": bool(tab_sim.get("lei_15270_ativa", 1)),
+                            "salario_minimo": tab_sim["salario_minimo"],
+                            "limite_salario_familia": tab_sim["limite_salario_familia"],
+                            "valor_cota_salario_familia": tab_sim["valor_cota_salario_familia"],
+                            "dias_uteis": cal_sim["dias_uteis"],
+                            "domingos_feriados": cal_sim["domingos_feriados"],
+                        },
+                    )
+                except ValueError as ve:
+                    raise FolhaValidacaoException({"eventos": str(ve)})
                 itens = calc["itens"]
                 inss_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0501", "0502") or it["codigo_evento"] in ("501", "0501", "0502"))), 2)
                 irrf_val = round(sum(float(it["valor_total"]) for it in itens if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0505", "0506", "0507") or it["codigo_evento"] in ("502", "0505", "0506", "0507"))), 2)
@@ -1711,8 +1906,15 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario_auth = self._exigir_autenticacao()
             if not usuario_auth:
                 return
+            from .auth import checar_permissao
+            perfil_u = usuario_auth.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ponto:registrar") or checar_permissao(perfil_u, "ponto:meu")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para registrar marcação."})
             try:
                 dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
                 dt_str = dados.get("data")
                 hr_str = dados.get("hora")
                 if not dt_str and dados.get("data_hora"):
@@ -1734,6 +1936,10 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             usuario_auth = self._exigir_autenticacao()
             if not usuario_auth:
                 return
+            from .auth import checar_permissao
+            perfil_u = usuario_auth.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ponto:registrar") or checar_permissao(perfil_u, "ponto:meu")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para solicitar ajuste de ponto."})
             try:
                 dados = self._ler_json_body()
                 resp = self.plataforma_service.solicitar_ajuste_ponto(
@@ -1753,7 +1959,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if path.startswith("/api/ponto/ajuste/") and path.endswith("/aprovar"):
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:aprovar"):
                 return
             partes = path.strip("/").split("/")
             if len(partes) == 5 and partes[3].isdigit():
@@ -1769,21 +1975,20 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as e:
                     return self._enviar_json(*erro_http(e))
 
-        if path == "/api/ferias/programar":
+        if path == "/api/ponto/importar-arquivo":
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:editar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
                 return
             try:
                 dados = self._ler_json_body()
-                abono_flag = bool(dados.get("abono_pecuniario", False)) or int(dados.get("dias_abono") or 0) > 0
-                adiantar_flag = bool(dados.get("adiantar_13", False) or dados.get("adiantamento_decimo_terceiro", False))
-                resp = self.plataforma_service.programar_ferias(
-                    colaborador_id=int(dados["colaborador_id"]),
-                    data_inicio=dados.get("data_inicio") or dados.get("data_inicio_gozo"),
-                    dias_gozo=int(dados["dias_gozo"]),
-                    abono_pecuniario=abono_flag,
-                    adiantar_13=adiantar_flag,
-                    solicitante=usuario_auth["nome_completo"]
+                resp = self.plataforma_service.ponto_service.importar_arquivo_ponto(
+                    nome_arquivo=dados.get("nome_arquivo") or "marcacoes.csv",
+                    conteudo_texto=dados.get("conteudo_texto") or "",
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida,
                 )
                 return self._enviar_json(201, resp)
             except PlataformaValidacaoException as e:
@@ -1791,9 +1996,246 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
-        if path == "/api/afastamentos":
+        if path == "/api/ponto/importar-api":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:editar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.importar_marcacoes_api(
+                    registros=dados.get("registros") or [],
+                    idempotency_key=dados.get("idempotency_key"),
+                    coletor_id=dados.get("coletor_id"),
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida,
+                )
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/validar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:visualizar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.validar_marcacoes_periodo(
+                    int(dados["colaborador_id"]), dados.get("competencia") or datetime.now().strftime("%Y-%m")
+                )
+                return self._enviar_json(200, {"sucesso": True, "dados": resp})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/banco-horas":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:editar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.movimentar_banco_horas(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data_movimento=dados.get("data_movimento") or datetime.now().strftime("%Y-%m-%d"),
+                    tipo_movimento=dados.get("tipo_movimento") or "credito",
+                    minutos=int(dados["minutos"]),
+                    observacao=dados.get("observacao") or "",
+                    usuario=usuario_auth["nome_completo"],
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/fechar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:aprovar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.fechar_ponto_periodo(
+                    competencia=dados["competencia"],
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida,
+                )
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/reabrir":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:aprovar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.reabrir_ponto_periodo(
+                    competencia=dados["competencia"],
+                    motivo=dados.get("motivo") or "",
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida,
+                )
+                return self._enviar_json(200, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/ocorrencias":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:editar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.registrar_ocorrencia(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data_inicio=dados["data_inicio"],
+                    data_fim=dados.get("data_fim") or dados["data_inicio"],
+                    tipo_ocorrencia=dados["tipo_ocorrencia"],
+                    descricao=dados.get("descricao") or "",
+                    minutos_ausencia=int(dados.get("minutos_ausencia") or 0),
+                    artigo_clt=dados.get("artigo_clt"),
+                    cid=dados.get("cid"),
+                    usuario=usuario_auth["nome_completo"],
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ponto/justificativas":
             usuario_auth = self._exigir_autenticacao()
             if not usuario_auth:
+                return
+            from .auth import checar_permissao
+            perfil_u = usuario_auth.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ponto:registrar") or checar_permissao(perfil_u, "ponto:meu")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para enviar justificativa."})
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.ponto_service.registrar_justificativa(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data_ocorrencia=dados["data_ocorrencia"],
+                    tipo_solicitado=dados["tipo_solicitado"],
+                    motivo=dados["motivo"],
+                    solicitante=usuario_auth["nome_completo"],
+                    dias_abono=int(dados.get("dias_abono") or 1),
+                    artigo_clt=dados.get("artigo_clt"),
+                    cid=dados.get("cid"),
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/ponto/justificativas/") and path.endswith("/decidir"):
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ponto:aprovar"):
+                return
+            partes_j = path.strip("/").split("/")
+            if len(partes_j) == 5 and partes_j[3].isdigit():
+                try:
+                    dados = self._ler_json_body()
+                    resp = self.plataforma_service.ponto_service.decidir_justificativa(
+                        int(partes_j[3]),
+                        aprovador=usuario_auth["nome_completo"],
+                        aprovar=bool(dados.get("aprovar", True)),
+                        motivo_decisao=dados.get("motivo_decisao") or "",
+                    )
+                    return self._enviar_json(200, resp)
+                except PlataformaAcessoNegadoException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ferias/programar":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            from .auth import checar_permissao
+            perfil_u = usuario_auth.get("perfil", "")
+            if not (checar_permissao(perfil_u, "ferias:solicitar") or checar_permissao(perfil_u, "ferias:minhas")):
+                return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para programar férias."})
+            try:
+                dados = self._ler_json_body()
+                dias_abono_q = int(dados.get("dias_abono") or 0)
+                abono_flag = bool(dados.get("abono_pecuniario", False)) or dias_abono_q > 0
+                adiantar_flag = bool(dados.get("adiantar_13", False) or dados.get("adiantamento_decimo_terceiro", False))
+                resp = self.plataforma_service.programar_ferias(
+                    colaborador_id=int(dados["colaborador_id"]),
+                    data_inicio=dados.get("data_inicio") or dados.get("data_inicio_gozo"),
+                    dias_gozo=int(dados["dias_gozo"]),
+                    abono_pecuniario=abono_flag,
+                    dias_abono=(dias_abono_q if dias_abono_q > 0 else None),
+                    adiantar_13=adiantar_flag,
+                    solicitante=usuario_auth["nome_completo"],
+                    exigir_aviso_30d=bool(dados.get("exigir_aviso_30d", False)),
+                )
+                return self._enviar_json(201, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/ferias/coletivas":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "ferias:editar"):
+                return
+            ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth)
+            if not ok_escopo:
+                return
+            try:
+                dados = self._ler_json_body()
+                resp = self.plataforma_service.programar_ferias_coletivas(
+                    data_inicio=dados["data_inicio"],
+                    dias_gozo=int(dados["dias_gozo"]),
+                    setor=dados.get("setor"),
+                    empresa_id=empresa_valida,
+                    usuario=usuario_auth["nome_completo"],
+                )
+                return self._enviar_json(201, resp)
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/ferias/"):
+            partes_fer = path.strip("/").split("/")
+            if len(partes_fer) == 4 and partes_fer[2].isdigit():
+                fid = int(partes_fer[2])
+                acao_fer = partes_fer[3]
+                usuario_auth = self._exigir_autenticacao()
+                if not usuario_auth:
+                    return
+                try:
+                    dados = self._ler_json_body()
+                    if acao_fer == "aprovar":
+                        if not self._exigir_permissao(usuario_auth, "ferias:aprovar"):
+                            return
+                        resp = self.plataforma_service.aprovar_ferias(fid, aprovador=usuario_auth["nome_completo"], aprovar=bool(dados.get("aprovar", True)), motivo=dados.get("motivo") or "")
+                        return self._enviar_json(200, resp)
+                    elif acao_fer == "cancelar":
+                        if not self._exigir_permissao(usuario_auth, "ferias:editar"):
+                            return
+                        resp = self.plataforma_service.cancelar_ferias(fid, motivo=dados.get("motivo") or "", usuario=usuario_auth["nome_completo"])
+                        return self._enviar_json(200, resp)
+                    elif acao_fer == "pagar":
+                        if not self._exigir_permissao(usuario_auth, "ferias:editar"):
+                            return
+                        resp = self.plataforma_service.registrar_pagamento_ferias(fid, data_pagamento=dados.get("data_pagamento") or datetime.now().strftime("%Y-%m-%d"), usuario=usuario_auth["nome_completo"])
+                        return self._enviar_json(200, resp)
+                    elif acao_fer == "integrar-folha":
+                        if not self._exigir_permissao(usuario_auth, "folha:calcular"):
+                            return
+                        resp = self.plataforma_service.integrar_ferias_folha(fid, competencia=dados.get("competencia") or "", usuario=usuario_auth["nome_completo"])
+                        return self._enviar_json(201, resp)
+                except PlataformaAcessoNegadoException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
+        if path == "/api/afastamentos":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "afastamentos:registrar"):
                 return
             try:
                 dados = self._ler_json_body()
@@ -1816,6 +2258,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     data_inicio=dt_ini_af,
                     data_fim_prevista=dt_fim_af,
                     cid=dados.get("cid") or dados.get("codigo_cid"),
+                    subtipo_licenca=dados.get("subtipo_licenca"),
+                    observacoes=dados.get("observacoes"),
                     usuario=usuario_auth["nome_completo"]
                 )
                 return self._enviar_json(201, resp)
@@ -1824,9 +2268,41 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 
+        if path.startswith("/api/afastamentos/"):
+            partes_af = path.strip("/").split("/")
+            if len(partes_af) == 4 and partes_af[2].isdigit():
+                aid = int(partes_af[2])
+                acao_af = partes_af[3]
+                usuario_auth = self._exigir_autenticacao()
+                if not usuario_auth:
+                    return
+                try:
+                    dados = self._ler_json_body()
+                    if acao_af == "prorrogar":
+                        if not self._exigir_permissao(usuario_auth, "afastamentos:editar"):
+                            return
+                        resp = self.plataforma_service.prorrogar_afastamento(
+                            aid, nova_data_fim=dados["nova_data_fim"], motivo=dados.get("motivo") or "",
+                            cid=dados.get("cid"), documento_ref=dados.get("documento_ref"), usuario=usuario_auth["nome_completo"],
+                        )
+                        return self._enviar_json(200, resp)
+                    elif acao_af == "retorno":
+                        from .auth import checar_permissao
+                        perfil_u = usuario_auth.get("perfil", "")
+                        if not (checar_permissao(perfil_u, "afastamentos:editar") or checar_permissao(perfil_u, "sst:criar")):
+                            return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para registrar retorno."})
+                        resp = self.plataforma_service.registrar_retorno_afastamento(
+                            aid, data_retorno=dados.get("data_retorno") or datetime.now().strftime("%Y-%m-%d"),
+                            aso_id=int(dados["aso_id"]) if dados.get("aso_id") else None,
+                            usuario=usuario_auth["nome_completo"],
+                        )
+                        return self._enviar_json(200, resp)
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
+
         if path == "/api/rescisoes":
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "rescisoes:calcular"):
                 return
             try:
                 dados = self._ler_json_body()
@@ -1839,6 +2315,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     ferias_vencidas_dias=int(dados.get("ferias_vencidas_dias", 0)),
                     meses_trabalhados_ano=int(dados.get("meses_trabalhados_ano", 0)),
                     saldo_fgts=dados.get("saldo_fgts", 0.0),
+                    dias_restantes_contrato_prazo=int(dados.get("dias_restantes_contrato_prazo", 0)),
+                    exigir_aso_demissional=bool(dados.get("exigir_aso_demissional", False)),
                     usuario=usuario_auth["nome_completo"],
                     simular=bool(dados.get("simular", False))
                 )
@@ -1847,6 +2325,33 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
+
+        if path.startswith("/api/rescisoes/"):
+            partes_res = path.strip("/").split("/")
+            if len(partes_res) == 4 and partes_res[2].isdigit():
+                rid = int(partes_res[2])
+                acao_r = partes_res[3]
+                usuario_auth = self._exigir_autenticacao()
+                if not usuario_auth:
+                    return
+                try:
+                    dados = self._ler_json_body()
+                    if acao_r == "homologar":
+                        if not self._exigir_permissao(usuario_auth, "rescisoes:homologar"):
+                            return
+                        resp = self.plataforma_service.homologar_rescisao(rid, homologador=usuario_auth["nome_completo"], usuario_dp_observacao=dados.get("observacao") or "")
+                        return self._enviar_json(200, resp)
+                    elif acao_r == "pagar":
+                        from .auth import checar_permissao
+                        perfil_u = usuario_auth.get("perfil", "")
+                        if not (checar_permissao(perfil_u, "rescisoes:editar") or checar_permissao(perfil_u, "cnab:gerar")):
+                            return self._enviar_json(403, {"sucesso": False, "mensagem": "Permissão insuficiente para registrar pagamento rescisório."})
+                        resp = self.plataforma_service.registrar_pagamento_rescisao(rid, data_pagamento=dados.get("data_pagamento") or datetime.now().strftime("%Y-%m-%d"), usuario=usuario_auth["nome_completo"])
+                        return self._enviar_json(200, resp)
+                except PlataformaAcessoNegadoException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(*erro_http(e))
 
         if path == "/api/sst/aso":
             usuario_auth = self._exigir_autenticacao()
@@ -1909,7 +2414,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/esocial/transmitir":
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "esocial:transmitir"):
                 return
             try:
                 dados = self._ler_json_body()
@@ -1934,16 +2439,190 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/integracoes/cnab":
             usuario_auth = self._exigir_autenticacao()
-            if not usuario_auth:
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "cnab:gerar"):
                 return
             try:
                 dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
                 comp = dados.get("competencia", datetime.now().strftime("%Y-%m"))
                 banco = dados.get("banco_codigo") or dados.get("codigo_banco") or "001"
-                resp = self.plataforma_service.gerar_arquivo_cnab240(comp, banco_codigo=banco, usuario=usuario_auth["nome_completo"])
+                tipo_pg = dados.get("tipo_pagamento") or "folha_mensal"
+                resp = self.plataforma_service.gerar_arquivo_cnab240(
+                    comp,
+                    banco_codigo=banco,
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida or "a0000000-0000-0000-0000-000000000001",
+                    tipo_pagamento=tipo_pg,
+                )
                 return self._enviar_json(200, resp)
             except PlataformaValidacaoException as e:
                 return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/integracoes/cnab/retorno":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "cnab:gerar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                resp = self.plataforma_service.processar_retorno_cnab240(
+                    nome_arquivo=dados.get("nome_arquivo") or "retorno_cnab240.ret",
+                    conteudo_retorno=dados.get("conteudo_retorno") or dados.get("conteudo") or "",
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida or "a0000000-0000-0000-0000-000000000001",
+                    arquivo_cnab_id=int(dados["arquivo_cnab_id"]) if dados.get("arquivo_cnab_id") else None,
+                )
+                return self._enviar_json(200, resp)
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        # Rotas POST Tabelas Legais, Feriados, 13º Salário, Lote, Rateio & eSocial Periódicos (RF-081..RF-105)
+        if path == "/api/tabelas-legais":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:fechar"):
+                return
+            try:
+                from .tabelas_legais_service import TabelasLegaisService
+                dados = self._ler_json_body()
+                salvo = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).salvar_tabela_legal(
+                    dados, usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Tabela legal gravada com histórico normativo!", "dados": salvo})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/feriados":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:calcular"):
+                return
+            try:
+                from .tabelas_legais_service import TabelasLegaisService
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                feriado = TabelasLegaisService(db_path=getattr(self.service, "db_path", None)).cadastrar_feriado(
+                    data_feriado=dados.get("data_feriado") or dados.get("data") or "",
+                    descricao=dados.get("descricao") or "",
+                    abrangencia=dados.get("abrangencia") or "municipal",
+                    empresa_id=empresa_valida or "a0000000-0000-0000-0000-000000000001",
+                    filial_id=dados.get("filial_id"),
+                )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": "Feriado cadastrado no calendário!", "dados": feriado})
+            except PlataformaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/folha/decimo-terceiro":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:calcular"):
+                return
+            try:
+                from .folha_exceptions import FolhaValidacaoException
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                ano_b = int(dados.get("ano_base") or datetime.now().year)
+                parcela = int(dados.get("parcela") or 1)
+                if dados.get("colaborador_id"):
+                    res = self.folha_service.calcular_decimo_terceiro_colaborador(
+                        colaborador_id=int(dados["colaborador_id"]),
+                        ano_base=ano_b,
+                        parcela=parcela,
+                        data_pagamento=dados.get("data_pagamento"),
+                        usuario=usuario_auth["nome_completo"],
+                        salvar=bool(dados.get("salvar", True)),
+                    )
+                else:
+                    res = self.folha_service.calcular_decimo_terceiro_lote(
+                        ano_base=ano_b,
+                        parcela=parcela,
+                        empresa_id=empresa_valida,
+                        usuario=usuario_auth["nome_completo"],
+                    )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": f"13º salário ({parcela}ª parcela/{ano_b}) processado!", "dados": res})
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": "Erro de validação no 13º salário.", "erros": getattr(e, "erros", {})})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/folha/fechar-lote":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:fechar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                comp = dados.get("competencia") or datetime.now().strftime("%Y-%m")
+                res = self.folha_service.fechar_competencia_lote(
+                    competencia=comp,
+                    usuario=usuario_auth["nome_completo"],
+                    empresa_id=empresa_valida,
+                )
+                return self._enviar_json(200, {"sucesso": True, "mensagem": f"Competência {comp} fechada em lote.", "dados": res})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/folha/rateio-centro-custo":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:calcular"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                comp = dados.get("competencia") or datetime.now().strftime("%Y-%m")
+                res = self.folha_service.gerar_rateio_centro_custo(competencia=comp, empresa_id=empresa_valida)
+                return self._enviar_json(200, {"sucesso": True, "mensagem": f"Rateio por centro de custo ({comp}) consolidado!", "dados": res})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/folha/integracao-financeira":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "folha:fechar"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                comp = dados.get("competencia") or datetime.now().strftime("%Y-%m")
+                res = self.folha_service.gerar_integracao_financeira(
+                    competencia=comp, empresa_id=empresa_valida, usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": f"Lançamentos financeiros e contábeis ({comp}) gerados!", "dados": res})
+            except Exception as e:
+                return self._enviar_json(*erro_http(e))
+
+        if path == "/api/folha/esocial-periodicos":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth or not self._exigir_permissao(usuario_auth, "esocial:transmitir"):
+                return
+            try:
+                dados = self._ler_json_body()
+                ok_escopo, empresa_valida = self._resolver_empresa_escopo(usuario_auth, dados.get("empresa_id"))
+                if not ok_escopo:
+                    return
+                comp = dados.get("competencia") or datetime.now().strftime("%Y-%m")
+                res = self.folha_service.gerar_eventos_esocial_folha(
+                    competencia=comp, empresa_id=empresa_valida, usuario=usuario_auth["nome_completo"]
+                )
+                return self._enviar_json(201, {"sucesso": True, "mensagem": f"Eventos periódicos eSocial ({comp}) gerados na fila!", "dados": res})
             except Exception as e:
                 return self._enviar_json(*erro_http(e))
 

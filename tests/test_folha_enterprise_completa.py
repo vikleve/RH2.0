@@ -309,6 +309,7 @@ class TestFolhaEnterpriseCompleta(unittest.TestCase):
         colab = self.colab_srv.cadastrar(self._dados_colab(salario_base=6500.00))
         st_sim, _, res_sim = _executar_handler("POST", "/api/folha/simular", self.db_path, {
             "colaborador_id": colab["id"],
+            "competencia": "2026-10",
             "eventos": [{"codigo": "0010", "referencia": 5}]
         }, cookie=cookie_gestor)
         self.assertEqual(st_sim, 200)

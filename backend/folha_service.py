@@ -5,11 +5,19 @@ auditoria histórica, ciclo de vida da folha (Rascunho -> Calculada -> Fechada)
 e integração com a camada de cálculos.
 Funciona em modo dual: PostgreSQL (produção/Supabase) e SQLite (local/testes).
 """
-from datetime import datetime
+import calendar
+import json
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from .database import _usar_postgres, fetchall_dict, fetchone_dict, get_connection, init_db, insert_returning_id, ph
-from .folha_calculos import processar_calculo_folha
+from .folha_calculos import (
+    arredondar_moeda,
+    calcular_inss_progressivo,
+    calcular_irrf_progressivo,
+    processar_calculo_folha,
+)
 
 
 class FolhaValidacaoException(Exception):
@@ -328,6 +336,8 @@ class FolhaService:
         filial_id: Optional[str] = None,
         salvar_como_rascunho: bool = False,
         incluir_beneficios_ativos: bool = False,
+        integrar_ponto: bool = False,
+        integrar_afastamentos: bool = True,
     ) -> Dict[str, Any]:
         """
         Cria nova folha ou atualiza existente.
@@ -402,13 +412,31 @@ class FolhaService:
                 conn.close()
                 raise FolhaBloqueadaException("Esta folha de pagamento já está fechada e não pode ser alterada diretamente.")
 
-        # Obter parâmetros vigentes
+        # Obter parâmetros vigentes + tabela legal da competência + calendário + alíquotas da empresa
         param = self.obter_parametro_vigente()
         param_id = param.get("id")
+        try:
+            from .tabelas_legais_service import TabelasLegaisService
+        except ImportError:
+            from backend.tabelas_legais_service import TabelasLegaisService
+        tab_srv = TabelasLegaisService(db_path=self.db_path)
+        tab_legal = tab_srv.obter_tabela_vigente(comp)
+        cal_comp = tab_srv.contar_dias_uteis_dsr_competencia(comp, emp_id)
+
+        cursor.execute(f"SELECT aliquota_inss_patronal, aliquota_rat, fap, aliquota_terceiros FROM empresas WHERE id = {P};", (emp_id,))
+        emp_aliq = cursor.fetchone()
+        aliq_pat = float(emp_aliq[0]) if emp_aliq and emp_aliq[0] is not None else 20.0
+        aliq_rat = float(emp_aliq[1]) if emp_aliq and emp_aliq[1] is not None else 2.0
+        fap_emp = float(emp_aliq[2]) if emp_aliq and emp_aliq[2] is not None else 1.0
+        aliq_terc = float(emp_aliq[3]) if emp_aliq and emp_aliq[3] is not None else 5.8
 
         # Ajustes de regras conforme tipo de contrato e tipo de folha
         tipo_contrato = (colab.get("tipo_contrato") or "CLT").strip().lower()
-        aliquota_fgts_efetiva = 2.0 if tipo_contrato == "aprendiz" else param.get("aliquota_fgts", 8.0)
+        aliquota_fgts_efetiva = (
+            float(tab_legal.get("aliquota_fgts_aprendiz", 2.0))
+            if tipo_contrato == "aprendiz"
+            else float(param.get("aliquota_fgts", tab_legal.get("aliquota_fgts_padrao", 8.0)))
+        )
 
         eventos_proc = list(eventos or [])
         aplicar_inss_efetivo = bool(param.get("aplicar_inss", 1))
@@ -438,8 +466,8 @@ class FolhaService:
 
         # Salário-família automático se houver dependentes elegíveis e remuneração dentro do limite
         if num_dep_sf > 0 and tipo_folha_norm == "mensal":
-            limite_sf = float(param.get("limite_salario_familia", 1980.38))
-            cota_sf = float(param.get("valor_cota_salario_familia", 67.54))
+            limite_sf = float(tab_legal.get("limite_salario_familia", 1980.38))
+            cota_sf = float(tab_legal.get("valor_cota_salario_familia", 67.54))
             if salario_base <= limite_sf and not any(str(e.get("codigo", "")).strip() == "0202" for e in eventos_proc):
                 eventos_proc.append({
                     "codigo": "0202",
@@ -448,6 +476,72 @@ class FolhaService:
                     "referencia": num_dep_sf,
                     "valor_informado": round(num_dep_sf * cota_sf, 2),
                 })
+
+        # Integração com Afastamentos ativos na competência (reduz dias não remunerados pela empresa/suspensão)
+        if integrar_afastamentos and tipo_folha_norm == "mensal" and float(dias_trabalhados) == 30.0:
+            ano_c, mes_c = int(comp[:4]), int(comp[5:7])
+            ult_dia = calendar.monthrange(ano_c, mes_c)[1]
+            dt_comp_ini = date(ano_c, mes_c, 1)
+            dt_comp_fim = date(ano_c, mes_c, ult_dia)
+            cursor.execute(
+                f"""
+                SELECT tipo, dias_empresa, dias_inss, regime_efeito, data_inicio, data_fim_prevista, data_retorno_efetivo
+                FROM afastamentos
+                WHERE colaborador_id = {P}
+                  AND (dias_inss > 0 OR regime_efeito = 'suspensao')
+                  AND data_inicio <= {P}
+                  AND COALESCE(data_retorno_efetivo, data_fim_prevista) >= {P};
+            """,
+                (colaborador_id, dt_comp_fim.isoformat(), dt_comp_ini.isoformat()),
+            )
+            dias_descontar_afast = 0
+            for af_r in self._fetchall(cursor):
+                af_ini = datetime.strptime(str(af_r["data_inicio"])[:10], "%Y-%m-%d").date()
+                af_fim = datetime.strptime(str(af_r.get("data_retorno_efetivo") or af_r["data_fim_prevista"])[:10], "%Y-%m-%d").date()
+                d_emp_af = int(af_r.get("dias_empresa") or 0)
+                if str(af_r.get("regime_efeito") or "") == "suspensao" and d_emp_af == 0:
+                    unpaid_ini = af_ini
+                else:
+                    unpaid_ini = af_ini + timedelta(days=d_emp_af)
+                ov_ini = max(dt_comp_ini, unpaid_ini)
+                ov_fim = min(dt_comp_fim, af_fim)
+                if ov_fim >= ov_ini:
+                    dias_descontar_afast += (ov_fim - ov_ini).days + 1
+            if dias_descontar_afast > 0:
+                dias_trabalhados = max(0.0, float(dias_trabalhados) - float(min(30, dias_descontar_afast)))
+
+        # Integração com Ponto Eletrônico fechado ou solicitado (RF085/RF086)
+        if integrar_ponto and tipo_folha_norm == "mensal":
+            try:
+                from .ponto_service import PontoService
+            except ImportError:
+                from backend.ponto_service import PontoService
+            cods_man = {str(e.get("codigo") or e.get("codigo_evento") or "").strip() for e in eventos_proc}
+            for ev_pt in PontoService(db_path=self.db_path).gerar_eventos_folha_do_ponto(colaborador_id, comp):
+                if str(ev_pt.get("codigo") or "").strip() not in cods_man:
+                    eventos_proc.append(ev_pt)
+
+        # Recuperação automática do desconto de adiantamento salarial (rubrica 0520)
+        if tipo_folha_norm == "mensal":
+            cods_atuais = {str(e.get("codigo") or e.get("codigo_evento") or "").strip() for e in eventos_proc}
+            if "0520" not in cods_atuais:
+                cursor.execute(
+                    f"""
+                    SELECT salario_liquido FROM folhas_pagamento
+                    WHERE colaborador_id = {P} AND competencia = {P} AND tipo_folha = 'adiantamento'
+                      AND situacao IN ('calculada', 'aprovada', 'fechada', 'paga')
+                    ORDER BY id DESC LIMIT 1;
+                """,
+                    (colaborador_id, comp),
+                )
+                row_adiant = cursor.fetchone()
+                if row_adiant and float(row_adiant[0] or 0) > 0:
+                    eventos_proc.append({
+                        "codigo": "0520",
+                        "descricao": "Adiantamento salarial (recuperação automática)",
+                        "referencia": 1,
+                        "valor_informado": round(float(row_adiant[0]), 2),
+                    })
 
         # Integração opcional com Benefícios Ativos (RF079)
         if incluir_beneficios_ativos and tipo_folha_norm == "mensal":
@@ -466,33 +560,141 @@ class FolhaService:
             eventos_proc = self._validar_e_hidratar_eventos(
                 eventos_proc, horas_divisor=horas_divisor, dias_mes=dias_mes
             )
+            calc_result = processar_calculo_folha(
+                salario_base=salario_base,
+                dias_trabalhados=dias_trabalhados,
+                dias_mes=dias_mes,
+                divisor_horas=horas_divisor,
+                eventos_informados=eventos_proc,
+                numero_dependentes=num_dependentes,
+                parametros_config={
+                    "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
+                    "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
+                    "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
+                    "aplicar_inss": aplicar_inss_efetivo,
+                    "aplicar_irrf": aplicar_irrf_efetivo,
+                    "aliquota_fgts": aliquota_fgts_efetiva,
+                    "tabela_inss": tab_legal["tabela_inss_tuples"],
+                    "teto_inss": tab_legal["teto_inss"],
+                    "teto_contribuicao_inss": tab_legal["teto_contribuicao_inss"],
+                    "tabela_irrf": tab_legal["tabela_irrf_tuples"],
+                    "deducao_dependente_irrf": tab_legal["deducao_dependente_irrf"],
+                    "desconto_simplificado_irrf": tab_legal["desconto_simplificado_irrf"],
+                    "aplicar_reducao_lei_15270": bool(tab_legal.get("lei_15270_ativa", 1)),
+                    "salario_minimo": tab_legal["salario_minimo"],
+                    "limite_salario_familia": tab_legal["limite_salario_familia"],
+                    "valor_cota_salario_familia": tab_legal["valor_cota_salario_familia"],
+                    "dias_uteis": cal_comp["dias_uteis"],
+                    "domingos_feriados": cal_comp["domingos_feriados"],
+                    "aliquota_patronal": aliq_pat,
+                    "aliquota_rat": aliq_rat,
+                    "fap": fap_emp,
+                    "aliquota_terceiros": aliq_terc,
+                }
+            )
+        except FolhaValidacaoException:
+            conn.close()
+            raise
+        except ValueError as ve:
+            conn.close()
+            raise FolhaValidacaoException({"eventos": str(ve)})
         except Exception:
             conn.close()
             raise
 
-        # Processar cálculos detalhados
-        calc_result = processar_calculo_folha(
-            salario_base=salario_base,
-            dias_trabalhados=dias_trabalhados,
-            dias_mes=dias_mes,
-            divisor_horas=horas_divisor,
-            eventos_informados=eventos_proc,
-            numero_dependentes=num_dependentes,
-            parametros_config={
-                "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
-                "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
-                "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
-                "aplicar_inss": aplicar_inss_efetivo,
-                "aplicar_irrf": aplicar_irrf_efetivo,
-                "aliquota_fgts": aliquota_fgts_efetiva,
-                "teto_inss": param.get("teto_inss", "8475.55"),
-                "deducao_dependente_irrf": param.get("deducao_dependente_irrf", "189.59"),
-                "desconto_simplificado_irrf": param.get("desconto_simplificado_irrf", "607.20"),
-                "salario_minimo": param.get("salario_minimo", "1621.00"),
-                "limite_salario_familia": param.get("limite_salario_familia", "1980.38"),
-                "valor_cota_salario_familia": param.get("valor_cota_salario_familia", "67.54")
-            }
-        )
+        # Ajuste diferencial verdadeiro para folha complementar quando houver folha mensal prévia
+        if tipo_folha_norm == "complementar":
+            cursor.execute(
+                f"""
+                SELECT * FROM folhas_pagamento
+                WHERE colaborador_id = {P} AND competencia = {P} AND COALESCE(tipo_folha, 'mensal') = 'mensal'
+                ORDER BY id DESC LIMIT 1;
+            """,
+                (colaborador_id, comp),
+            )
+            folha_mensal_ant = self._fetchone(cursor)
+            if folha_mensal_ant:
+                cursor.execute(
+                    f"SELECT codigo_evento, descricao, tipo, referencia, valor_total, incide_inss, incide_irrf, incide_fgts FROM folha_itens WHERE folha_id = {P};",
+                    (folha_mensal_ant["id"],),
+                )
+                itens_mensal_ant = self._fetchall(cursor)
+                evs_recalc = [
+                    {
+                        "codigo": str(it["codigo_evento"]),
+                        "referencia": float(it.get("referencia") or 1),
+                        "valor_informado": float(it.get("valor_total") or 0),
+                    }
+                    for it in itens_mensal_ant
+                    if str(it.get("codigo_evento")) not in ("0001", "0002", "0501", "0502", "0505", "0506", "0507")
+                    and it.get("tipo") in ("provento", "desconto")
+                ] + list(eventos_proc)
+                evs_recalc_hid = self._validar_e_hidratar_eventos(evs_recalc, horas_divisor=horas_divisor, dias_mes=dias_mes)
+                calc_comb = processar_calculo_folha(
+                    salario_base=salario_base,
+                    dias_trabalhados=float(folha_mensal_ant.get("dias_trabalhados") or 30.0),
+                    dias_mes=dias_mes,
+                    divisor_horas=horas_divisor,
+                    eventos_informados=evs_recalc_hid,
+                    numero_dependentes=num_dependentes,
+                    parametros_config={
+                        "percentual_noturno": param.get("percentual_adicional_noturno", 20.0),
+                        "aplicar_reducao_noturna": bool(param.get("aplicar_reducao_noturna", 0)),
+                        "fator_reducao_noturna": param.get("fator_reducao_noturna", "1.142857"),
+                        "aplicar_inss": aplicar_inss_efetivo,
+                        "aplicar_irrf": aplicar_irrf_efetivo,
+                        "aliquota_fgts": aliquota_fgts_efetiva,
+                        "tabela_inss": tab_legal["tabela_inss_tuples"],
+                        "teto_inss": tab_legal["teto_inss"],
+                        "teto_contribuicao_inss": tab_legal["teto_contribuicao_inss"],
+                        "tabela_irrf": tab_legal["tabela_irrf_tuples"],
+                        "deducao_dependente_irrf": tab_legal["deducao_dependente_irrf"],
+                        "desconto_simplificado_irrf": tab_legal["desconto_simplificado_irrf"],
+                        "aplicar_reducao_lei_15270": bool(tab_legal.get("lei_15270_ativa", 1)),
+                        "salario_minimo": tab_legal["salario_minimo"],
+                        "limite_salario_familia": tab_legal["limite_salario_familia"],
+                        "valor_cota_salario_familia": tab_legal["valor_cota_salario_familia"],
+                        "dias_uteis": cal_comp["dias_uteis"],
+                        "domingos_feriados": cal_comp["domingos_feriados"],
+                        "aliquota_patronal": aliq_pat,
+                        "aliquota_rat": aliq_rat,
+                        "fap": fap_emp,
+                        "aliquota_terceiros": aliq_terc,
+                    },
+                )
+                res_comb = calc_comb["resumo"]
+                delta_prov = round(max(0.0, float(res_comb["total_proventos"]) - float(folha_mensal_ant["total_proventos"])), 2)
+                inss_comb = sum(float(it["valor_total"]) for it in calc_comb["itens"] if it["tipo"] == "desconto" and it.get("codigo_catalogo") in ("0501", "0502"))
+                irrf_comb = sum(float(it["valor_total"]) for it in calc_comb["itens"] if it["tipo"] == "desconto" and it.get("codigo_catalogo") in ("0505", "0506", "0507"))
+                delta_inss = round(max(0.0, inss_comb - float(folha_mensal_ant.get("inss_descontado") or 0)), 2)
+                delta_irrf = round(max(0.0, irrf_comb - float(folha_mensal_ant.get("irrf_descontado") or 0)), 2)
+                delta_fgts = round(max(0.0, float(res_comb["valor_fgts_informativo"]) - float(folha_mensal_ant.get("valor_fgts_informativo") or 0)), 2)
+                delta_base_fgts = round(max(0.0, float(res_comb["base_fgts"]) - float(folha_mensal_ant.get("base_fgts") or 0)), 2)
+                delta_base_inss = round(max(0.0, float(res_comb["base_inss"]) - float(folha_mensal_ant.get("base_inss") or 0)), 2)
+                delta_base_irrf = round(max(0.0, float(res_comb["base_irrf"]) - float(folha_mensal_ant.get("base_irrf") or 0)), 2)
+                itens_delta = [it for it in calc_result["itens"] if str(it.get("codigo_catalogo") or it.get("codigo_evento")) not in ("0001", "0501", "0505", "0901", "0902", "0903", "0904", "0905", "0906", "0907") and it["tipo"] in ("provento", "desconto")]
+                if delta_inss > 0:
+                    itens_delta.append({"codigo_evento": "0501", "codigo_catalogo": "0501", "descricao": "INSS complementar (diferença)", "tipo": "desconto", "referencia": 1, "unidade_referencia": "valor", "valor_unitario": delta_inss, "valor_total": delta_inss, "origem": "calculado", "inss": 0, "irrf": 0, "fgts": 0, "memoria_calculo": f"Diferença INSS: {inss_comb:.2f} - {float(folha_mensal_ant.get('inss_descontado') or 0):.2f}"})
+                if delta_irrf > 0:
+                    itens_delta.append({"codigo_evento": "0505", "codigo_catalogo": "0505", "descricao": "IRRF complementar (diferença)", "tipo": "desconto", "referencia": 1, "unidade_referencia": "valor", "valor_unitario": delta_irrf, "valor_total": delta_irrf, "origem": "calculado", "inss": 0, "irrf": 0, "fgts": 0, "memoria_calculo": f"Diferença IRRF: {irrf_comb:.2f} - {float(folha_mensal_ant.get('irrf_descontado') or 0):.2f}"})
+                if delta_fgts > 0:
+                    itens_delta.append({"codigo_evento": "0904", "codigo_catalogo": "0904", "descricao": "FGTS complementar (diferença 8%)", "tipo": "informativo", "referencia": 8.0, "unidade_referencia": "%", "valor_unitario": delta_base_fgts, "valor_total": delta_fgts, "origem": "calculado", "inss": 0, "irrf": 0, "fgts": 0, "memoria_calculo": f"Diferença FGTS sobre base R$ {delta_base_fgts:.2f}"})
+                delta_desc_tot = round(sum(float(x["valor_total"]) for x in itens_delta if x["tipo"] == "desconto"), 2)
+                delta_liq = round(delta_prov - delta_desc_tot, 2)
+                calc_result["resumo"].update({
+                    "dias_trabalhados": 0.0,
+                    "salario_base_proporcional": 0.0,
+                    "total_proventos": delta_prov,
+                    "total_descontos": delta_desc_tot,
+                    "salario_liquido": delta_liq,
+                    "base_inss": delta_base_inss,
+                    "base_fgts": delta_base_fgts,
+                    "valor_fgts_informativo": delta_fgts,
+                    "base_irrf": delta_base_irrf,
+                    "encargos_patronais": {"total_encargos_patronais": round(delta_base_inss * ((aliq_pat + (aliq_rat * fap_emp) + aliq_terc) / 100.0), 2)},
+                })
+                calc_result["itens"] = itens_delta
+                observacoes = f"{observacoes} [Diferença apurada s/ Folha Mensal #{folha_mensal_ant['id']}]".strip()
 
         resumo = calc_result["resumo"]
         if float(resumo["salario_liquido"]) < 0:
@@ -513,7 +715,7 @@ class FolhaService:
             float(it["valor_total"]) for it in itens
             if it["tipo"] == "desconto" and (it.get("codigo_catalogo") in ("0505", "0506", "0507") or it["codigo_evento"] in ("502", "0505", "0506", "0507"))
         )
-        enc_pat = round(float(resumo["base_inss"]) * 0.278, 2)  # 20% Patronal + 2% RAT + 5.8% Terceiros
+        enc_pat = float((resumo.get("encargos_patronais") or {}).get("total_encargos_patronais") or round(float(resumo["base_inss"]) * 0.278, 2))
 
         # Transação segura
         try:
@@ -1007,6 +1209,10 @@ class FolhaService:
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
+        cursor.execute(f"SELECT situacao FROM fechamentos_ponto WHERE competencia = {P} ORDER BY id DESC LIMIT 1;", (competencia.strip(),))
+        row_fp = cursor.fetchone()
+        ponto_fechado = bool(row_fp and str(row_fp[0] or "").lower() == "fechado")
+
         sql = "SELECT id, nome_completo, matricula, carga_horaria_mensal FROM colaboradores WHERE situacao = 'ativo'"
         params = []
         if empresa_id:
@@ -1045,6 +1251,7 @@ class FolhaService:
                     tipo_folha=tipo_folha,
                     empresa_id=empresa_id,
                     filial_id=filial_id,
+                    integrar_ponto=ponto_fechado,
                 )
                 processadas.append(f)
             except FolhaValidacaoException as exc:
@@ -1466,4 +1673,567 @@ class FolhaService:
             "evolucao_mensal": evolucao_mensal,
             "folhas": folhas,
         }
+
+    # ──────────────────────────────────────────────────────────
+    # MÓDULO 09B: 13º Salário Completo (RF-089 a RF-093)
+    # ──────────────────────────────────────────────────────────
+
+    def _contar_avos_decimo_terceiro(self, cursor, colab: Dict[str, Any], ano_base: int) -> int:
+        """Apura avos (1..12) considerando admissão e afastamentos INSS/suspensão (>=15d trabalhados no mês)."""
+        P = self._ph()
+        cid = int(colab["id"])
+        dt_adm_str = str(colab.get("data_admissao") or f"{ano_base}-01-01")[:10]
+        dt_adm = datetime.strptime(dt_adm_str, "%Y-%m-%d").date()
+
+        cursor.execute(
+            f"""
+            SELECT dias_empresa, dias_inss, regime_efeito, data_inicio, data_fim_prevista, data_retorno_efetivo
+            FROM afastamentos
+            WHERE colaborador_id = {P}
+              AND (dias_inss > 0 OR regime_efeito = 'suspensao')
+              AND data_inicio <= {P}
+              AND COALESCE(data_retorno_efetivo, data_fim_prevista) >= {P};
+        """,
+            (cid, f"{ano_base}-12-31", f"{ano_base}-01-01"),
+        )
+        afasts = self._fetchall(cursor)
+
+        avos = 0
+        for mes in range(1, 13):
+            ult = calendar.monthrange(ano_base, mes)[1]
+            m_ini = date(ano_base, mes, 1)
+            m_fim = date(ano_base, mes, ult)
+            if dt_adm > m_fim:
+                continue
+            inicio_ef = max(m_ini, dt_adm)
+            dias_no_mes = (m_fim - inicio_ef).days + 1
+            dias_nao_trab = 0
+            for af in afasts:
+                af_i = datetime.strptime(str(af["data_inicio"])[:10], "%Y-%m-%d").date()
+                af_f = datetime.strptime(str(af.get("data_retorno_efetivo") or af["data_fim_prevista"])[:10], "%Y-%m-%d").date()
+                d_emp = int(af.get("dias_empresa") or 0)
+                unpaid_i = af_i if (str(af.get("regime_efeito") or "") == "suspensao" and d_emp == 0) else (af_i + timedelta(days=d_emp))
+                ov_i = max(inicio_ef, unpaid_i)
+                ov_f = min(m_fim, af_f)
+                if ov_f >= ov_i:
+                    dias_nao_trab += (ov_f - ov_i).days + 1
+            if max(0, dias_no_mes - dias_nao_trab) >= 15:
+                avos += 1
+        return avos
+
+    def _media_variaveis_anual_13(self, cursor, colaborador_id: int, ano_base: int, avos: int) -> Decimal:
+        """Apura média de verbas variáveis (HE, noturno, comissões, adicionais) do exercício."""
+        P = self._ph()
+        cursor.execute(
+            f"""
+            SELECT COALESCE(SUM(fi.valor_total), 0)
+            FROM folhas_pagamento f
+            JOIN folha_itens fi ON fi.folha_id = f.id
+            WHERE f.colaborador_id = {P}
+              AND f.competencia LIKE {P}
+              AND fi.tipo = 'provento'
+              AND COALESCE(f.tipo_folha, 'mensal') IN ('mensal', 'complementar')
+              AND fi.codigo_evento NOT IN ('0001', '0002', '0100', '0101', '0102', '0103', '0110', '0111', '0112', '0113');
+        """,
+            (int(colaborador_id), f"{int(ano_base)}-%"),
+        )
+        soma = Decimal(str(cursor.fetchone()[0] or 0.0))
+        divisor = Decimal(str(max(1, min(12, avos))))
+        return arredondar_moeda(soma / divisor)
+
+    def calcular_decimo_terceiro_colaborador(
+        self,
+        colaborador_id: int,
+        ano_base: int,
+        parcela: int = 1,
+        data_pagamento: Optional[str] = None,
+        usuario: str = "DP",
+        salvar: bool = True,
+    ) -> Dict[str, Any]:
+        """RF-089..RF-093: Calcula e persiste 1ª ou 2ª parcela do 13º salário com avos, médias, férias e INSS/IRRF exclusivos."""
+        parc = int(parcela or 1)
+        if parc not in (1, 2):
+            raise FolhaValidacaoException({"parcela": "Parcela de 13º deve ser 1 ou 2."})
+        ano_i = int(ano_base)
+        colab = self.obter_dados_colaborador(colaborador_id)
+        sal = Decimal(str(colab.get("salario_base") or 0.0))
+        if sal <= Decimal("0.00"):
+            raise FolhaValidacaoException({"salario_base": "Colaborador sem salário-base válido."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        try:
+            avos = self._contar_avos_decimo_terceiro(cursor, colab, ano_i)
+            media_vars = self._media_variaveis_anual_13(cursor, int(colaborador_id), ano_i, avos)
+            rem_total = arredondar_moeda(sal + media_vars)
+            bruto_integral = arredondar_moeda((rem_total * Decimal(str(avos))) / Decimal("12"))
+            dt_pg = str(data_pagamento or (f"{ano_i}-11-30" if parc == 1 else f"{ano_i}-12-20"))[:10]
+
+            # Adiantamento de 13º eventualmente pago junto às férias
+            cursor.execute(
+                f"""
+                SELECT COALESCE(SUM(valor_adiantamento_13), 0) FROM ferias_programadas
+                WHERE colaborador_id = {P} AND adiantar_decimo = 1
+                  AND COALESCE(status, 'solicitada') != 'cancelada' AND data_inicio LIKE {P};
+            """,
+                (int(colaborador_id), f"{ano_i}-%"),
+            )
+            adiant_ferias = Decimal(str(cursor.fetchone()[0] or 0.0))
+
+            aliq_fgts = Decimal("0.02") if str(colab.get("tipo_contrato") or "").lower() == "aprendiz" else Decimal("0.08")
+
+            if parc == 1:
+                valor_bruto = arredondar_moeda(bruto_integral * Decimal("0.50"))
+                desc_1a = Decimal("0.00")
+                inss_13 = Decimal("0.00")
+                irrf_13 = Decimal("0.00")
+                valor_liq = max(Decimal("0.00"), arredondar_moeda(valor_bruto - adiant_ferias))
+                fgts_inf = arredondar_moeda(valor_liq * aliq_fgts)
+            else:
+                cursor.execute(
+                    f"SELECT COALESCE(SUM(valor_liquido), 0) FROM decimo_terceiro WHERE colaborador_id = {P} AND ano_base = {P} AND parcela = 1;",
+                    (int(colaborador_id), ano_i),
+                )
+                ja_pago_1a = Decimal(str(cursor.fetchone()[0] or 0.0))
+                desc_1a = arredondar_moeda(ja_pago_1a + adiant_ferias)
+                valor_bruto = bruto_integral
+
+                try:
+                    from .tabelas_legais_service import TabelasLegaisService
+                except ImportError:
+                    from backend.tabelas_legais_service import TabelasLegaisService
+                tab_vig = TabelasLegaisService(db_path=self.db_path).obter_tabela_vigente(f"{ano_i}-12")
+                dep_irrf = int(colab.get("total_dependentes_irrf", colab.get("total_dependentes", 0)))
+                inss_13, _, _, _ = calcular_inss_progressivo(
+                    bruto_integral,
+                    tabela_faixas=tab_vig["tabela_inss_tuples"],
+                    teto_maximo=Decimal(str(tab_vig["teto_inss"])),
+                    teto_contribuicao=Decimal(str(tab_vig["teto_contribuicao_inss"])),
+                )
+                irrf_13, _, _ = calcular_irrf_progressivo(
+                    base_bruta_irrf=bruto_integral,
+                    desconto_inss=inss_13,
+                    numero_dependentes=dep_irrf,
+                    deducao_por_dependente=Decimal(str(tab_vig["deducao_dependente_irrf"])),
+                    tabela_faixas=tab_vig["tabela_irrf_tuples"],
+                    desconto_simplificado=Decimal(str(tab_vig["desconto_simplificado_irrf"])),
+                    aplicar_reducao_lei_15270=bool(tab_vig.get("lei_15270_ativa", 1)),
+                )
+                valor_liq = max(Decimal("0.00"), arredondar_moeda(bruto_integral - desc_1a - inss_13 - irrf_13))
+                fgts_inf = arredondar_moeda(max(Decimal("0.00"), bruto_integral - desc_1a) * aliq_fgts)
+
+            rec_id = None
+            if salvar:
+                agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute(
+                    f"DELETE FROM decimo_terceiro WHERE colaborador_id = {P} AND ano_base = {P} AND parcela = {P};",
+                    (int(colaborador_id), ano_i, parc),
+                )
+                sql_pg = f"""
+                    INSERT INTO decimo_terceiro (
+                        colaborador_id, ano_base, parcela, meses_trabalhados, salario_base, media_variaveis,
+                        remuneracao_total, valor_bruto, desconto_primeira_parcela, desconto_inss, desconto_irrf,
+                        valor_liquido, fgts_informativo, data_pagamento, situacao, criado_por, criado_em
+                    ) VALUES ({','.join([P]*17)}) RETURNING id;
+                """
+                sql_sq = f"""
+                    INSERT INTO decimo_terceiro (
+                        colaborador_id, ano_base, parcela, meses_trabalhados, salario_base, media_variaveis,
+                        remuneracao_total, valor_bruto, desconto_primeira_parcela, desconto_inss, desconto_irrf,
+                        valor_liquido, fgts_informativo, data_pagamento, situacao, criado_por, criado_em
+                    ) VALUES ({','.join([P]*17)});
+                """
+                rec_id = self._insert_id(
+                    cursor, conn, sql_pg, sql_sq,
+                    (
+                        int(colaborador_id), ano_i, parc, avos, float(sal), float(media_vars),
+                        float(rem_total), float(valor_bruto), float(desc_1a), float(inss_13), float(irrf_13),
+                        float(valor_liq), float(fgts_inf), dt_pg, "calculado", usuario, agora,
+                    ),
+                )
+                conn.commit()
+
+            return {
+                "id": rec_id,
+                "colaborador_id": int(colaborador_id),
+                "colaborador_nome": colab["nome_completo"],
+                "ano_base": ano_i,
+                "parcela": parc,
+                "avos": avos,
+                "salario_base": float(sal),
+                "media_variaveis": float(media_vars),
+                "remuneracao_total": float(rem_total),
+                "valor_bruto": float(valor_bruto),
+                "desconto_primeira_parcela": float(desc_1a),
+                "adiantamento_ferias_deduzido": float(adiant_ferias),
+                "desconto_inss": float(inss_13),
+                "desconto_irrf": float(irrf_13),
+                "valor_liquido": float(valor_liq),
+                "fgts_informativo": float(fgts_inf),
+                "data_pagamento": dt_pg,
+            }
+        finally:
+            conn.close()
+
+    def calcular_decimo_terceiro_lote(
+        self,
+        ano_base: int,
+        parcela: int = 1,
+        empresa_id: Optional[str] = None,
+        usuario: str = "DP",
+    ) -> Dict[str, Any]:
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql = "SELECT id FROM colaboradores WHERE situacao = 'ativo'"
+        params: List[Any] = []
+        if empresa_id:
+            sql += f" AND COALESCE(empresa_id, 'a0000000-0000-0000-0000-000000000001') = {P}"
+            params.append(empresa_id.strip())
+        cursor.execute(sql, tuple(params))
+        cids = [int(r[0]) for r in cursor.fetchall()]
+        conn.close()
+
+        itens = []
+        erros = []
+        for cid in cids:
+            try:
+                itens.append(self.calcular_decimo_terceiro_colaborador(cid, ano_base, parcela=parcela, usuario=usuario))
+            except Exception as exc:
+                erros.append({"colaborador_id": cid, "erro": str(exc)})
+        return {
+            "ano_base": int(ano_base),
+            "parcela": int(parcela),
+            "total_processados": len(itens),
+            "total_liquido": round(sum(i["valor_liquido"] for i in itens), 2),
+            "total_fgts": round(sum(i["fgts_informativo"] for i in itens), 2),
+            "itens": itens,
+            "erros": erros,
+        }
+
+    def listar_decimo_terceiro(
+        self,
+        ano_base: Optional[int] = None,
+        colaborador_id: Optional[int] = None,
+        empresa_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql = """
+            SELECT d.*, c.nome_completo, c.matricula, c.setor
+            FROM decimo_terceiro d
+            JOIN colaboradores c ON c.id = d.colaborador_id
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if ano_base:
+            sql += f" AND d.ano_base = {P}"
+            params.append(int(ano_base))
+        if colaborador_id:
+            sql += f" AND d.colaborador_id = {P}"
+            params.append(int(colaborador_id))
+        if empresa_id:
+            sql += f" AND COALESCE(c.empresa_id, 'a0000000-0000-0000-0000-000000000001') = {P}"
+            params.append(empresa_id.strip())
+        sql += " ORDER BY d.ano_base DESC, d.parcela ASC, c.nome_completo ASC;"
+        cursor.execute(sql, tuple(params))
+        rows = self._fetchall(cursor)
+        conn.close()
+        return rows
+
+    def calcular_provisao_decimo_terceiro(self, competencia: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        """RF-093: Provisão mensal contábil de 1/12 de 13º salário + FGTS + encargos patronais."""
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql = "SELECT id, nome_completo, matricula, setor, centro_custo, salario_base FROM colaboradores WHERE situacao = 'ativo'"
+        params: List[Any] = []
+        if empresa_id:
+            sql += f" AND COALESCE(empresa_id, 'a0000000-0000-0000-0000-000000000001') = {P}"
+            params.append(empresa_id.strip())
+        cursor.execute(sql, tuple(params))
+        colabs = self._fetchall(cursor)
+        conn.close()
+
+        itens = []
+        for c in colabs:
+            sal = Decimal(str(c.get("salario_base") or 0.0))
+            prov_13 = arredondar_moeda(sal / Decimal("12"))
+            prov_fgts = arredondar_moeda(prov_13 * Decimal("0.08"))
+            prov_enc = arredondar_moeda(prov_13 * Decimal("0.278"))
+            itens.append({
+                "colaborador_id": c["id"],
+                "nome_completo": c["nome_completo"],
+                "centro_custo": c.get("centro_custo") or c.get("setor") or "GERAL",
+                "provisao_13": float(prov_13),
+                "provisao_fgts": float(prov_fgts),
+                "provisao_encargos": float(prov_enc),
+                "custo_provisao_total": float(prov_13 + prov_fgts + prov_enc),
+            })
+        return {
+            "competencia": competencia.strip()[:7],
+            "qtd_colaboradores": len(itens),
+            "total_provisao_13": round(sum(i["provisao_13"] for i in itens), 2),
+            "total_provisao_fgts": round(sum(i["provisao_fgts"] for i in itens), 2),
+            "total_provisao_encargos": round(sum(i["provisao_encargos"] for i in itens), 2),
+            "custo_total_provisao": round(sum(i["custo_provisao_total"] for i in itens), 2),
+            "itens": itens,
+        }
+
+    # ──────────────────────────────────────────────────────────
+    # Conferência Analítica, Fechamento em Lote, Rateio, Integração & eSocial
+    # ──────────────────────────────────────────────────────────
+
+    def conferencia_analitica_folha(self, competencia: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        """RF-096: Auditoria pré-fechamento identificando divergências, variações >30%, líquidos zerados e ponto aberto."""
+        comp = competencia.strip()[:7]
+        folhas = self.listar_folhas(competencia=comp, empresa_id=empresa_id)
+        ano, mes = int(comp[:4]), int(comp[5:7])
+        prev_comp = f"{ano - 1}-12" if mes == 1 else f"{ano}-{mes - 1:02d}"
+        folhas_prev = {int(f["colaborador_id"]): f for f in self.listar_folhas(competencia=prev_comp, empresa_id=empresa_id)}
+
+        alertas = []
+        for f in folhas:
+            liq = float(f.get("salario_liquido") or 0)
+            if liq <= 0:
+                alertas.append({"colaborador_id": f["colaborador_id"], "colaborador": f.get("colaborador_nome"), "severidade": "critica", "mensagem": f"Líquido zerado ou negativo (R$ {liq:.2f})."})
+            ant = folhas_prev.get(int(f["colaborador_id"]))
+            if ant and float(ant.get("total_proventos") or 0) > 0:
+                var = abs(float(f["total_proventos"]) - float(ant["total_proventos"])) / float(ant["total_proventos"])
+                if var > 0.30:
+                    alertas.append({"colaborador_id": f["colaborador_id"], "colaborador": f.get("colaborador_nome"), "severidade": "media", "mensagem": f"Variação de {var * 100:.1f}% nos proventos em relação a {prev_comp}."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT situacao FROM fechamentos_ponto WHERE competencia = {P} ORDER BY id DESC LIMIT 1;", (comp,))
+        row_pt = cursor.fetchone()
+        conn.close()
+        ponto_fechado = bool(row_pt and str(row_pt[0] or "").lower() == "fechado")
+        if not ponto_fechado:
+            alertas.append({"colaborador_id": None, "colaborador": "Geral", "severidade": "media", "mensagem": f"Ponto da competência {comp} ainda não está fechado."})
+
+        return {
+            "competencia": comp,
+            "total_folhas": len(folhas),
+            "ponto_fechado": ponto_fechado,
+            "total_alertas": len(alertas),
+            "alertas": alertas,
+            "apto_para_fechamento": not any(a["severidade"] == "critica" for a in alertas),
+        }
+
+    def gerar_rateio_centro_custo(self, competencia: str, empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        """RF-101: Persiste rateio contábil da folha por centro de custo em folha_rateio_centro_custo."""
+        comp = competencia.strip()[:7]
+        emp_id = (empresa_id or "a0000000-0000-0000-0000-000000000001").strip()
+        folhas = self.listar_folhas(competencia=comp, empresa_id=emp_id)
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            f"DELETE FROM folha_rateio_centro_custo WHERE empresa_id = {P} AND competencia = {P};",
+            (emp_id, comp),
+        )
+        resumo_cc: Dict[str, float] = {}
+        for f in folhas:
+            cc = str(f.get("colaborador_centro_custo") or f.get("colaborador_setor") or "GERAL").strip()
+            bruto = float(f.get("total_proventos") or 0)
+            enc = float(f.get("encargos_patronais") or 0)
+            fgts = float(f.get("valor_fgts_informativo") or 0)
+            tot = round(bruto + enc + fgts, 2)
+            cursor.execute(
+                f"""
+                INSERT INTO folha_rateio_centro_custo (
+                    empresa_id, folha_id, colaborador_id, competencia, centro_custo_id, centro_custo_codigo,
+                    percentual, valor_bruto, valor_encargos, valor_fgts, custo_total, criado_em
+                ) VALUES ({','.join([P]*12)});
+            """,
+                (emp_id, int(f["id"]), int(f["colaborador_id"]), comp, cc, cc, 100.0, bruto, enc, fgts, tot, agora),
+            )
+            resumo_cc[cc] = round(resumo_cc.get(cc, 0.0) + tot, 2)
+        conn.commit()
+        conn.close()
+        return {"competencia": comp, "empresa_id": emp_id, "registros": len(folhas), "totais_por_centro_custo": resumo_cc}
+
+    def listar_rateio_centro_custo(self, competencia: str, empresa_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql = "SELECT * FROM folha_rateio_centro_custo WHERE competencia = " + P
+        params: List[Any] = [competencia.strip()[:7]]
+        if empresa_id:
+            sql += f" AND empresa_id = {P}"
+            params.append(empresa_id.strip())
+        sql += " ORDER BY centro_custo_codigo ASC, id ASC;"
+        cursor.execute(sql, tuple(params))
+        rows = self._fetchall(cursor)
+        conn.close()
+        return rows
+
+    def gerar_integracao_financeira(self, competencia: str, empresa_id: Optional[str] = None, usuario: str = "Financeiro") -> Dict[str, Any]:
+        """RF-102: Gera títulos financeiros consolidados a pagar (Salários, GPS/INSS, FGTS, DARF/IRRF)."""
+        comp = competencia.strip()[:7]
+        emp_id = (empresa_id or "a0000000-0000-0000-0000-000000000001").strip()
+        rel = self.obter_relatorios_folha(competencia=comp, empresa_id=emp_id)
+        res = rel["resumo_financeiro"]
+        fin = rel["financeiro"]["valores_a_recolher"]
+        folha_ids = json.dumps([int(f["id"]) for f in rel["folhas"]])
+
+        ano, mes = int(comp[:4]), int(comp[5:7])
+        prox_ano, prox_mes = (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+        titulos_cfg = [
+            ("salarios_liquidos", f"Folha Salários Líquidos {comp}", res["total_liquido"], f"{prox_ano}-{prox_mes:02d}-05"),
+            ("inss_gps", f"Guia INSS / GPS / DCTFWeb {comp}", fin["inss_total_recolher"], f"{prox_ano}-{prox_mes:02d}-20"),
+            ("fgts_guia", f"Guia FGTS Digital {comp}", fin["fgts_recolher"], f"{prox_ano}-{prox_mes:02d}-20"),
+            ("irrf_darf", f"Guia DARF IRRF {comp}", fin["irrf_recolher"], f"{prox_ano}-{prox_mes:02d}-20"),
+        ]
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            f"DELETE FROM folha_integracao_financeira WHERE empresa_id = {P} AND competencia = {P};",
+            (emp_id, comp),
+        )
+        criados = []
+        for tipo_t, desc_t, val_t, venc_t in titulos_cfg:
+            if float(val_t or 0) <= 0:
+                continue
+            cursor.execute(
+                f"""
+                INSERT INTO folha_integracao_financeira (
+                    empresa_id, competencia, tipo_titulo, descricao, centro_custo, valor_total,
+                    data_vencimento, status, folha_ids_json, criado_por, criado_em
+                ) VALUES ({','.join([P]*11)});
+            """,
+                (emp_id, comp, tipo_t, desc_t, "CONSOLIDADO", round(float(val_t), 2), venc_t, "aberto", folha_ids, usuario, agora),
+            )
+            criados.append({"tipo_titulo": tipo_t, "descricao": desc_t, "valor_total": round(float(val_t), 2), "data_vencimento": venc_t})
+        conn.commit()
+        conn.close()
+        return {"competencia": comp, "empresa_id": emp_id, "titulos_gerados": len(criados), "titulos": criados}
+
+    def listar_integracao_financeira(self, competencia: Optional[str] = None, empresa_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        sql = "SELECT * FROM folha_integracao_financeira WHERE 1=1"
+        params: List[Any] = []
+        if competencia:
+            sql += f" AND competencia = {P}"
+            params.append(competencia.strip()[:7])
+        if empresa_id:
+            sql += f" AND empresa_id = {P}"
+            params.append(empresa_id.strip())
+        sql += " ORDER BY competencia DESC, id ASC;"
+        cursor.execute(sql, tuple(params))
+        rows = self._fetchall(cursor)
+        conn.close()
+        return rows
+
+    def fechar_competencia_lote(self, competencia: str, usuario: str = "Gestor DP", empresa_id: Optional[str] = None) -> Dict[str, Any]:
+        """RF-096: Fecha todas as folhas abertas da competência, gera rateio contábil e títulos financeiros."""
+        comp = competencia.strip()[:7]
+        emp_id = (empresa_id or "a0000000-0000-0000-0000-000000000001").strip()
+        folhas = self.listar_folhas(competencia=comp, empresa_id=emp_id)
+        if not folhas:
+            raise FolhaValidacaoException({"competencia": f"Não existem folhas lançadas para {comp}."})
+
+        fechadas = 0
+        for f in folhas:
+            if f.get("situacao") != "fechada":
+                self.fechar_folha(int(f["id"]), usuario=usuario)
+                fechadas += 1
+
+        rateio = self.gerar_rateio_centro_custo(comp, empresa_id=emp_id)
+        fin = self.gerar_integracao_financeira(comp, empresa_id=emp_id, usuario=usuario)
+        return {
+            "sucesso": True,
+            "competencia": comp,
+            "folhas_fechadas_agora": fechadas,
+            "total_folhas": len(folhas),
+            "rateio": rateio,
+            "integracao_financeira": fin,
+        }
+
+    def gerar_eventos_esocial_folha(self, competencia: str, empresa_id: Optional[str] = None, usuario: str = "DP") -> Dict[str, Any]:
+        """RF-100: Gera e valida XMLs S-1200, S-1210 e S-1299 (v_S_01_02_00) para a competência."""
+        try:
+            from .esocial_eventos_trabalhistas import (
+                gerar_xml_s1200,
+                gerar_xml_s1210,
+                gerar_xml_s1299,
+                validar_xml_esocial_trabalhista,
+            )
+        except ImportError:
+            from backend.esocial_eventos_trabalhistas import (
+                gerar_xml_s1200,
+                gerar_xml_s1210,
+                gerar_xml_s1299,
+                validar_xml_esocial_trabalhista,
+            )
+
+        comp = competencia.strip()[:7]
+        emp_id = (empresa_id or "a0000000-0000-0000-0000-000000000001").strip()
+        folhas = self.listar_folhas(competencia=comp, empresa_id=emp_id)
+        if not folhas:
+            raise FolhaValidacaoException({"competencia": f"Sem folhas na competência {comp} para geração eSocial."})
+
+        P = self._ph()
+        conn = self._conn()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT cnpj FROM empresas WHERE id = {P};", (emp_id,))
+        row_emp = cursor.fetchone()
+        cnpj_emp = row_emp[0] if row_emp and row_emp[0] else "12345678000190"
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        eventos_criados = []
+
+        for f in folhas:
+            f_full = self.obter_folha_por_id(int(f["id"]))
+            colab_dict = {
+                "cpf": f_full.get("colaborador_cpf"),
+                "matricula": f_full.get("colaborador_matricula"),
+                "setor": f_full.get("colaborador_setor"),
+            }
+            xml_1200, _ = gerar_xml_s1200(colab_dict, cnpj_emp, comp, f_full.get("itens") or [])
+            if xml_1200:
+                ok1, _ = validar_xml_esocial_trabalhista("S-1200", xml_1200)
+                eid1 = self._insert_id(
+                    cursor, conn,
+                    f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1200',{P},'homologacao',{P},{P},{P},{P}) RETURNING id;",
+                    f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1200',{P},'homologacao',{P},{P},{P},{P});",
+                    (emp_id, f"folha_1200:{f_full['id']}", "validado" if ok1 else "erro_schema", xml_1200, usuario, agora),
+                )
+                eventos_criados.append({"id": eid1, "tipo": "S-1200", "folha_id": f_full["id"], "valido": ok1})
+
+            dt_pg = f_full.get("data_pagamento") or f"{comp}-28"
+            xml_1210, _ = gerar_xml_s1210(colab_dict, cnpj_emp, comp, dt_pg, float(f_full.get("salario_liquido") or 0))
+            if xml_1210:
+                ok2, _ = validar_xml_esocial_trabalhista("S-1210", xml_1210)
+                eid2 = self._insert_id(
+                    cursor, conn,
+                    f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1210',{P},'homologacao',{P},{P},{P},{P}) RETURNING id;",
+                    f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1210',{P},'homologacao',{P},{P},{P},{P});",
+                    (emp_id, f"folha_1210:{f_full['id']}", "validado" if ok2 else "erro_schema", xml_1210, usuario, agora),
+                )
+                eventos_criados.append({"id": eid2, "tipo": "S-1210", "folha_id": f_full["id"], "valido": ok2})
+
+        xml_1299, _ = gerar_xml_s1299(cnpj_emp, comp, possui_remuneracao=True, possui_pagamentos=True)
+        if xml_1299:
+            ok3, _ = validar_xml_esocial_trabalhista("S-1299", xml_1299)
+            eid3 = self._insert_id(
+                cursor, conn,
+                f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1299',{P},'homologacao',{P},{P},{P},{P}) RETURNING id;",
+                f"INSERT INTO esocial_eventos (empresa_id, tipo_evento, identificador_origem, ambiente, status, xml_conteudo, criado_por, criado_em) VALUES ({P},'S-1299',{P},'homologacao',{P},{P},{P},{P});",
+                (emp_id, f"fechamento:{comp}", "validado" if ok3 else "erro_schema", xml_1299, usuario, agora),
+            )
+            eventos_criados.append({"id": eid3, "tipo": "S-1299", "competencia": comp, "valido": ok3})
+
+        conn.commit()
+        conn.close()
+        return {"competencia": comp, "total_eventos": len(eventos_criados), "eventos": eventos_criados}
 
